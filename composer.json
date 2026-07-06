@@ -1,0 +1,74 @@
+{
+    "name": "mmoollllee/filament-cms",
+    "description": "Shared, updatable CMS engine for multi-tenant marketing websites (Laravel 12 + Filament v5): content types, block builder, layout presets, fragments, redirects and the complete admin panel.",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.2",
+        "awcodes/richer-editor": "^2.1",
+        "blendbyte/filament-title-with-slug": "^3.0",
+        "datlechin/filament-menu-builder": "^1.0.3",
+        "defstudio/filament-searchable-input": "^5.0",
+        "filament/filament": "^5.0",
+        "mmoollllee/filament-builder-title": "^0.3.0",
+        "pbmedia/laravel-ffmpeg": "^8.9",
+        "ueberdosis/tiptap-php": "^2.1",
+        "yannkuesthardt/laravel-spamprotect": "^2.0"
+    },
+    "require-dev": {
+        "mockery/mockery": "^1.6",
+        "orchestra/testbench": "^10.0",
+        "pestphp/pest": "^4.4",
+        "pestphp/pest-plugin-laravel": "^4.1"
+    },
+    "autoload": {
+        "psr-4": {
+            "Mmoollllee\\Cms\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Mmoollllee\\Cms\\Tests\\": "tests/",
+            "Workbench\\App\\": "workbench/app/",
+            "Workbench\\Database\\": "workbench/database/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Mmoollllee\\Cms\\CmsServiceProvider"
+            ]
+        }
+    },
+    "repositories": [
+        {
+            "type": "composer",
+            "url": "https://packages.filamentphp.com/composer"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/mmoollllee/filament-builder-title"
+        }
+    ],
+    "scripts": {
+        "test": "@php vendor/bin/pest",
+        "build": "@php vendor/bin/testbench workbench:build --ansi",
+        "serve": "DB_DATABASE=\"$(pwd)/workbench/database/database.sqlite\" php vendor/bin/testbench serve --ansi"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "php-http/discovery": true
+        },
+        "policy": {
+            "advisories": {
+                "block": false
+            }
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

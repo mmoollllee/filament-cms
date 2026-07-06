@@ -1,0 +1,11 @@
+/vendor/
+/node_modules/
+composer.lock
+package-lock.json
+auth.json
+/workbench/bootstrap/cache/
+/.phpunit.cache/
+.DS_Store
+.idea/
+.vscode/
+/workbench/database/database.sqlite

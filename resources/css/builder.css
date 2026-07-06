@@ -1,0 +1,223 @@
+/*
+ * Panel styles for the package, PRECOMPILED (plain CSS, no Tailwind required).
+ *
+ * Registered as a Filament asset by CmsServiceProvider, so the block builder
+ * (inactive pill, dimming, preview interaction, inline editing), the custom-block
+ * previews and the package's panel partials work in every panel out of the box —
+ * with or without a custom vite theme. An app theme that imports
+ * resources/css/filament-cms.css only ADDS Tailwind source scanning for the
+ * package views; it does not need to re-declare these rules.
+ */
+
+/* The "Öffnen" header action (cms::filament.header-actions, hooked before the
+   topbar's global search) — flex row with breathing room towards the search bar. */
+.fi-cms-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-inline-end: 1rem;
+}
+
+/* Label is icon-only on small screens. */
+.fi-cms-header-actions-label {
+    display: none;
+}
+
+@media (min-width: 640px) {
+    .fi-cms-header-actions-label {
+        display: block;
+    }
+}
+
+/* Subtle backdrop for custom RichEditor block previews (ButtonGroup, NavCards)
+   so they stay visible on any surface. */
+.fi-fo-builder-item-preview .fi-fo-rich-editor-custom-block-preview,
+.fi-fo-rich-editor-custom-block-preview {
+    border-radius: 0.5rem;
+    background-color: rgb(0 0 0 / 0.04);
+}
+
+.dark .fi-fo-builder-item-preview .fi-fo-rich-editor-custom-block-preview,
+.dark .fi-fo-rich-editor-custom-block-preview {
+    background-color: rgb(255 255 255 / 0.06);
+}
+
+/* Block previews render OUTSIDE the frontend's typography context, so headings
+   would collapse to body size. :where() keeps specificity at zero so an app
+   theme can still override. */
+.fi-fo-builder-item-preview :where(h1) {
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 600;
+}
+
+.fi-fo-builder-item-preview :where(h2) {
+    font-size: 1.25rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+}
+
+.fi-fo-builder-item-preview :where(h3) {
+    font-size: 1.125rem;
+    line-height: 1.75rem;
+    font-weight: 600;
+}
+
+/* The preview card is a click target (click = edit inline). Filament core sets
+   `.fi-fo-builder-item-preview:not(.fi-interactive) { pointer-events: none }`
+   (specificity 0,2,0) for its edit-overlay pattern — this selector must WIN
+   (0,3,0), independent of stylesheet order, or the preview never receives the
+   click and inline editing silently stops working. */
+.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) {
+    pointer-events: auto;
+    cursor: pointer;
+    padding: 1.25rem;
+}
+
+/* …but links/buttons INSIDE the static preview never navigate on their own. */
+.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) a,
+.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) button {
+    pointer-events: none;
+}
+
+/* Inline editing (the builder override swaps preview ↔ form in place). */
+.fi-fo-builder-item-inline-edit {
+    padding: 1.25rem;
+}
+
+.fi-fo-builder-item-inline-edit-footer {
+    display: flex;
+    justify-content: center;
+    padding: 0.75rem 1rem;
+}
+
+/* Navigation-card custom block (nav-cards) inside the panel: the frontend
+   classes carry no styling without the site CSS — give both preview contexts
+   (builder block preview + RichEditor custom-block preview) a compact card grid. */
+.fi-fo-builder-item-preview .nav-cards,
+.fi-fo-rich-editor-custom-block-preview .nav-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.625rem;
+    margin-block: 0.375rem;
+}
+
+.fi-fo-builder-item-preview .nav-card,
+.fi-fo-rich-editor-custom-block-preview .nav-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    border-radius: 0.625rem;
+    border: 1px solid rgb(0 0 0 / 0.08);
+    background-color: rgb(255 255 255 / 0.6);
+    padding: 0.75rem 0.875rem;
+    color: inherit;
+    text-decoration: none;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+.dark .fi-fo-builder-item-preview .nav-card,
+.dark .fi-fo-rich-editor-custom-block-preview .nav-card {
+    border-color: rgb(255 255 255 / 0.12);
+    background-color: rgb(255 255 255 / 0.04);
+}
+
+.fi-fo-builder-item-preview .nav-card__label,
+.fi-fo-rich-editor-custom-block-preview .nav-card__label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+}
+
+.fi-fo-builder-item-preview .nav-card__label svg,
+.fi-fo-rich-editor-custom-block-preview .nav-card__label svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    opacity: 0.45;
+}
+
+.fi-fo-builder-item-preview .nav-card__text,
+.fi-fo-rich-editor-custom-block-preview .nav-card__text {
+    font-size: 0.75rem;
+    line-height: 1.1rem;
+    color: rgb(107 114 128);
+}
+
+.dark .fi-fo-builder-item-preview .nav-card__text,
+.dark .fi-fo-rich-editor-custom-block-preview .nav-card__text {
+    color: rgb(156 163 175);
+}
+
+/* Reveal a builder item's end-actions (block options, copy, delete, …) on hover. */
+.fi-fo-builder-item-header .fi-fo-builder-item-header-end-actions {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.fi-fo-builder-item-header:hover .fi-fo-builder-item-header-end-actions,
+.fi-fo-builder-item-header:focus-within .fi-fo-builder-item-header-end-actions {
+    opacity: 1;
+}
+
+/* Dim a block whose `active` option is off. The marker sits on the item's OWN
+   element (set by the builder override), so an inactive child never dims its
+   active parent section. Full opacity on hover. */
+.fi-fo-builder-item-inactive {
+    opacity: 0.5;
+    transition: opacity 0.15s ease;
+}
+
+.fi-fo-builder-item-inactive:hover {
+    opacity: 1;
+}
+
+/* Pill after an inactive block's row title: amber "inaktiv" by default,
+   switching to a green "aktivieren" affordance on hover — click to reactivate. */
+.fi-fo-builder-item-inactive-pill {
+    margin-inline-start: 0.5rem;
+    display: inline-flex;
+    cursor: pointer;
+    align-items: center;
+    border: none;
+    border-radius: 0.375rem;
+    background-color: #fffbeb;
+    padding: 0.125rem 0.375rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    color: #b45309;
+    box-shadow: inset 0 0 0 1px rgb(217 119 6 / 0.2);
+    transition: all 0.15s ease;
+}
+
+.dark .fi-fo-builder-item-inactive-pill {
+    background-color: rgb(251 191 36 / 0.1);
+    color: #fbbf24;
+    box-shadow: inset 0 0 0 1px rgb(251 191 36 / 0.3);
+}
+
+.fi-fo-builder-item-inactive-pill:hover {
+    background-color: #f0fdf4;
+    color: #15803d;
+    box-shadow: inset 0 0 0 1px rgb(22 163 74 / 0.2);
+}
+
+.dark .fi-fo-builder-item-inactive-pill:hover {
+    background-color: rgb(74 222 128 / 0.1);
+    color: #4ade80;
+    box-shadow: inset 0 0 0 1px rgb(74 222 128 / 0.3);
+}
+
+/* Swap the label text on hover ("inaktiv" → "aktivieren"). */
+.fi-fo-builder-item-inactive-pill .fi-fo-builder-item-inactive-pill-activate,
+.fi-fo-builder-item-inactive-pill:hover .fi-fo-builder-item-inactive-pill-inactive {
+    display: none;
+}
+
+.fi-fo-builder-item-inactive-pill:hover .fi-fo-builder-item-inactive-pill-activate {
+    display: inline;
+}

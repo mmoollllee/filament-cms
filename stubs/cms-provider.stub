@@ -1,0 +1,32 @@
+<?php
+
+namespace App\Providers;
+
+use App\Models\Content;
+use App\Models\Fragment;
+use App\Models\Tenant;
+use Illuminate\Support\ServiceProvider;
+use Mmoollllee\Cms\Cms;
+
+/**
+ * Central CMS engine wiring. Everything structural is registered in code
+ * (Cashier/Sanctum-style statics) — only environment-driven settings live in
+ * config/cms.php. Panel options belong in App\Providers\Filament\PanelProvider.
+ */
+class CmsServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        Cms::useContentModel(Content::class);
+        Cms::useTenantModel(Tenant::class);
+        Cms::useFragmentModel(Fragment::class);
+
+        // Optional wiring — uncomment to customize:
+        // Cms::registerBlocks([...Cms::defaultBlocks(), MyBlock::class]);
+        // Cms::allowSectionChildren('my-site-key', ['text', 'media', 'listing']);
+        // Cms::allowRootBlocks('my-site-key', ['section', 'hero']);
+        // Cms::useFooterTagline('Mein Claim.');
+        // Cms::enableContentPageHeader();
+        // Cms::useMenuLocations(['header' => 'Hauptmenü', 'footer' => 'Sekundär-Navigation']);
+    }
+}

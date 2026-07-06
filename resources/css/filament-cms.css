@@ -1,0 +1,21 @@
+/*
+ * Tailwind SOURCE GLUE for consuming-app panel themes. Import from your Filament
+ * theme CSS so Tailwind scans the package's views for utility classes:
+ *
+ *   @import '../../../vendor/mmoollllee/filament-cms/resources/css/filament-cms.css';
+ *
+ * The builder's own UX styles (inactive pill, dimming, preview interaction,
+ * inline editing) ship PRECOMPILED in resources/css/builder.css and are
+ * registered as a Filament asset by the package — no theme required, nothing
+ * to re-declare here.
+ */
+
+/* Self-registering Tailwind sources: @source resolves relative to THIS file, so the
+   package's panel views (widgets, overrides, header actions), block previews and PHP-side
+   classes are scanned by the consuming app's theme build without per-app @source boilerplate.
+   Block preview *.blade.php live in resources/blocks/<key>/preview.blade.php — without this
+   the ad-hoc utility classes they use (bg-slate-100, h-9, …) are purged from the panel CSS. */
+@source '../views/**/*.blade.php';
+@source '../overrides/**/*.blade.php';
+@source '../blocks/**/*.blade.php';
+@source '../../src/**/*.php';

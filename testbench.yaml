@@ -1,0 +1,55 @@
+providers:
+  # Filament\Support MUST register before Livewire: it rebinds Livewire's DataStore
+  # (partial rendering) with a plain bind(); if Livewire registered first, that bind
+  # drops Livewire's shared instance and every store() write is lost (composer
+  # discovery in a real app orders filament/* before livewire/* too).
+  - BladeUI\Icons\BladeIconsServiceProvider
+  - BladeUI\Heroicons\BladeHeroiconsServiceProvider
+  - Filament\Support\SupportServiceProvider
+  - Livewire\LivewireServiceProvider
+  - Filament\Actions\ActionsServiceProvider
+  - Filament\Forms\FormsServiceProvider
+  - Filament\Infolists\InfolistsServiceProvider
+  - Filament\Notifications\NotificationsServiceProvider
+  - Filament\Schemas\SchemasServiceProvider
+  - Filament\Tables\TablesServiceProvider
+  - Filament\Widgets\WidgetsServiceProvider
+  - Filament\QueryBuilder\QueryBuilderServiceProvider
+  - Filament\FilamentServiceProvider
+  - Awcodes\RicherEditor\RicherEditorServiceProvider
+  - Datlechin\FilamentMenuBuilder\FilamentMenuBuilderServiceProvider
+  - Blendbyte\FilamentTitleWithSlug\FilamentTitleWithSlugServiceProvider
+  - DefStudio\SearchableInput\SearchableInputServiceProvider
+  - ProtoneMedia\LaravelFFMpeg\Support\ServiceProvider
+  - yannkuesthardt\SpamProtect\SpamprotectServiceProvider
+  - Mmoollllee\FilamentBuilderTitle\FilamentBuilderTitleServiceProvider
+  - Mmoollllee\Cms\CmsServiceProvider
+  - Workbench\App\Providers\WorkbenchServiceProvider
+  - Workbench\App\Providers\Filament\DemoPanelProvider
+
+migrations:
+  - database/migrations
+
+seeders:
+  - Workbench\Database\Seeders\DatabaseSeeder
+
+env:
+  APP_KEY: "base64:2fl+Ktvkfl+Fuz4Qp/A75G2RTiWVA/ZoKZvp6fiiM10="
+  APP_ENV: local
+  CACHE_STORE: array
+  SESSION_DRIVER: file
+  QUEUE_CONNECTION: sync
+  DB_CONNECTION: sqlite
+  DB_DATABASE: "workbench/database/database.sqlite"
+  SPAMPROTECT_KEY: "testbench-spamprotect-key"
+  # Env-backed CMS settings (config/cms.php is env-only now):
+  # demo branding source + login-form prefill for the demo panel.
+  CMS_BRANDING_TENANT_ID: 1
+  CMS_DEV_LOGIN_EMAIL: "admin@example.test"
+  CMS_DEV_LOGIN_PASSWORD: "password"
+
+workbench:
+  start: '/panel'
+  install: true
+  discovers:
+    web: true
