@@ -33,8 +33,8 @@ class CatchAllContentResource extends TenantScopedContentResource
 
     protected static ?string $slug = 'contents';
 
-    // Pages nest under pages: the "Seiten verwalten" child action links here with
-    // ?parent=…, which scopes the list (and the create action) to that parent.
+    // Pages nest under pages: a ?parent=… query param scopes the list (and the
+    // create action) to that parent record.
     protected static bool $supportsParentScopedListing = true;
 
     /**
@@ -98,6 +98,16 @@ class CatchAllContentResource extends TenantScopedContentResource
     protected static function formShowsPayloadEditor(): Closure
     {
         return fn (Get $get): bool => (bool) static::selectedBlueprint(static::resolveSelectedContentType($get))?->showsPayloadEditor();
+    }
+
+    /**
+     * The multi-type form keeps the raw payload editor in the tree and toggles it
+     * reactively per selected type ({@see formShowsPayloadEditor()}). None of the
+     * catch-all's types define structured `payload.*` fields, so there is no collision.
+     */
+    protected static function formIncludesPayloadEditor(): bool
+    {
+        return true;
     }
 
     /** The catch-all always offers the block builder, regardless of the selected type. */

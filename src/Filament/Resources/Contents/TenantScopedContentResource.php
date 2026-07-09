@@ -119,8 +119,15 @@ abstract class TenantScopedContentResource extends Resource
                 ->tabs($tabs)
                 ->columnSpanFull(),
             // Opt-in raw payload editor, collapsed at the very end of the page.
-            static::rawPayloadSection()
-                ->visible(static::formShowsPayloadEditor()),
+            // Only add it to the schema when this form actually uses it: the KeyValue
+            // binds to the `payload` state path and hydrates even while hidden, so a
+            // plain visible(false) still rewrites structured `payload.*` field values
+            // into key/value pairs on fill and blanks them. Keeping it out of the tree
+            // entirely (rather than hidden) is what preserves those fields.
+            ...(static::formIncludesPayloadEditor() ? [
+                static::rawPayloadSection()
+                    ->visible(static::formShowsPayloadEditor()),
+            ] : []),
         ]);
     }
 
@@ -148,6 +155,18 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
+     * Whether the raw payload editor is part of the form tree at all. Single-type
+     * resources include it only when their blueprint opts in ({@see showsPayloadEditor()}),
+     * so it never collides with structured `payload.*` fields. The multi-type catch-all
+     * keeps it in the tree and toggles it reactively ({@see formShowsPayloadEditor()}),
+     * overriding this to true.
+     */
+    protected static function formIncludesPayloadEditor(): bool
+    {
+        return static::resolveFormBlueprint()?->showsPayloadEditor() ?? false;
+    }
+
+    /**
      * The "Einstellungen" tab (formerly "Veröffentlichung"): a "Sichtbarkeit" section
      * (status + publishing window + visibility) above a "Darstellung" section
      * (template, layout preset, teaser mode).
@@ -161,7 +180,9 @@ abstract class TenantScopedContentResource extends Resource
             ->schema([
                 Section::make('Sichtbarkeit')
                     ->description('Status, Veröffentlichungszeitraum und Sichtbarkeit.')
-                    ->columns(2)
+                    // Status + publish_from + publish_until share one row; visibility
+                    // spans full width on its own row below (columnSpanFull).
+                    ->columns(3)
                     ->schema(static::publishingFields()),
                 Section::make('Darstellung')
                     ->description('Template, Layout und Teaser-Modus.')
@@ -759,8 +780,16 @@ abstract class TenantScopedContentResource extends Resource
 
         $query->whereBelongsTo($tenant);
 
-        if (static::getContentTypes() !== []) {
-            $query->whereIn('content_type', static::getContentTypes());
+        $contentTypes = static::getContentTypes();
+
+        if ($contentTypes !== []) {
+            $query->whereIn('content_type', $contentTypes);
+        }
+
+        $requestedType = static::getRequestedContentType();
+
+        if ($requestedType !== null) {
+            $query->where('content_type', $requestedType);
         }
 
         if (static::supportsParentScopedListing()) {
@@ -876,7 +905,7 @@ abstract class TenantScopedContentResource extends Resource
         if (count($selectable) <= 1) {
             return [
                 Hidden::make('content_type')
-                    ->default(static::defaultContentType())
+                    ->default(static::initialContentType())
                     ->required(),
             ];
         }
@@ -885,7 +914,7 @@ abstract class TenantScopedContentResource extends Resource
             Select::make('content_type')
                 ->label('Seiten-Typ')
                 ->required()
-                ->default(static::defaultContentType())
+                ->default(static::initialContentType($selectable))
                 ->options($selectable)
                 ->live()
                 ->afterStateUpdated(function (Set $set, ?string $state) use ($selectable): void {
@@ -908,6 +937,29 @@ abstract class TenantScopedContentResource extends Resource
         $types = static::getContentTypes();
 
         return in_array('default.page', $types, true) ? 'default.page' : ($types[0] ?? null);
+    }
+
+    /**
+     * The content type a new record initially selects.
+     *
+     * Honors the `?type=` deep-link (so "… anlegen" from a type-scoped list pre-selects
+     * that type, and non-routable types reachable only via the catch-all can be created
+     * at all), falling back to {@see defaultContentType()}. The visible Select only
+     * accepts a type it actually offers, so pass its options as `$selectable` to ignore
+     * a requested type that is not among them; the pinned Hidden field accepts any
+     * managed type (`$selectable = null`).
+     *
+     * @param  array<string, string>|null  $selectable  the Select's options, or null for the Hidden field
+     */
+    protected static function initialContentType(?array $selectable = null): ?string
+    {
+        $requestedType = static::getRequestedContentType();
+
+        if ($requestedType !== null && ($selectable === null || array_key_exists($requestedType, $selectable))) {
+            return $requestedType;
+        }
+
+        return static::defaultContentType();
     }
 
     /**
@@ -1227,12 +1279,54 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     // -------------------------------------------------------------------------
+    //  Type Scoping
+    // -------------------------------------------------------------------------
+
+    /**
+     * A `?type=` query param that narrows the list to a single managed content type.
+     *
+     * Powers the listing block's "… verwalten" deep-link: the catch-all resource
+     * manages many types at once, so the link scopes its index to the listed type
+     * (a dedicated single-type resource is already scoped and the param is a no-op).
+     * Ignored unless the value is one of THIS resource's managed types, so the param
+     * can never widen a resource beyond what it owns (an unset/'' param is never a
+     * managed type, so it falls through to null).
+     */
+    public static function getRequestedContentType(): ?string
+    {
+        $requestedType = static::scopedQueryParam('type');
+
+        return in_array($requestedType, static::getContentTypes(), true) ? $requestedType : null;
+    }
+
+    /**
+     * Reads a list-scoping query param, surviving Livewire table updates.
+     *
+     * A Livewire table update (paginate/sort/search) POSTs to /livewire/update with no
+     * query string, which would silently drop the scope. On those requests only, the
+     * value is recovered from the Referer (the full list URL) — the same source Livewire
+     * uses to restore #[Url] state — so a fresh navigation is never mis-scoped by a
+     * stale Referer.
+     */
+    protected static function scopedQueryParam(string $name): string
+    {
+        $value = request()->string($name)->toString();
+
+        if ($value === '' && request()->hasHeader('X-Livewire')) {
+            parse_str((string) parse_url((string) request()->headers->get('referer'), PHP_URL_QUERY), $refererQuery);
+            $value = is_string($refererQuery[$name] ?? null) ? $refererQuery[$name] : '';
+        }
+
+        return $value;
+    }
+
+    // -------------------------------------------------------------------------
     //  Parent Scoping
     // -------------------------------------------------------------------------
 
     protected static function resolveRequestedParentId(?Tenant $tenant, ?string $contentType = null): ?int
     {
-        $requestedParentId = request()->integer('parent') ?: request()->integer('parent_id');
+        $requestedParentId = (int) (static::scopedQueryParam('parent') ?: static::scopedQueryParam('parent_id'));
 
         if ($tenant === null || $requestedParentId < 1) {
             return null;

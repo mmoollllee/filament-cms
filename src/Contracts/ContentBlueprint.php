@@ -57,9 +57,7 @@ interface ContentBlueprint
     /**
      * Human-readable plural label for this content type (e.g. "Services", "Articles").
      *
-     * Used by the catch-all resource's edit page to build dynamic "manage
-     * children" actions like "Services verwalten" when the current record is a
-     * valid parent for content of this type.
+     * Used as the resource's plural model label (navigation, list headings).
      */
     public function pluralLabel(): string;
 
