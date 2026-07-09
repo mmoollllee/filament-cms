@@ -127,6 +127,25 @@ npm install && npm run build  # your vite panel theme + frontend assets
 php artisan optimize:clear    # ⚠️ on every deploy — stale route/Filament caches 500
 ```
 
+### Optional: GDPR consent
+
+The engine ships the *wiring* for a consent banner + content blocking — a
+`<x-consent-control-banner>` slot in the site layout (with the runtime boot) and a
+consent-gated iframe button in the RichEditor. It activates automatically **only if the
+project installs the consent layer**. The CMS keeps **no** consent config of its own, so
+each project (tenant) owns its categories, cookie settings and policy:
+
+```bash
+composer require mmoollllee/filament-consent-control
+php artisan vendor:publish --tag=consent-control-config   # your categories, cookie + links
+php artisan vendor:publish --tag=consent-control-assets   # runtime JS/CSS
+```
+
+Configure `config/consent-control.php` per project and style `#consent-control-banner` in
+your own CSS. Without the package, the banner and the RichEditor iframe button are simply
+absent — no error. See
+[`mmoollllee/filament-consent-control`](https://github.com/mmoollllee/filament-consent-control).
+
 ## Testbench / demo
 
 The package ships a standalone **two-tenant demo** under [`workbench/`](workbench)

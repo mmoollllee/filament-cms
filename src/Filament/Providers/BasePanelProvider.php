@@ -168,17 +168,33 @@ abstract class BasePanelProvider extends FilamentPanelProvider
      */
     protected function configureRichEditor(): void
     {
-        RichEditor::configureUsing(function (RichEditor $component): void {
+        // Optional consent-gated iframe embeds: wired only when the project installs
+        // mmoollllee/filament-consent-control. The CMS engine offers the integration;
+        // the consent config/policy stays in the project (multi-tenant friendly).
+        $consentIframePlugin = \Mmoollllee\FilamentConsentControl\Filament\ConsentIframePlugin::class;
+        $consentEnabled = class_exists($consentIframePlugin);
+
+        RichEditor::configureUsing(function (RichEditor $component) use ($consentIframePlugin, $consentEnabled): void {
+            $plugins = [
+                SourceCodePlugin::make(),
+                IdPlugin::make(),
+                LinkPickerPlugin::make(),
+                EmbedPlugin::make(),
+                // Keeps class-carrying <div>/<span> HTML intact through TipTap's
+                // HTML→JSON→HTML roundtrip (the blocks' HTML tab depends on it).
+                HtmlPreservePlugin::make(),
+            ];
+
+            // Toolbar's last group; the consent-iframe button slots in next to embed.
+            $embedGroup = ['undo', 'redo', 'sourceCode', 'customBlocks', 'embed', 'mergeTags'];
+
+            if ($consentEnabled) {
+                $plugins[] = $consentIframePlugin::make();
+                array_splice($embedGroup, 5, 0, 'consentIframe');
+            }
+
             $component
-                ->plugins([
-                    SourceCodePlugin::make(),
-                    IdPlugin::make(),
-                    LinkPickerPlugin::make(),
-                    EmbedPlugin::make(),
-                    // Keeps class-carrying <div>/<span> HTML intact through TipTap's
-                    // HTML→JSON→HTML roundtrip (the blocks' HTML tab depends on it).
-                    HtmlPreservePlugin::make(),
-                ])
+                ->plugins($plugins)
                 ->customBlocks([
                     ButtonGroupBlock::class,
                     NavigationCardGroupBlock::class,
@@ -191,7 +207,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                     ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
                     ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
                     ['table', 'attachFiles'],
-                    ['undo', 'redo', 'sourceCode', 'customBlocks', 'embed', 'mergeTags'],
+                    $embedGroup,
                 ]);
         });
     }

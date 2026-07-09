@@ -42,7 +42,14 @@
 <body class="site min-h-screen antialiased text-white" style="{{ $siteBrandingStyle }}">
     {{ $slot }}
 
-    <x-consent-control-banner />
+    {{-- Optional GDPR consent layer: rendered only when the project installs
+         mmoollllee/filament-consent-control (which pulls in laravel-consent-control).
+         The CMS engine wires the banner + runtime boot; the consent config and
+         styling live in the project, not here (multi-tenant friendly). --}}
+    @if (class_exists(\Mmoollllee\LaravelConsentControl\LaravelConsentControlServiceProvider::class))
+        <x-consent-control-banner />
+        <x-consent-control-scripts />
+    @endif
     @stack('scripts')
 </body>
 </html>
