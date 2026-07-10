@@ -130,7 +130,7 @@ php artisan optimize:clear    # ⚠️ on every deploy — stale route/Filament 
 ### Optional: GDPR consent
 
 The engine ships the *wiring* for a consent banner + content blocking — a
-`<x-consent-control-banner>` slot in the site layout (with the runtime boot) and a
+`<x-consent-control-banner>` slot in the site layout (with the boot config) and a
 consent-gated iframe button in the RichEditor. It activates automatically **only if the
 project installs the consent layer**. The CMS keeps **no** consent config of its own, so
 each project (tenant) owns its categories, cookie settings and policy:
@@ -138,12 +138,32 @@ each project (tenant) owns its categories, cookie settings and policy:
 ```bash
 composer require mmoollllee/filament-consent-control
 php artisan vendor:publish --tag=consent-control-config   # your categories, cookie + links
-php artisan vendor:publish --tag=consent-control-assets   # runtime JS/CSS
 ```
 
-Configure `config/consent-control.php` per project and style `#consent-control-banner` in
-your own CSS. Without the package, the banner and the RichEditor iframe button are simply
-absent — no error. See
+The runtime JS and overlay CSS are **bundled by the project** (the layout emits only the
+inline boot config), so they ship with your Vite build instead of extra requests:
+
+```js
+// resources/js/app.js
+import '../../vendor/mmoollllee/laravel-consent-control/resources/dist/js/consent-control.js';
+```
+
+```css
+/* resources/css/app.css — overlay CSS + let Tailwind style the banner Blade */
+@import '../../vendor/mmoollllee/laravel-consent-control/resources/dist/css/consent-message.css';
+@source '../../vendor/mmoollllee/laravel-consent-control/resources/views/components/**/*.blade.php';
+```
+
+The banner inherits the site's design tokens and `.btn` component classes. To let visitors
+**reopen the banner** (e.g. from the privacy policy page), place a button with the
+`consent-control--open` class anywhere — the runtime binds it automatically:
+
+```html
+<button type="button" class="consent-control--open">Cookie-Einstellungen ändern</button>
+```
+
+Without the package, the banner and the RichEditor iframe button are simply absent — no
+error. See
 [`mmoollllee/filament-consent-control`](https://github.com/mmoollllee/filament-consent-control).
 
 ## Testbench / demo

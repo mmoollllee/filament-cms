@@ -48,7 +48,10 @@
          styling live in the project, not here (multi-tenant friendly). --}}
     @if (class_exists(\Mmoollllee\LaravelConsentControl\LaravelConsentControlServiceProvider::class))
         <x-consent-control-banner />
-        <x-consent-control-scripts />
+        {{-- Boot config only: the project bundles the runtime JS + overlay CSS itself
+             (Vite imports from the vendor dist) and Tailwind styles the banner Blade
+             via @source — see the CMS README's "GDPR consent" section. --}}
+        <x-consent-control-scripts :assets="false" />
     @endif
     @stack('scripts')
 </body>
