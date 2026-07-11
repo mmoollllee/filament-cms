@@ -15,6 +15,9 @@ abstract class TestCase extends Orchestra
     {
         parent::setUp();
 
+        // The frontend layout emits @vite unguarded; the testbench has no build.
+        $this->withoutVite();
+
         Factory::guessFactoryNamesUsing(
             fn (string $modelName): string => 'Workbench\\Database\\Factories\\'.class_basename($modelName).'Factory',
         );

@@ -118,6 +118,19 @@ on the tenant's domain.
   your app overrides any of them by shipping the same view path, or publishes
   them as a starting point (`--tag=cms-frontend`, `--tag=cms-site-components`,
   `--tag=cms-blocks`).
+- **Frontend JS:** the Alpine components those views bind against (`siteOnepager`
+  incl. scroll hints, `siteChildNavigation`, the `scroll` store) ship as ES
+  modules — bundle them with your Vite build and register them on `alpine:init`
+  ([`docs/CUSTOMIZATION.md` §10](docs/CUSTOMIZATION.md#10-frontend-views--js)):
+
+  ```js
+  // resources/js/app.js
+  import { registerCmsFrontend } from '../../vendor/mmoollllee/filament-cms/resources/js/frontend/index.js';
+
+  document.addEventListener('alpine:init', () => {
+      registerCmsFrontend(window.Alpine);
+  });
+  ```
 
 ### 5. Assets + deploy
 

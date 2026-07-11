@@ -16,7 +16,6 @@
         @class(['flex flex-col items-end h-0', 'max-w-full' => $isOnepager])
         @unless ($isOnepager)
             x-data="siteChildNavigation($el, {{ \Illuminate\Support\Js::from($initialNavigationContext) }})"
-            x-init="init()"
             x-on:keydown.escape.window="closeMenu()"
             x-on:scroll.window.passive="onScroll()"
             x-on:hashchange.window="handlePopstate()"

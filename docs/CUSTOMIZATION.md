@@ -380,7 +380,7 @@ post-login redirect), tenant branding (name/logo/primary color), the menu-builde
 
 ---
 
-## 10. Frontend views
+## 10. Frontend views & JS
 
 The package ships brand-agnostic fallbacks (standalone + onepager shells, content/page,
 branded 404/500, header partials, `<x-site.*>` components). Resolution order: app views
@@ -394,6 +394,64 @@ php artisan vendor:publish --tag=cms-blocks          # block views
 
 Site-specific overrides win over both: `{site_key}/errors/404.blade.php`,
 `{site_key}.content.page`, ….
+
+### Frontend JS runtime
+
+The shells and the floating header bind against Alpine components the package ships as
+plain ES modules (`resources/js/frontend/`) — **not** published copies: the app imports
+them from the vendor dir (same pattern as the consent-control runtime), so fixes reach
+every site via `composer update`:
+
+- **`siteOnepager`** — section lazy-loading via `/_content` (each injected section
+  dispatches a bubbling `cms:section-loaded` event for app hooks), scroll-synced
+  URL/title/indicator, anchor + history handling, hero-logo fade, and the scroll
+  hints: pills labeled with the previous/next section title (`lg+` only) whose opacity
+  follows the scroll position — it ramps with the free gap between the pill zone and
+  the nearest section content (`SCROLL_HINT_FADE`), so a pill glimmers in shortly
+  before the content edge clears its zone. The pills ride sticky on the middle of the
+  empty band between two section contents: they rest at their fixed spot while the
+  band middle is beyond it, anchor to the moving middle afterwards and dissolve toward
+  the section handover point where the next boundary takes over
+  (`SCROLL_HINT_CENTER_FADE` — so re-anchoring never pops visibly, even with very
+  unequal content heights). Once the target section's own content shows in the
+  viewport the pill fades out early (`SCROLL_HINT_TARGET_FADE`) — a pointer to
+  something already on screen is noise. Hover/focus holds interactivity and forces
+  full visibility; below `SCROLL_HINT_INTERACTIVE_MIN` the pill is disabled — no
+  clicks, no focus — so a barely visible button can't be activated accidentally.
+  Resting positions are measured from the actual buttons (at rest, cached while
+  riding), so restyling them needs no JS change — but never CSS-transition the
+  pill's translate: the ride tracks the scroll 1:1.
+- **`siteChildNavigation`** — breadcrumbs, local-section tracking + flyout state on
+  standalone pages.
+- **`scroll` store** — window scroll progress (header progress bar + depth label).
+
+```js
+// resources/js/app.js
+import { registerCmsFrontend } from '../../vendor/mmoollllee/filament-cms/resources/js/frontend/index.js';
+
+document.addEventListener('alpine:init', () => {
+    registerCmsFrontend(window.Alpine);
+});
+```
+
+Project-specific frontend behavior stays in the app (e.g. münch's scroll reveal/zoom
+effects live in the project bundle). To adjust a single engine behavior, pass override
+factories — their members are spread over the package component:
+
+```js
+registerCmsFrontend(window.Alpine, {
+    onepager: (el) => ({
+        showLogo() { return true; },          // e.g. never hide the header logo
+    }),
+});
+```
+
+View contract of the onepager shell (`frontend/onepager.blade.php`): sections carry
+`.onepager-section` + `data-path/-loaded/-title/-label/-navigation[/-anchor]`, the
+scroll-hint buttons `data-scroll-hint="up|down"` + `x-ref`, an optional `.hero-logo`
+inside the `/` section hides the header logo while visible. The hint chevrons are
+inline SVG (self-contained — only the header partials require the app-registered
+blade-icon set, e.g. `<x-icon-bars>`).
 
 ---
 

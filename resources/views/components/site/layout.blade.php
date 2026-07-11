@@ -34,9 +34,10 @@
         <meta name="description" content="{{ $pageDescription }}">
     @endif
     <x-site.seo-head :content="$content ?? null" :breadcrumbs="$initialBreadcrumbs ?? []" />
-    @if (! app()->runningUnitTests())
-        @vite(['resources/css/app.css', 'resources/js/app.js'])
-    @endif
+    {{-- Test suites without a Vite build stub this via withoutVite() (package
+         TestCase + app Pest.php, non-browser suites); Pest browser tests keep
+         the real bundle and fail loudly when no manifest was built. --}}
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
     @spamprotectKey
 </head>
 <body class="site min-h-screen antialiased text-white" style="{{ $siteBrandingStyle }}">

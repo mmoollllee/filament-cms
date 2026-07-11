@@ -141,9 +141,15 @@ edits are live instantly, unchanged pages never query.
 **Onepager** — a site can compose its frontend as a single scrolling page of section
 contents (`default.section`): every section has its own path, every path renders the
 same shell (`OnepagerShellController`); `ContentFragmentController` lazy-loads sections
-via `/_content` (Alpine `siteOnepager`), with anchor deep-links, scroll-synced URL/menu
-state and per-section teasers (`payload.has_teaser` + teaser blocks). The demo's second
-tenant (localhost) is a live mini-onepager. The Seite/Sektion choice on the content form
+via `/_content` (Alpine `siteOnepager`, shipped in `resources/js/frontend/` — see
+[CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)), with anchor deep-links,
+scroll-synced URL/menu state and per-section teasers (`payload.has_teaser` + teaser
+blocks). Sections are min-100vh with vertically centered content; on large screens the
+shell shows scroll-hint pills labeled with the previous/next section title, fading
+continuously with the scroll position and riding sticky on the middle of the empty
+band between two section contents (full opacity on hover, inert below the interactive
+threshold, gone early once the target's own content is on screen) — clicking one
+scrolls to that section. The demo's second tenant (localhost) is a live mini-onepager. The Seite/Sektion choice on the content form
 is a BLUEPRINT flag (`$offeredInTypeSelect`): `default.section` ships with it off, and an
 onepager site enables it by overriding that blueprint per site — so a pages-only brand
 and an onepager brand share one installation without config switches; only routable,
@@ -402,6 +408,48 @@ overrides any of them by shipping the same path (`vendor:publish --tag=cms-front
 (`layout`, `content-blocks`, `section-header`, `listing-card`, `media-item`, `card`,
 `button`, `footer`, rich-editor block views). Per-site error pages:
 `{site_key}/errors/404.blade.php` wins over the shared one.
+
+The Alpine components those views bind against (`siteOnepager` incl. scroll hints,
+`siteChildNavigation`, the `scroll` store) ship as ES modules in
+`resources/js/frontend/` — apps bundle them via their own Vite build and register them
+with `registerCmsFrontend(Alpine)`; project-specific behavior is layered on top through
+the override seam ([CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
+
+## E-mail layout
+
+A shared, tenant-branded HTML e-mail layout so every mail the system sends carries the
+same chrome — the tenant logo, primary color and contact footer — without each app
+rebuilding it. Anonymous component under the `cms::` namespace:
+
+```blade
+{{-- resources/views/emails/whatever.blade.php --}}
+<x-cms::mail :tenant="$tenant" heading="Neue Anfrage" preheader="Kurzvorschau im Postfach">
+    <p>Freitext / Tabellen / was der Mailable braucht …</p>
+</x-cms::mail>
+```
+
+The layout resolves branding through the standard cascade (`resolvedPrimaryColor()`,
+`resolvedSiteSetting('company_name'|'street'|…)`), so it inherits from the branding tenant
+like the frontend does. Props: `tenant` (falls back to the request-scoped `CurrentTenant`
+when omitted — pass it explicitly for queued mail), `heading`, `preheader`, `title`
+(defaults to heading → brand name), `footnote` (the small print above the copyright;
+defaults to a German "automatisch versendet" note). Inline styles + a 600px table shell
+keep it robust across mail clients; publish with `vendor:publish --tag=cms-views` to
+override.
+
+**Mail-safe logo** — the layout resolves the logo through `resolvedMailLogoUrl()`
+(`Support\Mail\MailLogo`), not the raw frontend URL, because SVG doesn't render in Gmail
+or any Outlook (only WebKit clients like Apple Mail show it) and data-URI embedding
+doesn't rescue it. Resolution order: the tenant's **dedicated raster e-mail logo**
+(`mail_logo_path`, a PNG/JPG uploaded on the profile "Marke" tab) → the main logo passed
+through if it's already raster → the brand name as text. Both `mail_logo_path` and the
+main-logo fallback follow the **branding cascade** (`resolveInheritedAssetPath`) — a
+satellite tenant with no own value inherits the branding tenant's mail logo, exactly like
+the frontend logo; an inherited dedicated mail logo takes precedence over the tenant's own
+main-logo fallback. The profile field **previews the inherited default** (placeholder +
+image) like the other brand assets, so admins see what an empty field will use. An SVG logo
+is never linked, so when the site logo is an SVG, upload a PNG in the dedicated field to
+show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
 
 ## Spam protection
 
