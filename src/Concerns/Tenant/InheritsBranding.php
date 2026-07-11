@@ -122,6 +122,24 @@ trait InheritsBranding
         return $this->publicAssetUrl($this->resolvedSecondaryLogoPath());
     }
 
+    /** Dedicated raster e-mail logo path, with branding inheritance (null when unset). */
+    public function resolvedMailLogoPath(): ?string
+    {
+        return $this->resolveInheritedAssetPath('mail_logo_path');
+    }
+
+    /**
+     * A mail-client-safe (raster, absolute) logo URL: the dedicated mail logo if set,
+     * else the main logo when it is a raster image, else null (the mail layout then
+     * falls back to the brand name as text — SVG isn't linked, as many clients drop it).
+     *
+     * @see \Mmoollllee\Cms\Support\Mail\MailLogo
+     */
+    public function resolvedMailLogoUrl(): ?string
+    {
+        return \Mmoollllee\Cms\Support\Mail\MailLogo::urlFor($this);
+    }
+
     public function resolvedFaviconPath(): ?string
     {
         return $this->resolveInheritedAssetPath('favicon_path');

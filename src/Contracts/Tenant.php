@@ -32,6 +32,12 @@ interface Tenant
     /** Public URL of the secondary logo, with branding inheritance. */
     public function resolvedSecondaryLogoUrl(): ?string;
 
+    /** Dedicated raster e-mail logo path, with branding inheritance (null when unset). */
+    public function resolvedMailLogoPath(): ?string;
+
+    /** Mail-client-safe (raster, absolute) logo URL; null → fall back to text. */
+    public function resolvedMailLogoUrl(): ?string;
+
     /** Public URL of the default Open Graph image, with branding inheritance. */
     public function resolvedDefaultOgImageUrl(): ?string;
 

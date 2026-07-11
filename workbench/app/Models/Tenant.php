@@ -38,6 +38,7 @@ class Tenant extends Model implements \Mmoollllee\Cms\Contracts\Tenant
         'brand_claim',
         'logo_path',
         'secondary_logo_path',
+        'mail_logo_path',
         'primary_color',
         'default_locale',
         'timezone',

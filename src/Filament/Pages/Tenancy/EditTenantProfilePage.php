@@ -47,6 +47,7 @@ class EditTenantProfilePage extends EditTenantProfile
             'brand_claim',
             'logo_path',
             'secondary_logo_path',
+            'mail_logo_path',
             'primary_color',
             'company_name',
             'legal_name',
@@ -152,6 +153,26 @@ class EditTenantProfilePage extends EditTenantProfile
                                             ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
                                                 field: 'secondary_logo_path',
                                                 configuredValue: $get('secondary_logo_path'),
+                                            )),
+                                        FileUpload::make('mail_logo_path')
+                                            ->label('E-Mail-Logo')
+                                            ->disk('public')
+                                            ->visibility('public')
+                                            ->directory(fn (): string => $this->tenantUploadDirectory('branding'))
+                                            ->image()
+                                            ->imageEditor()
+                                            ->imagePreviewHeight('120')
+                                            // Raster only: SVG doesn't render in Gmail/Outlook. MUST come after
+                                            // ->image(), which resets the accept list back to image/* (SVG
+                                            // included). Optional — when empty, e-mails use the inherited mail
+                                            // logo, else the Main Logo if it is a raster image, otherwise the
+                                            // brand name is shown as text. The helper previews the inherited
+                                            // default like the other brand assets.
+                                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
+                                            ->placeholder(fn (): string => $this->assetPlaceholderText('mail_logo_path', 'E-Mail-Logo'))
+                                            ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
+                                                field: 'mail_logo_path',
+                                                configuredValue: $get('mail_logo_path')
                                             )),
                                         ColorPicker::make('primary_color')
                                             ->label('Primary Color')
@@ -501,6 +522,9 @@ class EditTenantProfilePage extends EditTenantProfile
         return match ($field) {
             'logo_path' => $brandingTenant->resolvedMainLogoUrl(),
             'secondary_logo_path' => $brandingTenant->resolvedSecondaryLogoUrl(),
+            // The effective mail logo the tenant inherits (dedicated mail logo, else the
+            // raster main-logo fallback) — what its e-mails will actually show.
+            'mail_logo_path' => $brandingTenant->resolvedMailLogoUrl(),
             'default_og_image_path' => $brandingTenant->resolvedDefaultOgImageUrl(),
             default => null,
         };
