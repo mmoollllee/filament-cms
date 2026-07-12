@@ -15,7 +15,6 @@ class Blueprint extends ConfiguredContentBlueprint
     protected bool $participatesInOnepager = false;
 
     // Pages nest under pages: enables the "Übergeordnete Seite" select, the
-    // breadcrumb trail, child-management actions and parent-driven paths
-    // (/howto → /howto/custom-blocks).
+    // breadcrumb trail and parent-driven paths (/howto → /howto/custom-blocks).
     protected array $allowedParentTypes = ['default.page'];
 }
