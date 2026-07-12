@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\ContentBlueprint;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
@@ -81,8 +82,8 @@ class SitemapController
 
             $urls->push([
                 'loc' => url($path),
-                'priority' => '0.5',
-                'changefreq' => 'weekly',
+                'priority' => $this->standalonePriority($page),
+                'changefreq' => $this->standaloneChangefreq($page),
             ]);
         }
 
@@ -126,5 +127,20 @@ class SitemapController
             ->visibleTo($tenant)
             ->ofType($types)
             ->get();
+    }
+
+    /**
+     * Crawl-priority for a standalone content URL — override in the app to
+     * differentiate per content type (e.g. job postings higher than legal pages).
+     */
+    protected function standalonePriority(Content $content): string
+    {
+        return '0.5';
+    }
+
+    /** Crawl-changefreq counterpart of {@see self::standalonePriority()}. */
+    protected function standaloneChangefreq(Content $content): string
+    {
+        return 'weekly';
     }
 }

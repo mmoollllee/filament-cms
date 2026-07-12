@@ -35,11 +35,16 @@ trait InheritsBranding
      */
     public static function defaultBrandingTenant(): ?self
     {
-        $configuredId = config('cms.default_branding_tenant_id');
+        // once(): every resolved*() call on a page routes through here — without
+        // memoization each unresolved setting fires its own tenant query.
+        // Laravel flushes the once-cache per request (and per test).
+        return once(function (): ?self {
+            $configuredId = config('cms.default_branding_tenant_id');
 
-        return filled($configuredId)
-            ? static::find($configuredId)
-            : static::query()->orderBy('id')->first();
+            return filled($configuredId)
+                ? static::find($configuredId)
+                : static::query()->orderBy('id')->first();
+        });
     }
 
     public function displayName(): string
