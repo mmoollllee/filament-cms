@@ -128,7 +128,7 @@
                             @endif
 
                             <div style="margin-top: 14px; color: #9aa2ad;">
-                                {{ $footnote ?? 'Diese E-Mail wurde automatisch versendet.' }}
+                                {{ $footnote ?? __('cms::mail.footnote') }}
                             </div>
                         </td>
                     </tr>

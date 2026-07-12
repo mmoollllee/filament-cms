@@ -11,6 +11,17 @@ abstract class TestCase extends Orchestra
 {
     use WithWorkbench;
 
+    /**
+     * @param  \Illuminate\Foundation\Application  $app
+     */
+    protected function defineEnvironment($app): void
+    {
+        // The workbench demo content and the shipped assertions are German —
+        // pin the locale so `cms::` lang strings resolve to lang/de instead
+        // of the testbench default ('en').
+        $app['config']->set('app.locale', 'de');
+    }
+
     protected function setUp(): void
     {
         parent::setUp();

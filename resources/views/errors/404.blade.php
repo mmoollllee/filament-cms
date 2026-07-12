@@ -27,12 +27,12 @@
     $resolveUrl = $resolveUrl ?? url('/_resolve404');
 @endphp
 <!DOCTYPE html>
-<html lang="de">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <title>Seite nicht gefunden – {{ $displayName }}</title>
+    <title>{{ __('cms::errors.not_found_title') }} – {{ $displayName }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         :root { --brand: {{ $primaryColor }}; }
@@ -90,20 +90,20 @@
     @show
 
     <div class="error-code">404</div>
-    <h1 class="error-title">@yield('cms-error-heading', 'Seite nicht gefunden')</h1>
+    <h1 class="error-title">@yield('cms-error-heading', __('cms::errors.not_found_title'))</h1>
     @section('cms-error-message')
         <p class="error-message">
-            Die Seite <code>{{ $requestedPath }}</code> gibt es nicht (mehr).
+            {!! __('cms::errors.not_found_message', ['path' => '<code>'.e($requestedPath).'</code>']) !!}
         </p>
     @show
 
     <nav class="error-suggest" id="cms-suggest" hidden aria-live="polite">
-        <p>Meinten Sie?</p>
+        <p>{{ __('cms::errors.suggestions') }}</p>
         <ul id="cms-suggest-list"></ul>
     </nav>
 
     @section('cms-error-actions')
-        <a href="{{ $homeUrl }}" class="error-link">Zurück zur Startseite</a>
+        <a href="{{ $homeUrl }}" class="error-link">{{ __('cms::errors.back_to_home') }}</a>
     @show
 
     <script>

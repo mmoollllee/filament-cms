@@ -1,8 +1,8 @@
 @extends('errors.layout')
 
-@section('title', 'Serverfehler')
+@section('title', __('cms::errors.server_error_title'))
 @section('code', '500')
-@section('message', 'Da ist etwas schiefgegangen. Bitte versuche es in ein paar Minuten erneut.')
+@section('message', __('cms::errors.server_error_message'))
 @section('link')
-    <a href="/" class="error-link">Zur Startseite</a>
+    <a href="/" class="error-link">{{ __('cms::errors.to_home') }}</a>
 @endsection

@@ -21,7 +21,7 @@
             <h2 class="text-heading leading-tight text-slate-900">{{ $emptyHeading }}</h2>
         @endif
 
-        <p class="muted">{{ $emptyText ?? 'Inhalt folgt.' }}</p>
+        <p class="muted">{{ $emptyText ?? __('cms::frontend.content_pending') }}</p>
     </x-site.card>
 @else
     @foreach ($blocks as $block)

@@ -4,7 +4,7 @@
     x-on:click.outside="closeMenu()"
 >
     <div class="flyout-group m-4">
-        <div class="flyout-heading sr-only">Hauptmenü</div>
+        <div class="flyout-heading sr-only">{{ __('cms::frontend.main_menu') }}</div>
         <div class="flyout-list flex flex-col items-center gap-4 text-center">
             @foreach ($sectionLinks as $item)
                 <a
@@ -20,7 +20,7 @@
     </div>
 
     <div class="flyout-group flyout-group--social mt-8 mx-4 rounded-lg p-4 text-sm font-black">
-        <div class="flyout-heading mb-3 text-center text-xs tracking-wider text-muted-text uppercase">Folge uns auf Social Media</div>
+        <div class="flyout-heading mb-3 text-center text-xs tracking-wider text-muted-text uppercase">{{ __('cms::frontend.social_heading') }}</div>
         <div class="flyout-list flex flex-col items-center gap-4 text-center">
             @forelse ($socialLinks as $socialLink)
                 <a
@@ -35,13 +35,13 @@
                     <span>{{ $socialLink['label'] }}</span>
                 </a>
             @empty
-                <div class="text-center text-sm text-muted-text">Keine Social-Links gepflegt.</div>
+                <div class="text-center text-sm text-muted-text">{{ __('cms::frontend.social_empty') }}</div>
             @endforelse
         </div>
     </div>
 
     <div class="flyout-group flyout-group--utility mt-8 m-4 text-[0.92rem] font-semibold text-muted-text">
-        <div class="flyout-heading sr-only">Sekundär</div>
+        <div class="flyout-heading sr-only">{{ __('cms::frontend.secondary') }}</div>
         <div class="flyout-list flex flex-col items-center gap-4 text-center">
             @foreach ($legalLinks as $item)
                 <a

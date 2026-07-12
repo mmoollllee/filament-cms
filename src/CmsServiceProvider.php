@@ -111,6 +111,12 @@ class CmsServiceProvider extends ServiceProvider
         $this->loadViewsFrom($views, 'cms');
         $this->publishes([$views => resource_path('views/vendor/cms')], 'cms-views');
 
+        // Frontend/error/mail fallback strings under the `cms::` namespace
+        // (lang/de + lang/en; the app locale picks the language). Apps adjust
+        // single strings by publishing to lang/vendor/cms.
+        $this->loadTranslationsFrom(__DIR__.'/../lang', 'cms');
+        $this->publishes([__DIR__.'/../lang' => $this->app->langPath('vendor/cms')], 'cms-lang');
+
         // Default <x-site.*> design components (section-header, listing-card,
         // media-item) the block views render with. Registered as a FALLBACK: the
         // consuming app's own resources/views/components/site/* take precedence

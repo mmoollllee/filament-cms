@@ -67,13 +67,13 @@ class ContentShowController
         if ($content->parent !== null) {
             return [
                 'href' => $content->parent->resolvedPath(),
-                'label' => 'Zurück zur Übersicht',
+                'label' => __('cms::frontend.back_to_parent'),
             ];
         }
 
         return [
             'href' => '/',
-            'label' => 'Zurück zur Startseite',
+            'label' => __('cms::frontend.back_to_home'),
         ];
     }
 

@@ -46,13 +46,17 @@
     {{-- Optional GDPR consent layer: rendered only when the project installs
          mmoollllee/filament-consent-control (which pulls in laravel-consent-control).
          The CMS engine wires the banner + runtime boot; the consent config and
-         styling live in the project, not here (multi-tenant friendly). --}}
-    @if (class_exists(\Mmoollllee\LaravelConsentControl\LaravelConsentControlServiceProvider::class))
-        <x-consent-control-banner />
+         styling live in the project, not here (multi-tenant friendly).
+         Guard on the LOADED provider (not class_exists): in dev/testbench setups
+         the class can sit in the vendor dir without the app registering it. --}}
+    @if (filled(app()->getProviders(\Mmoollllee\LaravelConsentControl\LaravelConsentControlServiceProvider::class)))
+        {{-- x-dynamic-component: resolved at RUNTIME — a static <x-consent-control-banner>
+             tag would already fail at Blade compile time in installs without the package. --}}
+        <x-dynamic-component :component="'consent-control-banner'" />
         {{-- Boot config only: the project bundles the runtime JS + overlay CSS itself
              (Vite imports from the vendor dist) and Tailwind styles the banner Blade
              via @source — see the CMS README's "GDPR consent" section. --}}
-        <x-consent-control-scripts :assets="false" />
+        <x-dynamic-component :component="'consent-control-scripts'" :assets="false" />
     @endif
     @stack('scripts')
 </body>

@@ -41,6 +41,8 @@ env:
   QUEUE_CONNECTION: sync
   DB_CONNECTION: sqlite
   DB_DATABASE: "workbench/database/database.sqlite"
+  # Demo content is German — align the cms:: lang strings with it.
+  APP_LOCALE: de
   SPAMPROTECT_KEY: "testbench-spamprotect-key"
   # Env-backed CMS settings (config/cms.php is env-only now):
   # demo branding source + login-form prefill for the demo panel.

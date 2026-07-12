@@ -1,11 +1,28 @@
+{{--
+    Brand-agnostic floating header (fallback only: an app view at
+    resources/views/partials/floating-header.blade.php takes precedence).
+    Self-contained: inline SVG icons + the tenant's uploaded logo — no
+    app-registered blade-icon sets required. Binds ONLY core members of
+    siteOnepager/siteChildNavigation (no measuring, no Alpine-store
+    bindings), so a consumer app without JS overrides renders it error-free.
+    Brand behavior (progress bar, depth meter, measured breadcrumb fitting,
+    logo evade) is app territory; the muench-tiefbau.de repo is the
+    reference implementation.
+--}}
+@php
+    $logoUrl = $tenant->resolvedMainLogoUrl();
+@endphp
 <div class="site-header fixed inset-edge z-70 h-0 [--site-edge-space:.75em] xl:[--site-edge-space:1.5em]" @if ($isOnepager) x-cloak @endif>
     <a
         href="/"
         class="fixed block overflow-hidden transition-all logo-link"
         @if ($isOnepager) x-bind:class="{ 'pointer-events-none opacity-0': !showLogo() }" @endif
     >
-        @svg('image-logo', 'text-white object-none h-full max-w-none logo animated')
-        <span class="sr-only">{{ $tenant->displayName() }}</span>
+        @if (filled($logoUrl))
+            <img src="{{ $logoUrl }}" alt="{{ $tenant->displayName() }}" class="logo h-full w-auto object-contain">
+        @else
+            <span class="logo block leading-none font-black tracking-wide text-white uppercase">{{ $tenant->displayName() }}</span>
+        @endif
     </a>
 
     @php
@@ -26,53 +43,16 @@
         <div class="relative flex items-start gap-0"
              style="background: color-mix(in oklab, var(--color-surface) 88%, black 12%);"
         >
-            {{-- Unified scroll progress bar across entire breadcrumb+indicator area --}}
-            <div
-                class="absolute inset-0 bg-white/[0.07] origin-left pointer-events-none z-0 transition-transform duration-120 ease-out"
-                x-show="!menuOpen"
-                x-bind:style="{ transform: `scaleX(${$store.scroll.progress / 100})` }"
-            >
-            </div>
-
-            {{-- Depth meter label following the progress bar edge --}}
-            <div
-                class="absolute inset-0 top-full h-0 pointer-events-none"
-                x-cloak
-                x-show="!menuOpen && $store.scroll.progress > 0"
-                x-transition.opacity.duration.200ms
-            >
-                <span
-                    class="absolute top-1 text-[0.65rem] font-mono font-semibold tabular-nums text-white/40 whitespace-nowrap -translate-x-full pr-1"
-                    x-bind:style="{ left: `${$store.scroll.progress}%`, transition: 'left 120ms ease-out' }"
-                    x-text="`-${$store.scroll.depthMeters} m`"
-                ></span>
-            </div>
-
             @include('partials.header-breadcrumbs')
 
             <div class="overflow-y-auto transition-all nav-menu" x-bind:class="menuOpen ? 'w-[calc(100vw-var(--site-edge-space)*2)] sm:w-[min(var(--site-flyout-width),calc(100vw-var(--site-edge-space)*2))]' : ''" x-bind:data-open="menuOpen ? 'true' : 'false'">
-                {{-- initHeaderBar (header-bar.js) fits breadcrumbs + indicator into the
-                     measured space and slides them away from the hover-expanding logo. --}}
-                <div class="relative z-10 flex items-stretch justify-end h-12 nav-menu-trigger" x-bind:data-open="menuOpen ? 'true' : 'false'" x-init="initHeaderBar()">
-                    {{-- Hidden measurers: natural widths of the indicator label and the
-                         breadcrumb item labels (typography must match their targets) --}}
+                <div class="relative z-10 flex items-stretch justify-end h-12 nav-menu-trigger" x-bind:data-open="menuOpen ? 'true' : 'false'">
                     <span
-                        class="pointer-events-none invisible absolute h-0 overflow-visible px-1 font-black uppercase text-xs md:text-base whitespace-nowrap"
-                        x-ref="indicatorMeasure"
-                        aria-hidden="true"
-                    >{{ $initialNavigationContext['indicatorLabel'] }}</span>
-                    <span
-                        class="pointer-events-none invisible absolute h-0 overflow-visible text-sm font-bold whitespace-nowrap"
-                        x-ref="breadcrumbMeasure"
-                        aria-hidden="true"
-                    ></span>
-
-                    <span
-                        class="nav-indicator relative block flex-auto min-w-0 mr-2 ml-3 leading-12 font-black uppercase text-white text-xs md:text-base"
+                        class="nav-indicator relative block min-w-0 mr-2 ml-3 leading-12 font-black uppercase text-white text-xs md:text-base"
                         data-role="header-indicator"
                         x-show="!menuOpen"
                     >
-                        <span class="nav-indicator-text whitespace-nowrap" x-text="currentIndicatorLabel()">{{ $initialNavigationContext['indicatorLabel'] }}</span>
+                        <span class="nav-indicator-text block max-w-40 truncate whitespace-nowrap md:max-w-64" x-text="currentIndicatorLabel()">{{ $initialNavigationContext['indicatorLabel'] ?? '' }}</span>
                     </span>
 
                     <button
@@ -80,11 +60,11 @@
                         class="relative z-20 inline-flex items-center justify-center h-full p-2 transition-all cursor-pointer nav-menu-btn aspect-square"
                         x-bind:data-open="menuOpen ? 'true' : 'false'"
                         x-bind:aria-expanded="menuOpen ? 'true' : 'false'"
-                        x-bind:aria-label="menuOpen ? 'Menü schließen' : 'Menü öffnen'"
+                        x-bind:aria-label="menuOpen ? {{ \Illuminate\Support\Js::from(__('cms::frontend.menu_close')) }} : {{ \Illuminate\Support\Js::from(__('cms::frontend.menu_open')) }}"
                         x-on:click.stop="toggleMenu()"
                     >
-                        <x-icon-bars x-show="!menuOpen" class="size-5" />
-                        <x-icon-chevron-right x-show="menuOpen" class="size-4" />
+                        <svg x-show="!menuOpen" class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+                        <svg x-show="menuOpen" x-cloak class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
                     </button>
                 </div>
 
