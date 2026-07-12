@@ -1,6 +1,5 @@
 import {
     anchorIdFromHash,
-    clamp01,
     debounce,
     HISTORY_SETTLE_MS,
     indicatorLabel as resolveIndicatorLabel,
@@ -14,36 +13,6 @@ import {
     scrollWindowTo,
     selectorEscape,
 } from './navigation-shared';
-import { headerBarBehavior } from './header-bar';
-
-/**
- * Scroll-hint fade geometry (px): a hint's opacity ramps linearly with the free
- * gap between its button zone and the nearest section content — from 0 while
- * the content still overlaps the zone by `overlap`, to 1 once the zone has
- * `free` clearance. Hints therefore glimmer in shortly before the content edge
- * clears their zone instead of popping at a fixed threshold.
- */
-const SCROLL_HINT_FADE = { overlap: 40, free: 64 };
-
-/** Below this opacity a hint ignores pointer/keyboard input — a barely visible
- *  pill must not catch accidental clicks (e.g. users with low vision). */
-const SCROLL_HINT_INTERACTIVE_MIN = 0.3;
-
-/**
- * Sticky-ride dissolve (viewport-height fractions): once the middle of the
- * empty band between two section contents passes a hint's resting spot, the
- * pill anchors to that middle and travels with the page — fading out between
- * `range` and `dead` distance from the viewport center, where the next
- * section boundary takes over (so re-anchoring never pops visibly).
- */
-const SCROLL_HINT_CENTER_FADE = { dead: 0.04, range: 0.14 };
-
-/**
- * Redundancy fade (px): once the content of the section a hint points to
- * intrudes into the viewport by more than `start`, the hint starts fading and
- * is gone `range` later — a pointer to something already on screen is noise.
- */
-const SCROLL_HINT_TARGET_FADE = { start: 16, range: 144 };
 
 /**
  * Alpine component behind the onepager shell (`frontend/onepager.blade.php`).
@@ -51,21 +20,20 @@ const SCROLL_HINT_TARGET_FADE = { start: 16, range: 144 };
  * Drives the section-based single page: lazy-loads section HTML from the
  * `content.fragment` endpoint, tracks the active section on scroll (updating
  * URL, document title and header indicator), handles in-page link clicks,
- * hash anchors, history navigation — and the scroll hints (up/down pills
- * whose opacity follows the scroll position).
+ * hash anchors and history navigation.
  *
  * View contract (see the shell Blade view):
  * - root element carries `data-content-endpoint`
  * - each section is `.onepager-section` with `data-path`, `data-loaded`,
  *   `data-title`, `data-label`, `data-navigation` and optional `data-anchor`
- * - an optional `.hero-logo` inside the "/" section hides the header logo
- *   while it is visible (`showLogo()`)
  *
- * Apps register it via `registerCmsFrontend(Alpine)` (see index.js) and may
- * override single methods by spreading their own on top.
+ * Visual behavior (scroll hints, hero fades, header measuring, …) is NOT
+ * part of this core: apps layer it on top via `registerCmsFrontend(Alpine,
+ * overrides)` (see index.js) using the extension hooks `updateViewportState()`,
+ * `showLogo()` and `onResize()` — the muench-tiefbau.de repo
+ * (`resources/js/site/`) is the reference implementation.
  */
 export default (rootElement) => ({
-    ...headerBarBehavior(),
     rootElement,
     sections: [],
     sectionMap: new Map(),
@@ -75,12 +43,6 @@ export default (rootElement) => ({
     loadingPaths: new Set(),
     activePath: '/',
     menuOpen: false,
-    heroLogoVisible: false,
-    scrollHints: {
-        up: { opacity: 0, shift: 0, held: false },
-        down: { opacity: 0, shift: 0, held: false },
-    },
-    scrollHintRestingZones: { up: null, down: null },
     lastSectionTop: null,
     popstateHandled: false,
     init() {
@@ -171,8 +133,10 @@ export default (rootElement) => ({
     homePath() {
         return resolveNavigationHomePath(this.currentNavigationContext());
     },
+    /** Extension hook: default header logo always visible. Apps override this
+     *  for content-driven fades (e.g. Münch's `.hero-logo` visibility). */
     showLogo() {
-        return this.activePath !== '/' || !this.heroLogoVisible;
+        return true;
     },
     toggleMenu() {
         this.menuOpen = !this.menuOpen;
@@ -274,10 +238,6 @@ export default (rootElement) => ({
             }
 
             section.dataset.loaded = 'true';
-
-            if (path === '/') {
-                this.heroLogo = undefined;
-            }
 
             // Extension hook for freshly injected section HTML (e.g. re-binding
             // third-party link handlers that only scan on page load).
@@ -412,10 +372,10 @@ export default (rootElement) => ({
             this.lastSectionTop = section.getBoundingClientRect().top;
         }
     },
+    /** Extension hook: core resize handling is the rAF'd drift correction only.
+     *  Overrides that cache viewport geometry reset their caches here, then
+     *  MUST call `this.resizeFrame()` to keep the drift correction alive. */
     onResize() {
-        // Resting pill positions move with the viewport — remeasure next pass.
-        this.scrollHintRestingZones = { up: null, down: null };
-
         this.resizeFrame();
     },
     handleResizeFrame() {
@@ -441,32 +401,14 @@ export default (rootElement) => ({
         this.updateViewportState();
         this.trackSectionTop();
     },
-    /** Recompute everything derived from the current viewport position. */
-    updateViewportState() {
-        this.updateHeroLogoVisibility();
-        this.updateScrollHints();
-    },
-    heroLogoElement() {
-        // Cached: queried per scroll frame otherwise; loadSection('/') resets it.
-        if (this.heroLogo === undefined) {
-            this.heroLogo = this.rootElement.querySelector('[data-path="/"] .hero-logo');
-        }
-
-        return this.heroLogo;
-    },
-    updateHeroLogoVisibility() {
-        const heroLogo = this.heroLogoElement();
-
-        if (!heroLogo) {
-            this.heroLogoVisible = false;
-
-            return;
-        }
-
-        const rect = heroLogo.getBoundingClientRect();
-
-        this.heroLogoVisible = rect.bottom > 0 && rect.top < window.innerHeight;
-    },
+    /**
+     * Extension hook: recompute everything derived from the current viewport
+     * position. The core computes nothing here — it only guarantees the call
+     * sites: init(), after loadSection() injection, in the goToSection() rAF,
+     * every scroll frame and every resize frame. Apps layer their visual
+     * behavior (scroll hints, hero fades, …) on top via override factories.
+     */
+    updateViewportState() {},
     adjacentSection(direction) {
         const index = this.sections.findIndex((section) => section.dataset.path === this.activePath);
 
@@ -475,248 +417,6 @@ export default (rootElement) => ({
         }
 
         return this.sections[direction === 'up' ? index - 1 : index + 1] ?? null;
-    },
-    /**
-     * Vertical extent of a section's actual content — the union of its child
-     * rects. The section wrapper itself is >= 100vh with centered content, so
-     * wrapper visibility says nothing about whether anything is on screen.
-     */
-    sectionContentRect(section) {
-        if (!section) {
-            return null;
-        }
-
-        let top = Number.POSITIVE_INFINITY;
-        let bottom = Number.NEGATIVE_INFINITY;
-
-        Array.from(section.children).forEach((child) => {
-            const rect = child.getBoundingClientRect();
-
-            if (rect.height === 0 && rect.width === 0) {
-                return;
-            }
-
-            top = Math.min(top, rect.top);
-            bottom = Math.max(bottom, rect.bottom);
-        });
-
-        if (top === Number.POSITIVE_INFINITY) {
-            return null;
-        }
-
-        return { top, bottom };
-    },
-    /**
-     * The pill's resting geometry from CSS — measured while unshifted, cached
-     * while riding (a mid-ride measurement would include the applied translate).
-     * After a mid-ride cache reset (resize) the recorded shift is backed out
-     * once; this requires the pill's translate to never be CSS-transitioned.
-     */
-    scrollHintRestingZone(direction) {
-        const cached = this.scrollHintRestingZones[direction];
-
-        if (cached) {
-            return cached;
-        }
-
-        const shift = this.scrollHints[direction].shift;
-
-        const button = direction === 'up' ? this.$refs.scrollHintUp : this.$refs.scrollHintDown;
-        const rect = button?.getBoundingClientRect();
-
-        // Zero rect = not rendered (display:none below the lg breakpoint / x-cloak).
-        if (!rect || (rect.height === 0 && rect.width === 0)) {
-            return null;
-        }
-
-        const zone = {
-            center: (rect.top + rect.bottom) / 2 - shift,
-            halfHeight: rect.height / 2,
-        };
-
-        this.scrollHintRestingZones[direction] = zone;
-
-        return zone;
-    },
-    /** Per-frame geometry shared by both hint computations (avoids re-measuring). */
-    scrollHintContext() {
-        const current = this.sectionMap.get(this.activePath) ?? null;
-        const neighbor = { up: this.adjacentSection('up'), down: this.adjacentSection('down') };
-        const wrapperRect = (section) => section?.getBoundingClientRect() ?? null;
-
-        return {
-            current,
-            neighbor,
-            wrapperRect: {
-                current: wrapperRect(current),
-                up: wrapperRect(neighbor.up),
-                down: wrapperRect(neighbor.down),
-            },
-            contentRect: {
-                current: this.sectionContentRect(current),
-                up: this.sectionContentRect(neighbor.up),
-                down: this.sectionContentRect(neighbor.down),
-            },
-            viewportCenter: window.innerHeight / 2,
-        };
-    },
-    /**
-     * Signed clearance between a hint zone and the nearest section content:
-     * positive = free space, negative = overlap depth.
-     */
-    scrollHintFreeGap(zone, contentRects) {
-        let gap = null;
-
-        contentRects.forEach((rect) => {
-            if (!rect) {
-                return;
-            }
-
-            const sectionGap = Math.max(zone.top - rect.bottom, rect.top - zone.bottom);
-
-            gap = gap === null ? sectionGap : Math.min(gap, sectionGap);
-        });
-
-        return gap;
-    },
-    /**
-     * The handover point between the active section and the neighbor — where
-     * determineActivePath() flips (viewport center crossing the midpoint of
-     * the two wrapper centers). The dissolve anchors here so a riding pill is
-     * guaranteed invisible when it re-anchors to the next boundary, even for
-     * sections with very unequal content heights.
-     */
-    scrollHintFlipPoint(direction, context) {
-        const currentRect = context.wrapperRect.current;
-        const neighborRect = context.wrapperRect[direction];
-
-        if (!currentRect || !neighborRect) {
-            return null;
-        }
-
-        return (currentRect.top + currentRect.bottom + neighborRect.top + neighborRect.bottom) / 4;
-    },
-    /**
-     * Scroll hints: pills pointing to the previous/next section. Their opacity
-     * follows the scroll position (SCROLL_HINT_FADE ramp against the nearest
-     * content), and they ride sticky on the middle of the empty band between
-     * two section contents: resting at their fixed spot while the band middle
-     * is beyond it, anchored to the moving middle afterwards, dissolving
-     * toward the section handover point (SCROLL_HINT_CENTER_FADE) — and fading
-     * out once the target's own content shows in the viewport
-     * (SCROLL_HINT_TARGET_FADE). Hover/focus holds interactivity and forces
-     * full visibility via CSS; below SCROLL_HINT_INTERACTIVE_MIN the pill is
-     * disabled entirely.
-     */
-    updateScrollHints() {
-        const restingZones = {
-            up: this.scrollHintRestingZone('up'),
-            down: this.scrollHintRestingZone('down'),
-        };
-        // No measurable pill (display:none below lg) → skip the geometry pass.
-        const context = restingZones.up || restingZones.down ? this.scrollHintContext() : null;
-
-        ['up', 'down'].forEach((direction) => {
-            const next = context
-                ? this.scrollHintStateFor(direction, context, restingZones[direction])
-                : { opacity: 0, shift: 0 };
-            const hint = this.scrollHints[direction];
-
-            // Leaf writes only: identical values don't re-trigger bindings.
-            hint.opacity = next.opacity;
-            hint.shift = next.shift;
-        });
-    },
-    scrollHintStateFor(direction, context, resting) {
-        const inert = { opacity: 0, shift: 0 };
-
-        if (!resting || !context.current || context.current.dataset.loaded !== 'true' || !context.neighbor[direction]) {
-            return inert;
-        }
-
-        const activeRect = context.contentRect.current;
-        const targetRect = context.contentRect[direction];
-        const bandMiddle = activeRect && targetRect
-            ? (direction === 'down'
-                ? (activeRect.bottom + targetRect.top) / 2
-                : (targetRect.bottom + activeRect.top) / 2)
-            : null;
-
-        // Sticky ride: pull the pill from its resting spot onto the band middle
-        // once that middle passes it, but never beyond the viewport center.
-        let shift = 0;
-
-        if (bandMiddle !== null) {
-            shift = direction === 'down'
-                ? Math.min(0, Math.max(bandMiddle, context.viewportCenter) - resting.center)
-                : Math.max(0, Math.min(bandMiddle, context.viewportCenter) - resting.center);
-        }
-
-        const center = resting.center + shift;
-        const zone = { top: center - resting.halfHeight, bottom: center + resting.halfHeight };
-        const gap = this.scrollHintFreeGap(zone, [context.contentRect.up, activeRect, context.contentRect.down]);
-        const ramp = gap === null
-            ? 1
-            : clamp01((gap + SCROLL_HINT_FADE.overlap) / (SCROLL_HINT_FADE.overlap + SCROLL_HINT_FADE.free));
-
-        const flipPoint = this.scrollHintFlipPoint(direction, context);
-        const centerFactor = flipPoint === null
-            ? 1
-            : clamp01(
-                (Math.abs(flipPoint - context.viewportCenter) - SCROLL_HINT_CENTER_FADE.dead * window.innerHeight)
-                    / (SCROLL_HINT_CENTER_FADE.range * window.innerHeight),
-            );
-
-        // Redundancy fade: once the target section's content is already in the
-        // viewport, the pointer to it dims and disappears shortly after.
-        let targetFactor = 1;
-
-        if (targetRect) {
-            const intrusion = direction === 'down'
-                ? window.innerHeight - targetRect.top
-                : targetRect.bottom;
-
-            targetFactor = 1 - clamp01((intrusion - SCROLL_HINT_TARGET_FADE.start) / SCROLL_HINT_TARGET_FADE.range);
-        }
-
-        return {
-            // Two decimals / whole px: stable values avoid needless style writes.
-            opacity: Math.round(ramp * centerFactor * targetFactor * 100) / 100,
-            shift: Math.round(shift),
-        };
-    },
-    scrollHintShift(direction) {
-        return this.scrollHints[direction].shift;
-    },
-    scrollHintOpacity(direction) {
-        if (this.menuOpen) {
-            return 0;
-        }
-
-        return this.scrollHints[direction].opacity;
-    },
-    /** Hover/focus holds interactivity so a pill can't go inert under the cursor. */
-    holdScrollHint(direction, held) {
-        this.scrollHints[direction].held = held;
-    },
-    scrollHintInteractive(direction) {
-        if (this.menuOpen) {
-            return false;
-        }
-
-        return this.scrollHints[direction].held
-            || this.scrollHints[direction].opacity >= SCROLL_HINT_INTERACTIVE_MIN;
-    },
-    /** Title of the section the hint scrolls to — doubles as the button label. */
-    scrollHintTargetLabel(direction) {
-        return this.adjacentSection(direction)?.dataset.label ?? '';
-    },
-    async goToAdjacentSection(direction) {
-        const target = this.adjacentSection(direction);
-
-        if (target) {
-            await this.navigateToSection(target.dataset.path);
-        }
     },
     determineActivePath() {
         const viewportCenter = window.innerHeight / 2;

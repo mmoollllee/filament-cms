@@ -15,10 +15,8 @@ import {
     scrollWindowTo,
     shouldShowBreadcrumbs,
 } from './navigation-shared';
-import { headerBarBehavior } from './header-bar';
 
 export default (rootElement, initialNavigationContext = {}, options = {}) => ({
-    ...headerBarBehavior(),
     rootElement,
     navigationContext: initialNavigationContext ?? {},
     options,

@@ -13,22 +13,29 @@
  *         registerCmsFrontend(window.Alpine);
  *     });
  *
- * Project-specific behavior stays in the app: pass override factories to
- * extend/replace single methods of a component without forking the file:
+ * The components ship ARCHITECTURE only (section lazy-loading, history,
+ * navigation context, menu state). Brand behavior lives in the app: pass
+ * override factories to layer mixins over a component (or replace single
+ * methods) without forking the file — the extension hooks are
+ * `updateViewportState()`, `showLogo()` and `onResize()`:
  *
  *     registerCmsFrontend(window.Alpine, {
  *         onepager: (el) => ({
- *             showLogo() { return true; },   // e.g. never hide the header logo
+ *             ...scrollHintsMixin(),
+ *             updateViewportState() { this.updateScrollHints(); },
  *         }),
+ *         childNavigation: () => ({ ...headerBarMixin() }),
  *     });
+ *
+ * Compose multiple mixins into ONE override object and define collision-prone
+ * hooks (updateViewportState/onResize) exactly once — the merge is a flat
+ * member set. Reference implementation: muench-tiefbau.de `resources/js/site/`.
  */
 import siteOnepager from './site-onepager';
 import siteChildNavigation from './site-child-navigation';
-import createScrollStore from './scroll-store';
 
 export { default as siteOnepager } from './site-onepager';
 export { default as siteChildNavigation } from './site-child-navigation';
-export { default as createScrollStore } from './scroll-store';
 export * from './navigation-shared';
 
 /**
@@ -41,7 +48,7 @@ const mergeComponent = (component, override) => (
 );
 
 /**
- * Register the Alpine store + components the package frontend views expect.
+ * Register the Alpine components the package frontend views expect.
  *
  * @param {object} Alpine the started Alpine instance (window.Alpine)
  * @param {{ onepager?: Function, childNavigation?: Function }} overrides
@@ -49,8 +56,6 @@ const mergeComponent = (component, override) => (
  *        the package component (receive the same arguments)
  */
 export function registerCmsFrontend(Alpine, overrides = {}) {
-    Alpine.store('scroll', createScrollStore());
-
     Alpine.data('siteOnepager', (el) => mergeComponent(
         siteOnepager(el),
         overrides.onepager?.(el),
