@@ -404,38 +404,10 @@ every site via `composer update`:
 
 - **`siteOnepager`** — section lazy-loading via `/_content` (each injected section
   dispatches a bubbling `cms:section-loaded` event for app hooks), scroll-synced
-  URL/title/indicator, anchor + history handling, hero-logo fade, and the scroll
-  hints: pills labeled with the previous/next section title (`lg+` only) whose opacity
-  follows the scroll position — it ramps with the free gap between the pill zone and
-  the nearest section content (`SCROLL_HINT_FADE`), so a pill glimmers in shortly
-  before the content edge clears its zone. The pills ride sticky on the middle of the
-  empty band between two section contents: they rest at their fixed spot while the
-  band middle is beyond it, anchor to the moving middle afterwards and dissolve toward
-  the section handover point where the next boundary takes over
-  (`SCROLL_HINT_CENTER_FADE` — so re-anchoring never pops visibly, even with very
-  unequal content heights). Once the target section's own content shows in the
-  viewport the pill fades out early (`SCROLL_HINT_TARGET_FADE`) — a pointer to
-  something already on screen is noise. Hover/focus holds interactivity and forces
-  full visibility; below `SCROLL_HINT_INTERACTIVE_MIN` the pill is disabled — no
-  clicks, no focus — so a barely visible button can't be activated accidentally.
-  Resting positions are measured from the actual buttons (at rest, cached while
-  riding), so restyling them needs no JS change — but never CSS-transition the
-  pill's translate: the ride tracks the scroll 1:1.
+  URL/title/indicator, anchor + history handling. **Architecture only** — no visual
+  behavior ships here.
 - **`siteChildNavigation`** — breadcrumbs, local-section tracking + flyout state on
   standalone pages.
-- **header-bar fitting + logo evade** (`header-bar.js`, mixed into both components;
-  the floating-header partial wires it via `x-init="initHeaderBar()"`) — the
-  breadcrumb trail (home icon + ancestor links) and the indicator share the space
-  left of the menu button by **measured** widths, not viewport breakpoints
-  (`fitHeaderBar()`): ancestors drop root-first, the home icon only when even it
-  alone has no room, and the indicator yields down to `HEADER_BAR.indicatorMin`
-  before any breadcrumb is dropped (marqueeing once narrower than its label).
-  Hovering the logo — whose expanded width comes from app CSS and is never assumed —
-  starts a rAF loop that slides the breadcrumb nav and, where the logo reaches
-  further, the indicator out of its way; both restore on mouseleave. The `HEADER_BAR`
-  constants mirror the header partials' utility classes — keep them in sync when
-  restyling.
-- **`scroll` store** — window scroll progress (header progress bar + depth label).
 
 ```js
 // resources/js/app.js
@@ -446,28 +418,56 @@ document.addEventListener('alpine:init', () => {
 });
 ```
 
-Project-specific frontend behavior stays in the app (e.g. münch's scroll reveal/zoom
-effects live in the project bundle). To adjust a single engine behavior, pass override
-factories — their members are spread over the package component:
+#### Extension hooks — where brand behavior plugs in
+
+Visual frontend behavior (scroll-hint pills, hero-logo fades, measured header
+fitting, progress bars, …) is **app territory**. The core exposes three hooks and
+calls them at guaranteed lifecycle points; apps layer mixins over the components via
+override factories (their members are merged over the package component, so each
+name wins wholesale):
+
+- `updateViewportState()` — empty in core; called at init, after every lazy section
+  injection, in the `goToSection()` rAF, every scroll frame and every resize frame.
+- `showLogo()` — `true` in core; the floating header binds its logo opacity to it.
+- `onResize()` — core runs only the rAF'd scroll-drift correction
+  (`this.resizeFrame()`). Overrides that cache viewport geometry reset their caches
+  here and **must** end with `this.resizeFrame()`.
 
 ```js
 registerCmsFrontend(window.Alpine, {
     onepager: (el) => ({
-        showLogo() { return true; },          // e.g. never hide the header logo
+        ...scrollHintsMixin(),                 // app-owned modules
+        ...heroLogoMixin(),
+        updateViewportState() {                // define collision-prone hooks ONCE
+            this.updateHeroLogoVisibility();
+            this.updateScrollHints();
+        },
     }),
+    childNavigation: () => ({ ...headerBarMixin() }),
 });
 ```
 
-View contract of the onepager shell (`frontend/onepager.blade.php`): sections carry
-`.onepager-section` + `data-path/-loaded/-title/-label/-navigation[/-anchor]`, the
-scroll-hint buttons `data-scroll-hint="up|down"` + `x-ref`, an optional `.hero-logo`
-inside the `/` section hides the header logo while visible. The hint chevrons are
-inline SVG (self-contained — only the header partials require the app-registered
-blade-icon set, e.g. `<x-icon-bars>`). The floating header's own contract:
-`.logo-link`, `nav[data-role="header-breadcrumbs"]`, `[data-role="header-indicator"]`,
-`.nav-menu-btn` plus the hidden measurer refs `indicatorMeasure`/`breadcrumbMeasure`
-(their typography must match indicator and breadcrumb links) — header-bar.js locates
-all of them by these hooks.
+Compose multiple mixins into ONE override object per component — the merge is a flat
+member set, so `updateViewportState`/`onResize` must be defined exactly once (by the
+composing module, not the mixins). The muench-tiefbau.de repo is the reference
+implementation: `resources/js/site/{onepager,scroll-hints,hero-logo,header-bar,scroll-store}.js`
+plus its `resources/views/frontend/onepager.blade.php` and
+`resources/views/partials/` header copies.
+
+View contract of the fallback onepager shell (`frontend/onepager.blade.php`):
+sections carry `.onepager-section` +
+`data-path/-loaded/-title/-label/-navigation[/-anchor]`, the root carries
+`data-content-endpoint`. The fallback floating header is **self-contained** (inline
+SVG icons, tenant logo via `resolvedMainLogoUrl()` — no app blade-icon sets needed)
+and binds only core members plus `[data-role="header-indicator"]` /
+`nav[data-role="header-breadcrumbs"]` / `.logo-link` / `.nav-menu-btn` as styling and
+extension hooks. Everything beyond that (pills markup + `x-ref`s, measurer spans,
+`x-init="initHeaderBar()"`, `$store.scroll` bindings) belongs to app view copies —
+publish the starting points via `php artisan vendor:publish --tag=cms-frontend`.
+`tests/Feature/FallbackShellRenderTest.php` pins this brand-agnostic contract.
+
+Fallback UI strings are translatable (`lang/de` + `lang/en`, namespace `cms::`,
+publish tag `cms-lang`); the app locale (`APP_LOCALE`) picks the language.
 
 ---
 

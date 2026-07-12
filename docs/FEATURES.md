@@ -144,12 +144,11 @@ same shell (`OnepagerShellController`); `ContentFragmentController` lazy-loads s
 via `/_content` (Alpine `siteOnepager`, shipped in `resources/js/frontend/` — see
 [CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)), with anchor deep-links,
 scroll-synced URL/menu state and per-section teasers (`payload.has_teaser` + teaser
-blocks). Sections are min-100vh with vertically centered content; on large screens the
-shell shows scroll-hint pills labeled with the previous/next section title, fading
-continuously with the scroll position and riding sticky on the middle of the empty
-band between two section contents (full opacity on hover, inert below the interactive
-threshold, gone early once the target's own content is on screen) — clicking one
-scrolls to that section. The demo's second tenant (localhost) is a live mini-onepager. The Seite/Sektion choice on the content form
+blocks). Sections are min-100vh with vertically centered content. The shell exposes
+viewport-state extension hooks (`updateViewportState()`, `showLogo()`, `onResize()`)
+so consuming apps can layer visual behavior — e.g. Münch's scroll-hint pills — on top
+via override factories without forking the engine. The demo's second tenant
+(localhost) is a live mini-onepager. The Seite/Sektion choice on the content form
 is a BLUEPRINT flag (`$offeredInTypeSelect`): `default.section` ships with it off, and an
 onepager site enables it by overriding that blueprint per site — so a pages-only brand
 and an onepager brand share one installation without config switches; only routable,
@@ -158,10 +157,10 @@ offered types appear, rendered beside the title input.
 **Navigation context** — `NavigationContextBuilder` gives every page breadcrumbs
 (ancestor trail in one query), block anchors and sibling/child navigation for the
 header partials; `backButton()` on the blueprint drives the "back to parent" pill.
-In the floating header the breadcrumb trail collapses by measured space, not
-viewport breakpoints: ancestors drop root-first, the home icon only as a last
-resort, and the whole bar slides out of the way of the hover-expanding logo
-(see [CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
+The fallback header renders the trail with plain CSS truncation; richer behavior
+(measured space fitting, logo-hover evade — see the muench-tiefbau.de reference
+implementation) lives in app view/JS copies
+([CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
 
 ## Block builder
 
@@ -413,11 +412,14 @@ overrides any of them by shipping the same path (`vendor:publish --tag=cms-front
 `button`, `footer`, rich-editor block views). Per-site error pages:
 `{site_key}/errors/404.blade.php` wins over the shared one.
 
-The Alpine components those views bind against (`siteOnepager` incl. scroll hints,
-`siteChildNavigation`, the `scroll` store) ship as ES modules in
-`resources/js/frontend/` — apps bundle them via their own Vite build and register them
-with `registerCmsFrontend(Alpine)`; project-specific behavior is layered on top through
-the override seam ([CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
+The Alpine components those views bind against (`siteOnepager`,
+`siteChildNavigation`) ship as ES modules in `resources/js/frontend/` — architecture
+only (lazy loading, history, navigation context, menu state). Apps bundle them via
+their own Vite build, register them with `registerCmsFrontend(Alpine, overrides)` and
+layer brand behavior (scroll hints, hero fades, header measuring, scroll stores) on
+top through the override seam and the viewport-state hooks
+([CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)). Fallback UI strings
+are translatable (`lang/de` + `lang/en`, publish tag `cms-lang`).
 
 ## E-mail layout
 
