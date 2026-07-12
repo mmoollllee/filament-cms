@@ -14,6 +14,7 @@ import {
     scrollWindowTo,
     selectorEscape,
 } from './navigation-shared';
+import { headerBarBehavior } from './header-bar';
 
 /**
  * Scroll-hint fade geometry (px): a hint's opacity ramps linearly with the free
@@ -64,6 +65,7 @@ const SCROLL_HINT_TARGET_FADE = { start: 16, range: 144 };
  * override single methods by spreading their own on top.
  */
 export default (rootElement) => ({
+    ...headerBarBehavior(),
     rootElement,
     sections: [],
     sectionMap: new Map(),

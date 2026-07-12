@@ -158,6 +158,10 @@ offered types appear, rendered beside the title input.
 **Navigation context** — `NavigationContextBuilder` gives every page breadcrumbs
 (ancestor trail in one query), block anchors and sibling/child navigation for the
 header partials; `backButton()` on the blueprint drives the "back to parent" pill.
+In the floating header the breadcrumb trail collapses by measured space, not
+viewport breakpoints: ancestors drop root-first, the home icon only as a last
+resort, and the whole bar slides out of the way of the hover-expanding logo
+(see [CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
 
 ## Block builder
 

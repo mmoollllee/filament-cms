@@ -423,6 +423,18 @@ every site via `composer update`:
   pill's translate: the ride tracks the scroll 1:1.
 - **`siteChildNavigation`** — breadcrumbs, local-section tracking + flyout state on
   standalone pages.
+- **header-bar fitting + logo evade** (`header-bar.js`, mixed into both components;
+  the floating-header partial wires it via `x-init="initHeaderBar()"`) — the
+  breadcrumb trail (home icon + ancestor links) and the indicator share the space
+  left of the menu button by **measured** widths, not viewport breakpoints
+  (`fitHeaderBar()`): ancestors drop root-first, the home icon only when even it
+  alone has no room, and the indicator yields down to `HEADER_BAR.indicatorMin`
+  before any breadcrumb is dropped (marqueeing once narrower than its label).
+  Hovering the logo — whose expanded width comes from app CSS and is never assumed —
+  starts a rAF loop that slides the breadcrumb nav and, where the logo reaches
+  further, the indicator out of its way; both restore on mouseleave. The `HEADER_BAR`
+  constants mirror the header partials' utility classes — keep them in sync when
+  restyling.
 - **`scroll` store** — window scroll progress (header progress bar + depth label).
 
 ```js
@@ -451,7 +463,11 @@ View contract of the onepager shell (`frontend/onepager.blade.php`): sections ca
 scroll-hint buttons `data-scroll-hint="up|down"` + `x-ref`, an optional `.hero-logo`
 inside the `/` section hides the header logo while visible. The hint chevrons are
 inline SVG (self-contained — only the header partials require the app-registered
-blade-icon set, e.g. `<x-icon-bars>`).
+blade-icon set, e.g. `<x-icon-bars>`). The floating header's own contract:
+`.logo-link`, `nav[data-role="header-breadcrumbs"]`, `[data-role="header-indicator"]`,
+`.nav-menu-btn` plus the hidden measurer refs `indicatorMeasure`/`breadcrumbMeasure`
+(their typography must match indicator and breadcrumb links) — header-bar.js locates
+all of them by these hooks.
 
 ---
 

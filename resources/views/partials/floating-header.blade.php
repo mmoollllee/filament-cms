@@ -51,40 +51,26 @@
             @include('partials.header-breadcrumbs')
 
             <div class="overflow-y-auto transition-all nav-menu" x-bind:class="menuOpen ? 'w-[calc(100vw-var(--site-edge-space)*2)] sm:w-[min(var(--site-flyout-width),calc(100vw-var(--site-edge-space)*2))]' : ''" x-bind:data-open="menuOpen ? 'true' : 'false'">
-                <div class="relative z-10 flex items-stretch justify-end h-12 nav-menu-trigger" x-bind:data-open="menuOpen ? 'true' : 'false'">
-                    {{-- Hidden measurer for indicator width --}}
+                {{-- initHeaderBar (header-bar.js) fits breadcrumbs + indicator into the
+                     measured space and slides them away from the hover-expanding logo. --}}
+                <div class="relative z-10 flex items-stretch justify-end h-12 nav-menu-trigger" x-bind:data-open="menuOpen ? 'true' : 'false'" x-init="initHeaderBar()">
+                    {{-- Hidden measurers: natural widths of the indicator label and the
+                         breadcrumb item labels (typography must match their targets) --}}
                     <span
                         class="pointer-events-none invisible absolute h-0 overflow-visible px-1 font-black uppercase text-xs md:text-base whitespace-nowrap"
                         x-ref="indicatorMeasure"
                         aria-hidden="true"
                     >{{ $initialNavigationContext['indicatorLabel'] }}</span>
+                    <span
+                        class="pointer-events-none invisible absolute h-0 overflow-visible text-sm font-bold whitespace-nowrap"
+                        x-ref="breadcrumbMeasure"
+                        aria-hidden="true"
+                    ></span>
 
                     <span
                         class="nav-indicator relative block flex-auto min-w-0 mr-2 ml-3 leading-12 font-black uppercase text-white text-xs md:text-base"
                         data-role="header-indicator"
                         x-show="!menuOpen"
-                        x-init="
-                            let sizeIndicator = () => {
-                                $refs.indicatorMeasure.textContent = currentIndicatorLabel();
-                                $nextTick(() => {
-                                    let full = $refs.indicatorMeasure.scrollWidth;
-                                    let header = $el.closest('.site-header');
-                                    let logo = header.querySelector('.logo-link');
-                                    let available = header.clientWidth - (logo ? logo.offsetWidth : 0) - 80;
-                                    let max = Math.min(224, available);
-                                    $el.style.width = Math.min(full, max) + 'px';
-                                    if (full > max) {
-                                        $el.dataset.marquee = '';
-                                        $el.style.setProperty('--marquee-offset', `-${full - max + 12}px`);
-                                    } else {
-                                        delete $el.dataset.marquee;
-                                    }
-                                });
-                            };
-                            window.addEventListener('resize', () => sizeIndicator());
-                            $watch(() => currentIndicatorLabel(), () => sizeIndicator());
-                            sizeIndicator();
-                        "
                     >
                         <span class="nav-indicator-text whitespace-nowrap" x-text="currentIndicatorLabel()">{{ $initialNavigationContext['indicatorLabel'] }}</span>
                     </span>
