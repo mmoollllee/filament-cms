@@ -12,7 +12,7 @@
 @endphp
 
 @if (filled($eyebrow))
-    <p style="margin:0;text-transform:uppercase;letter-spacing:.08em;font-size:.8rem;font-weight:600;color:var(--primary,#005f4e);">{{ $eyebrow }}</p>
+    <p style="margin:0;text-transform:uppercase;letter-spacing:.08em;font-size:.8rem;font-weight:600;color:var(--color-primary,#005f4e);">{{ $eyebrow }}</p>
 @endif
 
 @if (filled($title))
