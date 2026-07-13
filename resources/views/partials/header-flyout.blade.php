@@ -19,26 +19,28 @@
         </div>
     </div>
 
-    <div class="flyout-group flyout-group--social mt-8 mx-4 rounded-lg p-4 text-sm font-black">
-        <div class="flyout-heading mb-3 text-center text-xs tracking-wider text-muted-text uppercase">{{ __('cms::frontend.social_heading') }}</div>
-        <div class="flyout-list flex flex-col items-center gap-4 text-center">
-            @forelse ($socialLinks as $socialLink)
-                <a
-                    href="{{ $socialLink['url'] }}"
-                    class="flyout-btn"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    @if (filled($socialLink['icon']))
-                        <x-dynamic-component :component="'icon-'.$socialLink['icon']" class="size-4" />
-                    @endif
-                    <span>{{ $socialLink['label'] }}</span>
-                </a>
-            @empty
-                <div class="text-center text-sm text-muted-text">{{ __('cms::frontend.social_empty') }}</div>
-            @endforelse
+    {{-- Ohne gepflegte Social-Links entfällt die Gruppe komplett — der leere
+         Hinweis gehört nicht in ein öffentliches Menü. --}}
+    @if (count($socialLinks ?? []))
+        <div class="flyout-group flyout-group--social mt-8 mx-4 rounded-lg p-4 text-sm font-black">
+            <div class="flyout-heading mb-3 text-center text-xs tracking-wider text-muted-text uppercase">{{ __('cms::frontend.social_heading') }}</div>
+            <div class="flyout-list flex flex-col items-center gap-4 text-center">
+                @foreach ($socialLinks as $socialLink)
+                    <a
+                        href="{{ $socialLink['url'] }}"
+                        class="flyout-btn"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        @if (filled($socialLink['icon']))
+                            <x-dynamic-component :component="'icon-'.$socialLink['icon']" class="size-4" />
+                        @endif
+                        <span>{{ $socialLink['label'] }}</span>
+                    </a>
+                @endforeach
+            </div>
         </div>
-    </div>
+    @endif
 
     <div class="flyout-group flyout-group--utility mt-8 m-4 text-[0.92rem] font-semibold text-muted-text">
         <div class="flyout-heading sr-only">{{ __('cms::frontend.secondary') }}</div>
