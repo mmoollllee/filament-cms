@@ -466,6 +466,16 @@ extension hooks. Everything beyond that (pills markup + `x-ref`s, measurer spans
 publish the starting points via `php artisan vendor:publish --tag=cms-frontend`.
 `tests/Feature/FallbackShellRenderTest.php` pins this brand-agnostic contract.
 
+`<x-site.seo-head>` and `<x-site.favicon>` ship as brand-agnostic fallbacks too:
+seo-head emits canonical/OG/Twitter plus Organization + BreadcrumbList JSON-LD
+from tenant branding fields (apps override it for brand rules such as robots
+directives); favicon emits a single icon link from `favicon_path` with branding
+inheritance (apps with full icon sets — sizes, apple-touch, manifest — override
+it, guarded by `tests/Feature/FaviconFallbackTest.php`). When adding JSON-LD, build
+the schema arrays inside a `@php` block — a literal `'@context'` in template text
+is compiled as Blade's `@context` directive (Laravel 12) and corrupts the key
+(`tests/Feature/SeoHeadFallbackTest.php` guards this).
+
 Fallback UI strings are translatable (`lang/de` + `lang/en`, namespace `cms::`,
 publish tag `cms-lang`); the app locale (`APP_LOCALE`) picks the language.
 
