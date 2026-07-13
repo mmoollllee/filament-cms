@@ -116,12 +116,14 @@ it('serves the fallback strings in english when the app locale is en', function 
 
     $flyout = view('cms::partials.header-flyout', [
         'sectionLinks' => [],
-        'socialLinks' => [],
+        // One configured link — with an empty list the whole social group
+        // (including its translated heading) is dropped from the flyout.
+        'socialLinks' => [['url' => 'https://example.com', 'label' => 'Instagram', 'icon' => null]],
         'legalLinks' => [],
     ])->render();
 
     expect($flyout)
-        ->toContain('No social links configured.')
+        ->toContain('Social media')
         ->toContain('Main menu');
 
     $notFound = view('cms::errors.404', [
