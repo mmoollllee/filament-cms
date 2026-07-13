@@ -1,6 +1,6 @@
 {
     "name": "mmoollllee/filament-cms",
-    "description": "Shared, updatable CMS engine for multi-tenant marketing websites (Laravel 12 + Filament v5): content types, block builder, layout presets, fragments, redirects and the complete admin panel.",
+    "description": "Shared, updatable CMS engine for multi-tenant marketing websites (Laravel 12/13 + Filament v5): content types, block builder, layout presets, fragments, redirects and the complete admin panel.",
     "type": "library",
     "license": "MIT",
     "require": {
@@ -13,7 +13,7 @@
         "mmoollllee/filament-builder-title": "^0.3.0",
         "pbmedia/laravel-ffmpeg": "^8.9",
         "ueberdosis/tiptap-php": "^2.1",
-        "yannkuesthardt/laravel-spamprotect": "^2.0"
+        "yannkuesthardt/laravel-spamprotect": "^2.0|^3.0"
     },
     "require-dev": {
         "mockery/mockery": "^1.6",
