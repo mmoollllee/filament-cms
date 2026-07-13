@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\ModelCache;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -38,7 +39,9 @@ class ResolveTenantFromHost
         $host = $request->getHost();
         $cacheKey = CacheKeys::tenantDomain($host);
 
-        $tenant = Cache::get($cacheKey);
+        // Cached as a scalar attribute array (ModelCache) — L13 cache stores refuse
+        // to unserialize objects (`cache.serializable_classes = false` default).
+        $tenant = ModelCache::unpack(Cms::tenantModel(), Cache::get($cacheKey));
 
         if ($tenant === null) {
             $tenant = Cms::tenantModel()::query()
@@ -50,7 +53,7 @@ class ResolveTenantFromHost
             // cache store without bound with junk hosts, and would also shadow a domain later
             // assigned to a tenant until a manual cache clear.
             if ($tenant !== null) {
-                Cache::forever($cacheKey, $tenant);
+                Cache::forever($cacheKey, ModelCache::pack($tenant));
             }
         }
 

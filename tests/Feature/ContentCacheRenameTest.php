@@ -26,7 +26,7 @@ it('drops the old path cache when a content path is renamed', function () {
     ]);
 
     $oldPath = $content->path;
-    $oldKey = "tenant:{$tenant->id}:content:{$oldPath}";
+    $oldKey = "tenant:{$tenant->id}:content:v2:{$oldPath}";
 
     // Warm the anonymous-visitor cache for the old path.
     expect($resolver->findByPath($tenant, $oldPath)?->getKey())->toBe($content->getKey())

@@ -9,6 +9,7 @@ use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\ModelCache;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 
 /**
@@ -152,10 +153,10 @@ class ContentCacheObserver
             Cache::forget(CacheKeys::tenantDomain($tenant->getOriginal('primary_domain')));
         }
 
-        // Re-warm the tenant domain cache
+        // Re-warm the tenant domain cache (scalar attribute payload, see ModelCache)
         Cache::rememberForever(
             CacheKeys::tenantDomain($tenant->primary_domain),
-            fn () => $tenant->fresh(),
+            fn (): ?array => ModelCache::pack($tenant->fresh()),
         );
 
         // site_key selects each content's blueprint, so every resolvedPath()-derived cache

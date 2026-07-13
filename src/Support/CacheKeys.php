@@ -13,22 +13,35 @@ namespace Mmoollllee\Cms\Support;
  */
 class CacheKeys
 {
-    /** Host → Tenant lookup ({@see \Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost}). */
+    /**
+     * Host → Tenant lookup ({@see \Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost}).
+     *
+     * `v2`: payload is a scalar attribute array (ModelCache, 0.2.6) — pre-0.2.6
+     * entries hold serialized models and must never be read again.
+     */
     public static function tenantDomain(string $host): string
     {
-        return "tenant_domain:{$host}";
+        return "tenant_domain:v2:{$host}";
     }
 
-    /** Resolved Content (or cached null) per normalized path ({@see \Mmoollllee\Cms\Support\Content\ContentResolver}). */
+    /**
+     * Resolved Content (or cached null) per normalized path ({@see \Mmoollllee\Cms\Support\Content\ContentResolver}).
+     *
+     * `v2`: payload is a scalar attribute array (ModelCache, 0.2.6).
+     */
     public static function content(int|string $tenantId, string $path): string
     {
-        return "tenant:{$tenantId}:content:{$path}";
+        return "tenant:{$tenantId}:content:v2:{$path}";
     }
 
-    /** The tenant's onepager section list ({@see \Mmoollllee\Cms\Support\Content\ContentResolver}). */
+    /**
+     * The tenant's onepager section list ({@see \Mmoollllee\Cms\Support\Content\ContentResolver}).
+     *
+     * `v2`: payload is a list of scalar attribute arrays (ModelCache, 0.2.6).
+     */
     public static function sections(int|string $tenantId): string
     {
-        return "tenant:{$tenantId}:sections";
+        return "tenant:{$tenantId}:sections:v2";
     }
 
     /** The rendered sitemap XML ({@see \Mmoollllee\Cms\Http\Controllers\Frontend\SitemapController}). */

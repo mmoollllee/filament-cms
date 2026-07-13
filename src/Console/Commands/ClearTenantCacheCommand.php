@@ -8,6 +8,7 @@ use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\ModelCache;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 
 class ClearTenantCacheCommand extends Command
@@ -72,10 +73,10 @@ class ClearTenantCacheCommand extends Command
     {
         $tenantId = $tenant->getKey();
 
-        // Re-warm tenant domain
+        // Re-warm tenant domain (scalar attribute payload, see ModelCache)
         Cache::rememberForever(
             CacheKeys::tenantDomain($tenant->primary_domain),
-            fn () => $tenant->fresh(),
+            fn (): ?array => ModelCache::pack($tenant->fresh()),
         );
 
         // Re-warm menus

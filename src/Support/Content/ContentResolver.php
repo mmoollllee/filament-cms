@@ -11,6 +11,7 @@ use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\ModelCache;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 
 /**
@@ -50,18 +51,31 @@ class ContentResolver
 
         $key = CacheKeys::content($tenant->getKey(), $normalizedPath);
 
-        // `false` = not cached; `null` = a cached 404 (negative hit); a Content = a real hit.
+        // `false` = not cached; `null` = a cached 404 (negative hit); an attribute
+        // array (ModelCache) = a real hit. Payloads stay scalar so L13's
+        // `serializable_classes = false` cache stores can round-trip them.
         $cached = Cache::get($key, false);
 
-        if ($cached !== false) {
-            return $cached;
+        if ($cached === null) {
+            return null;
+        }
+
+        if (is_array($cached)) {
+            $content = ModelCache::unpack(Cms::contentModel(), $cached);
+
+            if ($content !== null) {
+                $content->setRelation('tenant', $tenant);
+
+                return $content;
+            }
+            // Malformed payload → fall through and re-resolve.
         }
 
         $content = $this->resolveFindByPath($tenant, $normalizedPath);
 
         if ($content !== null) {
             // Real pages are cached indefinitely (busted by ContentCacheObserver on write).
-            Cache::forever($key, $content);
+            Cache::forever($key, ModelCache::pack($content));
 
             return $content;
         }
@@ -123,10 +137,13 @@ class ContentResolver
             return $this->resolveSections($tenant, $user);
         }
 
-        return Cache::rememberForever(
+        // Cached as a list of attribute arrays (ModelCache) — see findByPath().
+        $sections = ModelCache::unpackMany(Cms::contentModel(), Cache::rememberForever(
             CacheKeys::sections($tenant->getKey()),
-            fn () => $this->resolveSections($tenant),
-        );
+            fn (): array => ModelCache::packMany($this->resolveSections($tenant)),
+        ));
+
+        return $sections ?? $this->resolveSections($tenant);
     }
 
     protected function resolveSections(Tenant $tenant, ?Authenticatable $user = null): Collection
