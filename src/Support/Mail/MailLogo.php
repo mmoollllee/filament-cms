@@ -16,8 +16,12 @@ use Mmoollllee\Cms\Contracts\Tenant;
  * text (never a broken img). An SVG logo is therefore never linked; upload a PNG in the
  * dedicated "E-Mail-Logo" field when the site logo is an SVG.
  *
- * URLs are absolutized against `app.url` because mail clients have no base URL to
- * resolve a root-relative `/storage/...` path against.
+ * URLs are absolutized because mail clients have no base URL to resolve a
+ * root-relative `/storage/...` path against — on the SENDING tenant's primary
+ * domain: multi-domain installs share one `app.url`, but a mail should reference
+ * the domain of the tenant it was sent from (the logo file itself may be
+ * branding-inherited; the asset is served on every tenant domain of the app).
+ * Falls back to `app.url` when the tenant has no primary domain.
  */
 class MailLogo
 {
@@ -39,7 +43,7 @@ class MailLogo
         $extension = Str::lower(pathinfo((string) $path, PATHINFO_EXTENSION));
 
         if (in_array($extension, self::RASTER_EXTENSIONS, true)) {
-            return self::absolutize(self::publicUrl((string) $path));
+            return self::absolutize(self::publicUrl((string) $path), $tenant);
         }
 
         // SVG or unknown format → no <img>; the layout renders the brand name as text.
@@ -68,19 +72,32 @@ class MailLogo
     }
 
     /**
-     * Make a URL absolute so mail clients (no base URL) can load it. Leaves already
-     * absolute URLs untouched.
+     * Make a URL absolute so mail clients (no base URL) can load it — hosted on the
+     * sending tenant's primary domain when one is configured (scheme from `app.url`),
+     * else against `app.url` as before.
      */
-    private static function absolutize(?string $url): ?string
+    private static function absolutize(?string $url, Tenant $tenant): ?string
     {
         if (blank($url)) {
             return null;
         }
 
-        if (Str::startsWith($url, ['http://', 'https://', '//'])) {
-            return $url;
+        $isAbsolute = Str::startsWith($url, ['http://', 'https://', '//']);
+
+        $tenantHost = method_exists($tenant, 'getAttribute')
+            ? trim((string) $tenant->getAttribute('primary_domain'))
+            : '';
+
+        if ($tenantHost === '') {
+            return $isAbsolute
+                ? $url
+                : rtrim((string) config('app.url'), '/').'/'.ltrim($url, '/');
         }
 
-        return rtrim((string) config('app.url'), '/').'/'.ltrim($url, '/');
+        $scheme = parse_url((string) config('app.url'), PHP_URL_SCHEME) ?: 'https';
+        $path = $isAbsolute ? (string) parse_url($url, PHP_URL_PATH) : '/'.ltrim($url, '/');
+        $query = $isAbsolute ? parse_url($url, PHP_URL_QUERY) : null;
+
+        return $scheme.'://'.$tenantHost.$path.(filled($query) ? '?'.$query : '');
     }
 }

@@ -37,6 +37,44 @@ it('inherits the dedicated mail logo from the branding tenant', function () {
     expect(MailLogo::urlFor($sub))->toContain('logos/brand-mail.png');
 });
 
+it('hosts the logo URL on the sending tenant domain, not the branding tenant domain', function () {
+    // The FILE is branding-inherited, but the URL must reference the domain the
+    // mail is sent from — a jobs subsite must not link back to the main site.
+    Tenant::factory()->create([
+        'primary_domain' => 'main.example.test',
+        'mail_logo_path' => 'logos/brand-mail.png',
+    ]);
+    $sub = Tenant::factory()->create([
+        'primary_domain' => 'jobs.example.test',
+        'mail_logo_path' => null,
+        'logo_path' => null,
+    ]);
+
+    $url = MailLogo::urlFor($sub);
+
+    expect($url)
+        ->toContain('://jobs.example.test/')
+        ->toContain('logos/brand-mail.png')
+        ->not->toContain('main.example.test');
+});
+
+it('falls back to app.url when the sending tenant has no primary domain', function () {
+    // Schema-wise the column is NOT NULL; a blank value is the closest real-world
+    // shape of "no domain configured" and exercises the same fallback branch.
+    $tenant = Tenant::factory()->create([
+        'primary_domain' => '',
+        'logo_path' => 'logos/acme.png',
+    ]);
+
+    $url = MailLogo::urlFor($tenant);
+
+    $appHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+
+    expect($url)
+        ->toContain('logos/acme.png')
+        ->toContain('://'.$appHost);
+});
+
 it('lets a tenant override the inherited mail logo', function () {
     Tenant::factory()->create(['mail_logo_path' => 'logos/brand-mail.png']);
     $sub = Tenant::factory()->create(['mail_logo_path' => 'logos/sub-mail.png']);
