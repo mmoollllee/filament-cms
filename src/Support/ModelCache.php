@@ -39,8 +39,11 @@ class ModelCache
             return null;
         }
 
-        /** @var TModel */
-        return (new $class)->newFromBuilder($attributes);
+        // Via hydrate() (not a bare newFromBuilder()) so the builder stamps the
+        // resolved connection name — Model::is() compares it, and the onepager
+        // shell matches the current section against findByPath() results with is().
+        /** @var TModel|null */
+        return $class::hydrate([$attributes])->first();
     }
 
     /**

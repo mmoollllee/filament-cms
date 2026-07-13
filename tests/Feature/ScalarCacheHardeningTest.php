@@ -56,7 +56,10 @@ it('resolves the tenant from a file cache that refuses objects', function () {
 
     expect($resolved)->toBeInstanceOf(Tenant::class)
         ->and($resolved->getKey())->toBe($tenant->getKey())
-        ->and($resolved->primary_domain)->toBe('hardened.test');
+        ->and($resolved->primary_domain)->toBe('hardened.test')
+        // Rehydrated models must satisfy Model::is() against fresh queries
+        // (same key, table AND connection name).
+        ->and($resolved->is($tenant))->toBeTrue();
 });
 
 it('serves content lookups from a file cache that refuses objects', function () {
@@ -82,7 +85,10 @@ it('serves content lookups from a file cache that refuses objects', function () 
         ->and($cachedHit->getKey())->toBe($content->getKey())
         ->and($cachedHit->title)->toBe('Gehärtete Seite')
         // The rehydrated model carries the tenant relation like a fresh lookup.
-        ->and($cachedHit->tenant?->getKey())->toBe($tenant->getKey());
+        ->and($cachedHit->tenant?->getKey())->toBe($tenant->getKey())
+        // … and satisfies Model::is() against the fresh record — the onepager
+        // shell decides the inline-rendered section with exactly this check.
+        ->and($cachedHit->is($content))->toBeTrue();
 
     // Negative hits stay plain null payloads (a scalar, too).
     expect($resolver->findByPath($tenant, '/gibt-es-nicht'))->toBeNull()
