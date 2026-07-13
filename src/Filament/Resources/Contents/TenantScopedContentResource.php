@@ -155,6 +155,19 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
+     * Whether the form's content type is routable (has its own URL), as a Get-aware
+     * closure. Same static-vs-reactive split as {@see formSupportsTeasers()}.
+     * Gates the Meta (SEO) section: a non-routable type never renders as its own
+     * page, so SEO overrides would be dead settings.
+     */
+    protected static function formIsRoutable(): Closure
+    {
+        $isRoutable = static::resolveFormBlueprint()?->isRoutable() ?? true;
+
+        return fn (Get $get): bool => $isRoutable;
+    }
+
+    /**
      * Whether the raw payload editor is part of the form tree at all. Single-type
      * resources include it only when their blueprint opts in ({@see showsPayloadEditor()}),
      * so it never collides with structured `payload.*` fields. The multi-type catch-all
@@ -212,10 +225,10 @@ abstract class TenantScopedContentResource extends Resource
 
         $sidebar = static::contentSidebar($tenant);
 
-        // The sidebar always carries the Meta section, so it is effectively never empty;
-        // the reactive span still lets the main column reclaim the full width should a
-        // resource strip the sidebar entirely. getChildComponents() returns only the
-        // currently visible children.
+        // The reactive span lets the main column reclaim the full width when nothing
+        // in the sidebar is visible — e.g. a non-routable type (Meta section hidden)
+        // with no parent select. getChildComponents() returns only the currently
+        // visible children.
         $sidebarHasVisibleContent = static fn (): bool => $sidebar->getChildComponents() !== [];
         $mainSpan = static fn (): array => $sidebarHasVisibleContent()
             ? ['default' => 1, 'xl' => 2]
@@ -268,7 +281,8 @@ abstract class TenantScopedContentResource extends Resource
      * The "Inhalt"-tab sidebar: the resource's structure/attribute fields (as returned
      * by {@see sidebarFields()} — bare fields or grouped sections, the resource's
      * choice) above the collapsed "Meta" (SEO) section. This is the single home for the
-     * Meta section across all content resources.
+     * Meta section across all content resources; it hides for non-routable types
+     * ({@see formIsRoutable()}), which have no page of their own to optimize.
      */
     protected static function contentSidebar(?Tenant $tenant): Grid
     {
@@ -276,7 +290,8 @@ abstract class TenantScopedContentResource extends Resource
             ->columnSpan(['default' => 1, 'xl' => 1])
             ->schema([
                 ...static::sidebarFields($tenant),
-                static::metaSection(),
+                static::metaSection()
+                    ->visible(static::formIsRoutable()),
             ]);
     }
 

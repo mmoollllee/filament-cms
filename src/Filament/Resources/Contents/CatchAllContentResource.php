@@ -88,7 +88,7 @@ class CatchAllContentResource extends TenantScopedContentResource
     /**
      * The multi-type form is the shared {@see TenantScopedContentResource::tabbedForm()} —
      * only the blueprint gating differs: it reacts to the content type the user SELECTS
-     * (the two closure hooks below) instead of a per-resource static blueprint.
+     * (the closure hooks below) instead of a per-resource static blueprint.
      */
     protected static function formSupportsTeasers(): Closure
     {
@@ -98,6 +98,11 @@ class CatchAllContentResource extends TenantScopedContentResource
     protected static function formShowsPayloadEditor(): Closure
     {
         return fn (Get $get): bool => (bool) static::selectedBlueprint(static::resolveSelectedContentType($get))?->showsPayloadEditor();
+    }
+
+    protected static function formIsRoutable(): Closure
+    {
+        return fn (Get $get): bool => static::selectedBlueprint(static::resolveSelectedContentType($get))?->isRoutable() ?? true;
     }
 
     /**
