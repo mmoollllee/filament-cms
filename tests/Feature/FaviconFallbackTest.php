@@ -40,3 +40,11 @@ it('renders nothing when no favicon is configured anywhere', function () {
 
     expect(trim($rendered))->toBe('');
 });
+
+it('renders nothing without a resolvable tenant', function () {
+    // CurrentTenant deliberately left empty — e.g. an error page on an
+    // unresolved domain. Must stay silent instead of fataling on null.
+    $rendered = Blade::render('<x-site.favicon />');
+
+    expect(trim($rendered))->toBe('');
+});

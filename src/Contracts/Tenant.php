@@ -38,6 +38,9 @@ interface Tenant
     /** Mail-client-safe (raster, absolute) logo URL; null → fall back to text. */
     public function resolvedMailLogoUrl(): ?string;
 
+    /** Public URL of the favicon, with branding inheritance (null when unset). */
+    public function resolvedFaviconUrl(): ?string;
+
     /** Public URL of the default Open Graph image, with branding inheritance. */
     public function resolvedDefaultOgImageUrl(): ?string;
 

@@ -8,9 +8,10 @@
 @php
     // Anonymous components don't inherit the caller's locals, so resolve the tenant
     // ourselves (explicit prop → request-scoped singleton) instead of assuming it.
+    // Nullable: a tenant-less render (error page on an unresolved domain) emits nothing.
     $tenant ??= app(\Mmoollllee\Cms\Support\Tenancy\CurrentTenant::class)->get();
 
-    $faviconUrl = $tenant->resolvedFaviconUrl();
+    $faviconUrl = $tenant?->resolvedFaviconUrl();
 @endphp
 
 @if (filled($faviconUrl))

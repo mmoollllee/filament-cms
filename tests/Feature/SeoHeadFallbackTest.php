@@ -72,3 +72,35 @@ it('resolves the tenant from the request-scoped singleton without a tenant prop'
         ->toContain('og:title')
         ->toContain($tenant->frontendTitleFor(null));
 });
+
+it('renders nothing without a resolvable tenant', function () {
+    // CurrentTenant deliberately left empty — e.g. an error page on an
+    // unresolved domain. Must stay silent instead of fataling on null.
+    $rendered = Blade::render('<x-site.seo-head />');
+
+    expect(trim($rendered))->toBe('');
+});
+
+it('keeps json-ld inert when branding values contain a script breakout', function () {
+    // JSON_UNESCAPED_SLASHES alone leaves '</script>' intact inside JSON strings;
+    // JSON_HEX_TAG must escape <> so the script tag cannot be closed early.
+    $payload = 'Evil</script><svg onload=alert(1)>';
+
+    $tenant = Tenant::factory()->create([
+        'primary_domain' => 'localhost',
+        'site_key' => 'default',
+        'name' => $payload,
+        'brand_name' => $payload,
+    ]);
+
+    app(CurrentTenant::class)->set($tenant);
+
+    $rendered = Blade::render('<x-site.seo-head />');
+
+    // The raw breakout must never appear; the hex-escaped JSON encoding must.
+    $escapedPayload = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG);
+
+    expect($rendered)
+        ->not->toContain('</script><svg')
+        ->toContain($escapedPayload);
+});
