@@ -319,9 +319,10 @@ placeholders preview the computed defaults (tenant SEO settings + title composit
 All three are honoured by `<x-site.seo-head>` and the layout `<title>` out of the box.
 
 **SeoHead seams** — projects extend the shared head without copying the view:
-`SeoHead::noindexWhen()` (page rules beyond the editorial toggle) and
-`SeoHead::addSchema()` (additional JSON-LD, hardened encoding). See
-CUSTOMIZATION.md → "SEO head".
+type-owned rules override `ContentBlueprint::noindex()` in the blueprint;
+cross-cutting rules register `SeoHead::noindexWhen()`; extra JSON-LD via
+`SeoHead::addSchema()` (hardened encoding). Resolution: editorial toggle →
+blueprint → registry. See CUSTOMIZATION.md → "SEO head".
 
 **Sitemap** — `SitemapController` serves `/sitemap.xml` per tenant: homepage, onepager
 sections (as anchors), all routable published public content; cached per tenant.

@@ -189,4 +189,15 @@ class ConfiguredContentBlueprint implements ContentBlueprint
     {
         return null;
     }
+
+    /**
+     * Type-owned robots signal — override in a subclass to force `noindex, follow`
+     * for matching records (e.g. `data_get($content->payload, 'is_vergeben') === true`
+     * on filled job postings). Editorial meta.noindex and the cross-cutting
+     * SeoHead::noindexWhen() rules apply on top.
+     */
+    public function noindex(Content $content): bool
+    {
+        return false;
+    }
 }

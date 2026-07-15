@@ -480,17 +480,32 @@ overrides out of the box — `seo_title` (also used by the layout `<title>` via
 the shared `SeoHead::title()` source), `seo_description`, `og_image_url` and
 the `noindex` toggle (rendered as `<meta name="robots" content="noindex, follow">`).
 
-Project-specific SEO rules plug into two seams — register them in a service
-provider's `boot()` instead of copying the view
-(`Mmoollllee\Cms\Support\Seo\SeoHead`):
+Project-specific SEO rules plug into seams on two levels instead of copying
+the view:
+
+**Type-owned rules → the blueprint.** When the rule is a property of the
+content type itself, override `noindex()` in that type's blueprint — the rule
+lives next to the fields it reads and ships with the type:
+
+```php
+// app/Sites/{Site}/{Type}/Blueprint.php
+public function noindex(Content $content): bool
+{
+    return data_get($content->payload, 'is_vergeben') === true;
+}
+```
+
+**Cross-cutting rules and extra JSON-LD → the SeoHead registry**
+(`Mmoollllee\Cms\Support\Seo\SeoHead`), registered in a service provider's
+`boot()` — for rules that span content types or depend on tenant/environment
+state:
 
 ```php
 use Mmoollllee\Cms\Support\Seo\SeoHead;
 
-// Force noindex beyond the editorial toggle (e.g. filled job postings):
+// Force noindex beyond the editorial toggle and the blueprint signal:
 SeoHead::noindexWhen(fn (?Content $content, Tenant $tenant): bool
-    => data_get($content, 'content_type') === 'jobs.job'
-       && data_get($content?->payload, 'is_vergeben') === true);
+    => $tenant->isStagingDomain());
 
 // Emit additional JSON-LD blocks (return null to skip for a page):
 SeoHead::addSchema(fn (?Content $content, Tenant $tenant): ?array => [
@@ -499,6 +514,10 @@ SeoHead::addSchema(fn (?Content $content, Tenant $tenant): ?array => [
     'name' => $tenant->displayName(),
 ]);
 ```
+
+Resolution order of `SeoHead::isNoindex()`: editorial `meta.noindex` toggle →
+the content type's `ContentBlueprint::noindex()` → registered
+`noindexWhen()` rules; first hit wins.
 
 Rules receive the current content (nullable — error pages) and the resolved
 tenant; every registered schema is encoded with the hardened JSON-LD flags

@@ -1,6 +1,10 @@
 <?php
 
 use Illuminate\Support\Facades\Blade;
+use Mmoollllee\Cms\Contracts\Content as ContentContract;
+use Mmoollllee\Cms\Contracts\ContentBlueprint;
+use Mmoollllee\Cms\Sites\ConfiguredContentBlueprint;
+use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Seo\SeoHead;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Content;
@@ -101,6 +105,50 @@ it('renders additional registered json-ld schemas hardened', function () {
         ->toContain('"@type":"LocalBusiness"')
         ->not->toContain('</script><svg')
         ->and(substr_count($rendered, '<script type="application/ld+json">'))->toBe(2); // Organization + LocalBusiness
+});
+
+it('lets a blueprint force noindex for its content type', function () {
+    $tenant = seoHeadExtensionTenant();
+    $content = seoHeadExtensionContent($tenant, [
+        'content_type' => 'jobs.job',
+        'payload' => ['is_vergeben' => true],
+    ]);
+    $open = seoHeadExtensionContent($tenant, [
+        'content_type' => 'jobs.job',
+        'payload' => ['is_vergeben' => false],
+    ]);
+
+    $blueprint = new class extends ConfiguredContentBlueprint
+    {
+        protected string $key = 'jobs.job';
+
+        protected string $label = 'Job';
+
+        protected string $defaultTemplate = 'content.jobs.detail';
+
+        public function noindex(ContentContract $content): bool
+        {
+            return data_get($content->payload, 'is_vergeben') === true;
+        }
+    };
+
+    app()->instance(ContentBlueprintRegistry::class, new class($blueprint) extends ContentBlueprintRegistry
+    {
+        public function __construct(protected ContentBlueprint $stub)
+        {
+        }
+
+        public function find(string $key, ?string $siteKey = null): ?ContentBlueprint
+        {
+            return $key === $this->stub->key() ? $this->stub : null;
+        }
+    });
+
+    $vergeben = Blade::render('<x-site.seo-head :content="$content" />', ['content' => $content]);
+    $offen = Blade::render('<x-site.seo-head :content="$content" />', ['content' => $open]);
+
+    expect($vergeben)->toContain('<meta name="robots" content="noindex, follow">')
+        ->and($offen)->not->toContain('name="robots"');
 });
 
 it('keeps rules and schemas inert after reset', function () {

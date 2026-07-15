@@ -4,7 +4,9 @@ namespace Mmoollllee\Cms\Support\Seo;
 
 use Closure;
 use Mmoollllee\Cms\Contracts\Content;
+use Mmoollllee\Cms\Contracts\ContentBlueprint;
 use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 
 /**
  * Extension seams for the shared SEO head (<x-site.seo-head> component and the
@@ -13,12 +15,21 @@ use Mmoollllee\Cms\Contracts\Tenant;
  * The component renders the brand-agnostic SEO head for every project: title
  * and description (honouring the SeoFields meta.* overrides), canonical URL,
  * Open Graph / Twitter Card, a robots directive and JSON-LD (Organization +
- * BreadcrumbList). Projects adapt the two variable spots without copying the
- * view — in a service provider's boot():
+ * BreadcrumbList). Projects adapt the variable spots without copying the view:
+ *
+ * TYPE-OWNED rules belong on the content type itself — override
+ * ContentBlueprint::noindex() in the blueprint (preferred):
+ *
+ *   // app/Sites/{Site}/{Type}/Blueprint.php
+ *   public function noindex(Content $content): bool
+ *   {
+ *       return data_get($content->payload, 'is_vergeben') === true;
+ *   }
+ *
+ * CROSS-CUTTING rules and extra JSON-LD register in a service provider's boot():
  *
  *   SeoHead::noindexWhen(fn (?Content $content, Tenant $tenant): bool
- *       => data_get($content, 'content_type') === 'jobs.job'
- *          && data_get($content?->payload, 'is_vergeben') === true);
+ *       => $tenant->isStaging());
  *
  *   SeoHead::addSchema(fn (?Content $content, Tenant $tenant): ?array => [
  *       '@context' => 'https://schema.org',
@@ -71,10 +82,18 @@ class SeoHead
         return (string) (data_get($content, 'meta.seo_title') ?: $tenant->frontendTitleFor($content));
     }
 
-    /** Editorial meta.noindex toggle (SeoFields) OR any registered project rule. */
+    /**
+     * Editorial meta.noindex toggle (SeoFields), the content type's own
+     * blueprint signal ({@see ContentBlueprint::noindex()}) OR any registered
+     * cross-cutting rule — first hit wins.
+     */
     public static function isNoindex(?Content $content, Tenant $tenant): bool
     {
         if ((bool) data_get($content, 'meta.noindex')) {
+            return true;
+        }
+
+        if ($content !== null && static::blueprintFor($content, $tenant)?->noindex($content)) {
             return true;
         }
 
@@ -85,6 +104,24 @@ class SeoHead
         }
 
         return false;
+    }
+
+    /**
+     * The content's blueprint, resolved against the rendering tenant's site
+     * (the frontend invariant: seo-head renders content of the current tenant).
+     */
+    protected static function blueprintFor(Content $content, Tenant $tenant): ?ContentBlueprint
+    {
+        $contentType = (string) data_get($content, 'content_type');
+
+        if ($contentType === '') {
+            return null;
+        }
+
+        return app(ContentBlueprintRegistry::class)->find(
+            $contentType,
+            data_get($tenant, 'site_key'),
+        );
     }
 
     /**

@@ -111,4 +111,13 @@ interface ContentBlueprint
      * @return array{href: string, label: string}|null
      */
     public function backButton(Content $content): ?array;
+
+    /**
+     * Type-owned robots signal: return true to emit `noindex, follow` for the
+     * given record (e.g. a filled job posting). Applies on top of the editorial
+     * meta.noindex toggle and the cross-cutting SeoHead::noindexWhen() rules.
+     *
+     * @see \Mmoollllee\Cms\Support\Seo\SeoHead::isNoindex()
+     */
+    public function noindex(Content $content): bool;
 }
