@@ -316,6 +316,12 @@ Cache invalidation covers menu, item and location changes (`ContentCacheObserver
 
 **SeoFields kit** — meta title (70), description (200), `noindex` toggle per record;
 placeholders preview the computed defaults (tenant SEO settings + title composition).
+All three are honoured by `<x-site.seo-head>` and the layout `<title>` out of the box.
+
+**SeoHead seams** — projects extend the shared head without copying the view:
+`SeoHead::noindexWhen()` (page rules beyond the editorial toggle) and
+`SeoHead::addSchema()` (additional JSON-LD, hardened encoding). See
+CUSTOMIZATION.md → "SEO head".
 
 **Sitemap** — `SitemapController` serves `/sitemap.xml` per tenant: homepage, onepager
 sections (as anchors), all routable published public content; cached per tenant.

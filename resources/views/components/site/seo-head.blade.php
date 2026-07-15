@@ -1,8 +1,11 @@
-{{-- Brand-agnostic SEO head fallback: canonical URL, Open Graph, Twitter Card,
+{{-- Brand-agnostic SEO head: canonical URL, robots, Open Graph, Twitter Card,
      JSON-LD Organization + BreadcrumbList — everything derives from tenant
-     branding fields. Apps override this for brand-specific rules (robots
-     directives, extra schemas) via their own resources/views/components/site/
-     seo-head.blade.php.
+     branding fields and the SeoFields meta.* overrides (seo_title,
+     seo_description, noindex, og_image_url).
+     Project-specific rules plug in WITHOUT copying this view — register
+     SeoHead::noindexWhen() / SeoHead::addSchema() in a service provider
+     (see docs/CUSTOMIZATION.md, "SEO head"). A full app-side view override
+     remains the last resort.
      Usage: <x-site.seo-head :content="$content ?? null" :breadcrumbs="$initialBreadcrumbs ?? []" /> --}}
 @props(['content' => null, 'tenant' => null, 'breadcrumbs' => []])
 
@@ -15,13 +18,14 @@
 
 @if ($tenant !== null)
     @php
-        $pageTitle = $tenant->frontendTitleFor($content);
+        $pageTitle = \Mmoollllee\Cms\Support\Seo\SeoHead::title($content, $tenant);
         $pageDescription = data_get($content, 'meta.seo_description')
             ?: $tenant->resolvedDefaultSeoDescription();
         $ogImageUrl = data_get($content, 'meta.og_image_url')
             ?: $tenant->resolvedDefaultOgImageUrl();
         $canonicalUrl = request()->url();
         $logoUrl = $tenant->resolvedMainLogoUrl();
+        $isNoindex = \Mmoollllee\Cms\Support\Seo\SeoHead::isNoindex($content, $tenant);
 
         // Build the JSON-LD arrays inside this @php block: a literal '@context' in
         // template text (echo expressions included) is compiled as Blade's @context
@@ -46,10 +50,16 @@
             ]))->values()->all(),
         ];
 
+        $additionalSchemas = \Mmoollllee\Cms\Support\Seo\SeoHead::schemas($content, $tenant);
+
         // JSON_HEX_TAG escapes <> so a '</script>' in editor-controlled values
         // (titles, breadcrumb labels) cannot break out of the script tag.
         $jsonLdFlags = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG;
     @endphp
+
+    @if ($isNoindex)
+        <meta name="robots" content="noindex, follow">
+    @endif
 
     <link rel="canonical" href="{{ $canonicalUrl }}">
 
@@ -79,4 +89,8 @@
     @if ($breadcrumbListSchema !== null)
         <script type="application/ld+json">{!! json_encode($breadcrumbListSchema, $jsonLdFlags) !!}</script>
     @endif
+
+    @foreach ($additionalSchemas as $schema)
+        <script type="application/ld+json">{!! json_encode($schema, $jsonLdFlags) !!}</script>
+    @endforeach
 @endif

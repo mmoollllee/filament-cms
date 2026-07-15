@@ -466,15 +466,51 @@ extension hooks. Everything beyond that (pills markup + `x-ref`s, measurer spans
 publish the starting points via `php artisan vendor:publish --tag=cms-frontend`.
 `tests/Feature/FallbackShellRenderTest.php` pins this brand-agnostic contract.
 
-`<x-site.seo-head>` and `<x-site.favicon>` ship as brand-agnostic fallbacks too:
-seo-head emits canonical/OG/Twitter plus Organization + BreadcrumbList JSON-LD
-from tenant branding fields (apps override it for brand rules such as robots
-directives); favicon emits a single icon link from `favicon_path` with branding
-inheritance (apps with full icon sets — sizes, apple-touch, manifest — override
-it, guarded by `tests/Feature/FaviconFallbackTest.php`). When adding JSON-LD, build
-the schema arrays inside a `@php` block — a literal `'@context'` in template text
-is compiled as Blade's `@context` directive (Laravel 12) and corrupts the key
-(`tests/Feature/SeoHeadFallbackTest.php` guards this).
+`<x-site.favicon>` ships as a brand-agnostic fallback: it emits a single icon
+link from `favicon_path` with branding inheritance (apps with full icon sets —
+sizes, apple-touch, manifest — override it, guarded by
+`tests/Feature/FaviconFallbackTest.php`).
+
+#### SEO head — meta overrides & extension seams
+
+`<x-site.seo-head>` renders the complete, brand-agnostic SEO head for every
+project: canonical URL, robots, Open Graph / Twitter Card and JSON-LD
+(Organization + BreadcrumbList). It honours the `SeoFields` kit's `meta.*`
+overrides out of the box — `seo_title` (also used by the layout `<title>` via
+the shared `SeoHead::title()` source), `seo_description`, `og_image_url` and
+the `noindex` toggle (rendered as `<meta name="robots" content="noindex, follow">`).
+
+Project-specific SEO rules plug into two seams — register them in a service
+provider's `boot()` instead of copying the view
+(`Mmoollllee\Cms\Support\Seo\SeoHead`):
+
+```php
+use Mmoollllee\Cms\Support\Seo\SeoHead;
+
+// Force noindex beyond the editorial toggle (e.g. filled job postings):
+SeoHead::noindexWhen(fn (?Content $content, Tenant $tenant): bool
+    => data_get($content, 'content_type') === 'jobs.job'
+       && data_get($content?->payload, 'is_vergeben') === true);
+
+// Emit additional JSON-LD blocks (return null to skip for a page):
+SeoHead::addSchema(fn (?Content $content, Tenant $tenant): ?array => [
+    '@context' => 'https://schema.org',
+    '@type' => 'LocalBusiness',
+    'name' => $tenant->displayName(),
+]);
+```
+
+Rules receive the current content (nullable — error pages) and the resolved
+tenant; every registered schema is encoded with the hardened JSON-LD flags
+(`JSON_HEX_TAG` keeps `</script>` breakouts inert). `SeoHead::reset()` clears
+the seams in tests. A full app-side view override of
+`components/site/seo-head.blade.php` remains the last resort — it forfeits
+central updates, which is exactly the drift these seams exist to prevent.
+When adding JSON-LD anywhere, build the schema arrays inside a `@php` block —
+a literal `'@context'` in template text is compiled as Blade's `@context`
+directive (Laravel 12) and corrupts the key. Guards:
+`tests/Feature/SeoHeadFallbackTest.php` (brand-agnostic contract) and
+`tests/Feature/SeoHeadExtensionTest.php` (meta overrides + seams).
 
 Fallback UI strings are translatable (`lang/de` + `lang/en`, namespace `cms::`,
 publish tag `cms-lang`); the app locale (`APP_LOCALE`) picks the language.

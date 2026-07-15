@@ -8,7 +8,8 @@
     // Anonymous components don't inherit the caller's locals, so resolve the tenant
     // ourselves (explicit prop → request-scoped singleton) instead of assuming it.
     $tenant ??= app(\Mmoollllee\Cms\Support\Tenancy\CurrentTenant::class)->get();
-    $pageTitle = $tenant->frontendTitleFor($content ?? null);
+    // Shared title source with <x-site.seo-head>: meta.seo_title override first.
+    $pageTitle = \Mmoollllee\Cms\Support\Seo\SeoHead::title($content ?? null, $tenant);
     $pageDescription = data_get($content ?? null, 'meta.seo_description')
         ?: $tenant->resolvedDefaultSeoDescription();
     $primaryColor = $tenant->resolvedPrimaryColor();
