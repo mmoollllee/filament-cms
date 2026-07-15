@@ -269,3 +269,194 @@
 .fi-fo-builder-item-inactive-pill:hover .fi-fo-builder-item-inactive-pill-activate {
     display: inline;
 }
+
+/* ── Link-suggestions dropdown ─────────────────────────────────────────────
+   Styled wrapper for the ContentPathSuggestions fields (link picker, button
+   groups, consumer link fields) — replaces the defstudio searchable-input
+   dropdown markup (see cms::filament.forms.link-suggestions-wrapper).
+   Two-line entries: Content title + path. */
+
+.cms-link-suggest {
+    position: relative;
+}
+
+.cms-link-suggest-dropdown {
+    position: absolute;
+    z-index: 20;
+    top: 100%;
+    inset-inline: 0;
+    margin-top: 0.375rem;
+    overflow: hidden;
+    border-radius: 0.75rem;
+    background-color: #fff;
+    padding: 0.25rem;
+    box-shadow:
+        0 0 0 1px rgb(0 0 0 / 0.06),
+        0 12px 24px -6px rgb(0 0 0 / 0.16),
+        0 4px 8px -4px rgb(0 0 0 / 0.1);
+}
+
+.cms-link-suggest-dropdown[x-cloak] {
+    display: none;
+}
+
+.dark .cms-link-suggest-dropdown {
+    background-color: rgb(24 24 27);
+    box-shadow:
+        0 0 0 1px rgb(255 255 255 / 0.1),
+        0 12px 24px -6px rgb(0 0 0 / 0.5);
+}
+
+.cms-link-suggest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    max-height: 16rem;
+    overflow-y: auto;
+}
+
+.cms-link-suggest-loading {
+    opacity: 0.5;
+}
+
+.cms-link-suggest-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.4375rem 0.625rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+}
+
+.cms-link-suggest-item:hover {
+    background-color: rgb(0 0 0 / 0.04);
+}
+
+.dark .cms-link-suggest-item:hover {
+    background-color: rgb(255 255 255 / 0.06);
+}
+
+/* Keyboard selection: primary tint (color-mix keeps it palette-aware). */
+.cms-link-suggest-item-active,
+.cms-link-suggest-item-active:hover {
+    background-color: color-mix(in srgb, var(--primary-500) 12%, transparent);
+}
+
+.cms-link-suggest-item-icon {
+    height: 1rem;
+    width: 1rem;
+    flex-shrink: 0;
+    color: var(--gray-400);
+}
+
+.cms-link-suggest-item-active .cms-link-suggest-item-icon {
+    color: var(--primary-600);
+}
+
+.dark .cms-link-suggest-item-active .cms-link-suggest-item-icon {
+    color: var(--primary-400);
+}
+
+.cms-link-suggest-item-text {
+    display: grid;
+    min-width: 0;
+}
+
+.cms-link-suggest-item-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    color: var(--gray-950);
+}
+
+.dark .cms-link-suggest-item-title {
+    color: var(--gray-200);
+}
+
+.cms-link-suggest-item-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: var(--gray-500);
+}
+
+.dark .cms-link-suggest-item-path {
+    color: var(--gray-400);
+}
+
+/* ── Link bubble ───────────────────────────────────────────────────────────
+   Floating "Bearbeiten"/"Entfernen" tooltip shown when the caret sits inside
+   an existing link (tiptap-extensions/link-bubble.js). Appended to <body>,
+   positioned fixed at the link's start coordinates. */
+
+.cms-link-bubble {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    max-width: 26rem;
+    border-radius: 0.5rem;
+    background-color: #fff;
+    padding: 0.375rem 0.625rem;
+    font-size: 0.8125rem;
+    line-height: 1.25rem;
+    box-shadow:
+        0 0 0 1px rgb(0 0 0 / 0.08),
+        0 8px 20px -6px rgb(0 0 0 / 0.2);
+}
+
+.dark .cms-link-bubble {
+    background-color: rgb(24 24 27);
+    box-shadow:
+        0 0 0 1px rgb(255 255 255 / 0.1),
+        0 8px 20px -6px rgb(0 0 0 / 0.6);
+}
+
+.cms-link-bubble-href {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 14rem;
+    color: var(--gray-500);
+}
+
+.dark .cms-link-bubble-href {
+    color: var(--gray-400);
+}
+
+.cms-link-bubble-btn {
+    flex-shrink: 0;
+    cursor: pointer;
+    border: 0;
+    background: none;
+    padding: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--primary-600);
+}
+
+.cms-link-bubble-btn:hover {
+    text-decoration: underline;
+}
+
+.dark .cms-link-bubble-btn {
+    color: var(--primary-400);
+}
+
+/* The remove action reads as destructive. */
+.cms-link-bubble-btn:last-child {
+    color: var(--danger-600);
+}
+
+.dark .cms-link-bubble-btn:last-child {
+    color: var(--danger-400);
+}

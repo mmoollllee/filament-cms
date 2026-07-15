@@ -57,11 +57,34 @@ it('declares title and wire:navigate on both sides of the link mark', function (
 
     expect($phpAttributes)->toContain('title')->toContain('wire:navigate');
 
-    // Editor side: the plugin ships the link-attributes JS extension, so the
-    // attributes survive client-side re-editing (setLink drops undeclared attrs).
+    // Editor side: the plugin ships the link-attributes JS extension (so the
+    // attributes survive client-side re-editing — setLink drops undeclared
+    // attrs) plus the link-bubble tooltip.
     expect(app(LinkPickerPlugin::class)->getTipTapJsExtensions())
-        ->toHaveCount(1)
-        ->and(app(LinkPickerPlugin::class)->getTipTapJsExtensions()[0])->toContain('link-attributes');
+        ->toHaveCount(2)
+        ->and(app(LinkPickerPlugin::class)->getTipTapJsExtensions()[0])->toContain('link-attributes')
+        ->and(app(LinkPickerPlugin::class)->getTipTapJsExtensions()[1])->toContain('link-bubble');
+});
+
+it('marks the toolbar tool so the link bubble can re-trigger it', function () {
+    $tool = collect(app(LinkPickerPlugin::class)->getEditorTools())
+        ->first(fn ($tool) => $tool->getName() === 'linkPicker');
+
+    // The bubble's "Bearbeiten" button clicks [data-cms-tool="link-picker"];
+    // without the attribute the bubble renders but its edit action is dead.
+    expect($tool->getExtraAttributes())->toMatchArray(['data-cms-tool' => 'link-picker']);
+});
+
+it('keeps the unsetLink path reachable: the URL field must not be required', function () {
+    // Clearing the URL and saving is the way to remove a link (same UX as
+    // Filament's built-in link tool). A required() URL — as an earlier version
+    // had via the suggestion-input factory — makes that branch unreachable.
+    $href = collect(LinkPickerPlugin::linkSchema(editing: true))
+        ->first(fn ($component) => $component instanceof \DefStudio\SearchableInput\Forms\Components\SearchableInput);
+
+    expect($href)->not->toBeNull()
+        ->and($href->isRequired())->toBeFalse()
+        ->and($href->getFieldWrapperView())->toBe('cms-link-suggestions-wrapper');
 });
 
 it('removes the link via unsetLink when the href is cleared, extending a collapsed selection', function () {

@@ -1,6 +1,6 @@
 <?php
 
-namespace Mmoollllee\Cms\Filament\RichEditor;
+namespace Mmoollllee\Cms\Filament\Forms;
 
 use DefStudio\SearchableInput\DTO\SearchResult;
 use DefStudio\SearchableInput\Forms\Components\SearchableInput;
@@ -12,27 +12,32 @@ use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 /**
- * Provides pre-configured SearchableInput fields for URL/href and label fields.
+ * Pre-configured SearchableInput factories for link fields (href + label).
  *
- * Used by LinkPickerPlugin, ButtonGroupBlock, and NavigationCardGroupBlock
- * to offer WordPress-style autocomplete for internal Content paths.
+ * WordPress-style autocomplete over the tenant's routable Content paths,
+ * rendered with the package's two-line suggestion dropdown (title + path,
+ * {@see resources/views/filament/forms/link-suggestions-wrapper.blade.php}).
  *
- * @see SearchableInput
+ * Used by the RichEditor (LinkPickerPlugin, ButtonGroupBlock,
+ * NavigationCardGroupBlock) and reusable in any consumer resource form:
+ *
+ *     ContentPathSuggestions::makeHrefInput('payload.link')->label('Link'),
+ *
+ * The factories only wire search + suggestion UX; layout concerns (labels,
+ * column spans, required) stay at the call site.
  */
 final class ContentPathSuggestions
 {
     /**
-     * SearchableInput for a standalone href field (LinkPicker).
+     * SearchableInput for an href field.
      *
      * Searches Content by path and title, fills the field with the path only.
      */
     public static function makeHrefInput(string $name = 'href'): SearchableInput
     {
-        return SearchableInput::make($name)
-            ->hiddenLabel()
+        return self::baseInput($name)
+            ->label('URL')
             ->placeholder('/relativer-pfad oder https://...')
-            ->required()
-            ->columnSpan('4')
             ->searchUsing(fn (string $search): array => self::search($search));
     }
 
@@ -62,15 +67,10 @@ final class ContentPathSuggestions
      */
     public static function makeLabelInput(string $name = 'label', string $hrefField = 'href'): SearchableInput
     {
-        return SearchableInput::make($name)
-            ->hiddenLabel()
+        return self::baseInput($name)
+            ->label('Beschriftung')
             ->placeholder('Buttonbeschriftung')
-            ->required()
-            ->columnSpan('4')
-            ->live()
-            ->searchUsing(function (string $search): array {
-                return static::searchByTitle($search);
-            })
+            ->searchUsing(fn (string $search): array => self::searchByTitle($search))
             ->onItemSelected(function (SearchResult $item, Get $get, Set $set) use ($hrefField): void {
                 $path = $item->get('path');
 
@@ -81,34 +81,43 @@ final class ContentPathSuggestions
     }
 
     /**
-     * Search Content by path — returns path as value, attaches title as data.
+     * Shared base: a SearchableInput rendered with the package's styled
+     * suggestion dropdown instead of the vendor wrapper.
+     */
+    private static function baseInput(string $name): SearchableInput
+    {
+        return SearchableInput::make($name)
+            ->fieldWrapperView('cms-link-suggestions-wrapper');
+    }
+
+    /**
+     * Search Content by path — path is the value the href field fills with.
      *
      * @return array<int, SearchResult>
      */
     protected static function search(string $search): array
     {
-        $query = self::baseQuery($search);
-
-        if ($query === null) {
-            return [];
-        }
-
-        return $query
-            ->orderBy('path')
-            ->get(['title', 'path'])
-            ->map(fn (Content $content): SearchResult => SearchResult::make(
-                value: $content->path,
-                label: "{$content->title}  —  {$content->path}",
-            )->withData('title', $content->title))
-            ->all();
+        return self::results($search, valueColumn: 'path');
     }
 
     /**
-     * Search Content by title — returns title as value, attaches path as data.
+     * Search Content by title — title is the value the label field fills with.
      *
      * @return array<int, SearchResult>
      */
     protected static function searchByTitle(string $search): array
+    {
+        return self::results($search, valueColumn: 'title');
+    }
+
+    /**
+     * Run the shared query and map to two-line suggestions. `valueColumn`
+     * decides which column fills the field (path for href, title for label);
+     * every result carries title + path as data for the dropdown either way.
+     *
+     * @return array<int, SearchResult>
+     */
+    private static function results(string $search, string $valueColumn): array
     {
         $query = self::baseQuery($search);
 
@@ -117,12 +126,12 @@ final class ContentPathSuggestions
         }
 
         return $query
-            ->orderBy('title')
+            ->orderBy($valueColumn)
             ->get(['title', 'path'])
             ->map(fn (Content $content): SearchResult => SearchResult::make(
-                value: $content->title,
+                value: $content->{$valueColumn},
                 label: "{$content->title} — {$content->path}",
-            )->withData('path', $content->path))
+            )->withData('title', $content->title)->withData('path', $content->path))
             ->all();
     }
 

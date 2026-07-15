@@ -32,6 +32,9 @@ abstract class FieldKit
     /** @var array<int, mixed> */
     protected array $appended = [];
 
+    /** @var array<string, array<int, \Closure>> */
+    protected array $configured = [];
+
     public static function make(): static
     {
         return new static;
@@ -87,6 +90,22 @@ abstract class FieldKit
     }
 
     /**
+     * Adapt a single named field fluently (helper text, placeholder, …)
+     * without forking the shared definition:
+     *
+     *     LinkFields::make('payload.link')
+     *         ->configure('url', fn ($field) => $field->helperText('…'))
+     *
+     * The closure may mutate the component in place or return a replacement.
+     */
+    public function configure(string $key, \Closure $callback): static
+    {
+        $this->configured[$key][] = $callback;
+
+        return $this;
+    }
+
+    /**
      * Resolve the configured field list for use in a Filament `->schema([...])`.
      *
      * @return array<int, Component>
@@ -109,6 +128,16 @@ abstract class FieldKit
 
         foreach ($this->without as $key) {
             unset($fields[$key]);
+        }
+
+        foreach ($this->configured as $key => $callbacks) {
+            if (! isset($fields[$key])) {
+                continue;
+            }
+
+            foreach ($callbacks as $callback) {
+                $fields[$key] = $callback($fields[$key]) ?? $fields[$key];
+            }
         }
 
         return [...$this->prepended, ...array_values($fields), ...$this->appended];

@@ -259,8 +259,46 @@ attachments, undo/redo, source code, custom blocks, embeds, merge tags
 
 **Link picker** — a WordPress-style modal replacing the bare link tool: URL with
 **internal-path autocomplete** (type "kon…" → pick `/kontakt`, powered by
-`ContentPathSuggestions` querying your Content model), tooltip title, CSS classes,
-`rel`, `wire:navigate`. Applies via editor commands (`setLink`/`unsetLink`).
+`Mmoollllee\Cms\Filament\Forms\ContentPathSuggestions` querying your Content model)
+and `wire:navigate` up front; tooltip title, CSS classes and `rel` live in a
+collapsed "Erweitert" section (auto-expanded when the edited link carries such
+attributes). Clearing the URL and saving removes the link. Applies via editor
+commands (`setLink`/`unsetLink`).
+
+Clicking into an existing link shows a floating **link bubble** (WordPress-style):
+the href plus "Bearbeiten" (re-opens the picker modal, prefilled) and "Entfernen"
+(unsets the mark client-side) — `tiptap-extensions/link-bubble.js`.
+
+The autocomplete is reusable in any resource form — suggestions render as styled
+two-line entries (title + path) and can auto-fill a sibling label field with the
+page title:
+
+```php
+use Mmoollllee\Cms\Filament\Forms\ContentPathSuggestions;
+
+ContentPathSuggestions::makeHrefInputWithLabel('payload.link', 'payload.link_label')
+    ->label('Link'),
+```
+
+For a full link field group with the **same options as the picker modal** (URL,
+button label, wire:navigate, collapsed Erweitert section with tooltip title /
+CSS classes / rel) use the `LinkFields` kit, and render the stored values with
+`PayloadLink`:
+
+```php
+use Mmoollllee\Cms\Fields\LinkFields;
+
+...LinkFields::make('payload.link')
+    ->configure('url', fn ($field) => $field->helperText('Projektspezifisch'))
+    ->toArray(),
+```
+
+```blade
+@php $link = \Mmoollllee\Cms\Support\Content\PayloadLink::from($content->payload); @endphp
+@if ($link->hasUrl())
+    <a {{ $link->attributes(['class' => 'btn btn-sm']) }}>{{ $link->labelOr('Mehr erfahren') }}</a>
+@endif
+```
 
 **Custom blocks** — block-level components inside rich text:
 `ButtonGroupBlock` (CTA button rows — 7 variants, 3 sizes, icons, alignment) and

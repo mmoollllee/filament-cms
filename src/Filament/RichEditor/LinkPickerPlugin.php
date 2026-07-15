@@ -9,9 +9,12 @@ use Filament\Forms\Components\RichEditor\EditorCommand;
 use Filament\Forms\Components\RichEditor\Plugins\Contracts\RichContentPlugin;
 use Filament\Forms\Components\RichEditor\RichEditorTool;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Support\Enums\Width;
 use Filament\Support\Facades\FilamentAsset;
 use Filament\Support\Icons\Heroicon;
+use Mmoollllee\Cms\Filament\Forms\ContentPathSuggestions;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Tiptap\Core\Extension;
 
@@ -19,8 +22,9 @@ use Tiptap\Core\Extension;
  * LinkPicker RichEditor Plugin — WordPress-style link picker.
  *
  * Replaces the built-in link tool with a modal offering internal-path
- * autocomplete ({@see ContentPathSuggestions}), a title/tooltip, CSS classes,
- * a rel attribute and wire:navigate. Applies the mark via the editor's
+ * autocomplete ({@see ContentPathSuggestions}) and wire:navigate up front,
+ * plus a collapsed "Erweitert" section (title/tooltip, CSS classes, rel).
+ * Applies the mark via the editor's
  * setLink/unsetLink commands (like Filament's own LinkAction); the server-side
  * {@see LinkPicker} TipTap mark renders the extra attributes on output.
  *
@@ -46,13 +50,16 @@ class LinkPickerPlugin implements RichContentPlugin
     }
 
     /**
-     * The built-in link mark plus the package's global-attributes extension
-     * (title, wire:navigate) — see resources/js/tiptap-extensions/link-attributes.js.
+     * The built-in link mark plus the package's extensions: link-attributes
+     * (title, wire:navigate survive re-editing) and link-bubble (floating
+     * "Bearbeiten"/"Entfernen" tooltip on an existing link) — sources in
+     * resources/js/tiptap-extensions/.
      */
     public function getTipTapJsExtensions(): array
     {
         return [
             FilamentAsset::getScriptSrc('tiptap-link-attributes', 'mmoollllee/filament-cms'),
+            FilamentAsset::getScriptSrc('tiptap-link-bubble', 'mmoollllee/filament-cms'),
         ];
     }
 
@@ -69,7 +76,11 @@ class LinkPickerPlugin implements RichContentPlugin
                         'wire:navigate': $getEditor().getAttributes('link') ? $getEditor().getAttributes('link')['wire:navigate'] : null
                     }
                     JS)
-                ->icon(Heroicon::Link),
+                ->icon(Heroicon::Link)
+                // Stable hook for the link-bubble's "Bearbeiten" button — it
+                // re-triggers this tool so the modal mounts with the live
+                // editorSelection + prefilled attributes.
+                ->extraAttributes(['data-cms-tool' => 'link-picker']),
         ];
     }
 
@@ -77,9 +88,10 @@ class LinkPickerPlugin implements RichContentPlugin
     {
         return [
             Action::make('linkPicker')
-                ->modalHeading('Link einfügen')
-                ->modalWidth(Width::Medium)
-                ->schema(static::linkSchema())
+                ->modalHeading(fn (array $arguments): string => filled($arguments['href'] ?? null) ? 'Link bearbeiten' : 'Link einfügen')
+                ->modalSubmitActionLabel(fn (array $arguments): string => filled($arguments['href'] ?? null) ? 'Speichern' : 'Einfügen')
+                ->modalWidth(Width::Large)
+                ->schema(fn (array $arguments): array => static::linkSchema(editing: filled($arguments['href'] ?? null)))
                 ->fillForm(function (array $arguments): array {
                     return [
                         'href' => $arguments['href'] ?? null,
@@ -125,28 +137,42 @@ class LinkPickerPlugin implements RichContentPlugin
     }
 
     /**
-     * The link form schema: internal-path autocomplete + attribute fields.
+     * The link form schema: internal-path autocomplete up front, the rarely
+     * used attribute fields tucked into a collapsed "Erweitert" section (it
+     * opens expanded when the edited link already carries such attributes).
+     *
+     * The URL is deliberately NOT required: clearing it and saving removes the
+     * link (the action's unsetLink branch) — same UX as Filament's built-in
+     * link tool.
      */
-    public static function linkSchema(): array
+    public static function linkSchema(bool $editing = false): array
     {
         return [
             ContentPathSuggestions::makeHrefInput()
-                ->hiddenLabel(false)
-                ->label('URL')
+                ->autofocus()
+                ->helperText($editing ? 'Leer lassen und speichern, um den Link zu entfernen.' : null)
                 ->columnSpanFull(),
 
-            TextInput::make('title')
-                ->label('Titel (Tooltip)'),
-
-            TextInput::make('class')
-                ->label('CSS-Klassen'),
-
-            TextInput::make('rel')
-                ->label('rel-Attribut')
-                ->placeholder('noopener noreferrer nofollow'),
-
             Checkbox::make('wire_navigate')
-                ->label('wire:navigate (SPA-Navigation)'),
+                ->label('wire:navigate (SPA-Navigation ohne Neuladen)'),
+
+            Section::make('Erweitert')
+                ->schema([
+                    TextInput::make('title')
+                        ->label('Titel (Tooltip)')
+                        ->columnSpanFull(),
+
+                    TextInput::make('class')
+                        ->label('CSS-Klassen'),
+
+                    TextInput::make('rel')
+                        ->label('rel-Attribut')
+                        ->placeholder('noopener noreferrer nofollow'),
+                ])
+                ->columns(2)
+                ->compact()
+                ->collapsible()
+                ->collapsed(fn (Get $get): bool => blank($get('title')) && blank($get('class')) && blank($get('rel'))),
         ];
     }
 }

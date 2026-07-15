@@ -9,7 +9,7 @@ use Filament\Forms\Components\RichEditor\RichContentCustomBlock;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Utilities\Get;
-use Mmoollllee\Cms\Filament\RichEditor\ContentPathSuggestions;
+use Mmoollllee\Cms\Filament\Forms\ContentPathSuggestions;
 use Mmoollllee\Cms\Filament\RichEditor\IconOptions;
 
 /**
@@ -57,8 +57,15 @@ class ButtonGroupBlock extends RichContentCustomBlock
             ->schema([
                 Repeater::make('buttons')
                     ->schema([
-                        ContentPathSuggestions::makeLabelInput('label', 'href'),
-                        ContentPathSuggestions::makeHrefInputWithLabel('href', 'label'),
+                        ContentPathSuggestions::makeLabelInput('label', 'href')
+                            ->hiddenLabel()
+                            ->required()
+                            ->live()
+                            ->columnSpan(4),
+                        ContentPathSuggestions::makeHrefInputWithLabel('href', 'label')
+                            ->hiddenLabel()
+                            ->required()
+                            ->columnSpan(4),
                         Checkbox::make('wire_navigate')
                             ->columnSpan(4)
                             ->label('wire:navigate'),

@@ -35,6 +35,7 @@ use Mmoollllee\Cms\Support\Routing\PathSuggestionResolver;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
 
 /**
  * Boots the shared CMS engine.
@@ -111,6 +112,12 @@ class CmsServiceProvider extends ServiceProvider
         $this->loadViewsFrom($views, 'cms');
         $this->publishes([$views => resource_path('views/vendor/cms')], 'cms-views');
 
+        // Styled field wrapper for the ContentPathSuggestions inputs (two-line
+        // link suggestions). Filament resolves field wrappers as dynamic Blade
+        // components, so the view needs a component alias:
+        // ->fieldWrapperView('cms-link-suggestions-wrapper').
+        Blade::component(LinkSuggestionsWrapper::class, 'cms-link-suggestions-wrapper');
+
         // Frontend/error/mail fallback strings under the `cms::` namespace
         // (lang/de + lang/en; the app locale picks the language). Apps adjust
         // single strings by publishing to lang/vendor/cms.
@@ -160,6 +167,7 @@ class CmsServiceProvider extends ServiceProvider
             Js::make('tiptap-html-div', __DIR__.'/../resources/dist/tiptap-extensions/html-div.js')->loadedOnRequest(),
             Js::make('tiptap-html-span', __DIR__.'/../resources/dist/tiptap-extensions/html-span.js')->loadedOnRequest(),
             Js::make('tiptap-link-attributes', __DIR__.'/../resources/dist/tiptap-extensions/link-attributes.js')->loadedOnRequest(),
+            Js::make('tiptap-link-bubble', __DIR__.'/../resources/dist/tiptap-extensions/link-bubble.js')->loadedOnRequest(),
             // Precompiled builder UX styles (inactive pill, preview interaction, inline
             // editing) — plain CSS, so every panel works without a custom vite theme.
             Css::make('filament-cms-builder', __DIR__.'/../resources/css/builder.css'),

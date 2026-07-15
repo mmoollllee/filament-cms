@@ -8,7 +8,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor\RichContentCustomBlock;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Mmoollllee\Cms\Filament\RichEditor\ContentPathSuggestions;
+use Mmoollllee\Cms\Filament\Forms\ContentPathSuggestions;
 
 /**
  * Block-level navigation card group for the RichEditor.
@@ -39,8 +39,15 @@ class NavigationCardGroupBlock extends RichContentCustomBlock
                 Repeater::make('cards')
                     ->label('Karten')
                     ->schema([
-                        ContentPathSuggestions::makeLabelInput('label', 'href'),
-                        ContentPathSuggestions::makeHrefInputWithLabel('href', 'label'),
+                        ContentPathSuggestions::makeLabelInput('label', 'href')
+                            ->hiddenLabel()
+                            ->required()
+                            ->live()
+                            ->columnSpan(4),
+                        ContentPathSuggestions::makeHrefInputWithLabel('href', 'label')
+                            ->hiddenLabel()
+                            ->required()
+                            ->columnSpan(4),
                         Checkbox::make('wire_navigate')
                             ->label('wire:navigate')
                             ->columnSpan(4),
