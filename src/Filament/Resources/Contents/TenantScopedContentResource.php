@@ -572,17 +572,17 @@ abstract class TenantScopedContentResource extends Resource
                     ->getTitleFromRecordUsing(fn (Model $record): string => $record->parent?->title ?? 'Oberste Ebene')
                     ->collapsible(),
             ])
+            // The "↳" indent walks the parent chain per row — keep it query-free.
+            ->modifyQueryUsing(fn (EloquentBuilder $query) => $query->with('parent.parent.parent.parent'))
             ->columns([
                 TextColumn::make('title')
+                    ->label('Titel')
                     ->searchable()
-                    // Hierarchy at a glance: indent nested pages by their path depth.
-                    ->formatStateUsing(function ($state, Model $record): string {
-                        $depth = filled($record->path)
-                            ? substr_count(trim((string) $record->path, '/'), '/')
-                            : 0;
-
-                        return str_repeat('↳ ', min($depth, 4)).$state;
-                    }),
+                    // Hierarchy at a glance: indent a row under ancestors this table
+                    // actually lists. Flat single-type or parent-scoped listings
+                    // (machines, categories) show no indent — the parent row the
+                    // arrow would point at is not part of the table.
+                    ->formatStateUsing(fn ($state, Model $record): string => str_repeat('↳ ', static::listedAncestorDepth($record)).$state),
                 TextColumn::make('content_type')
                     ->label('Typ')
                     ->badge()
@@ -590,9 +590,11 @@ abstract class TenantScopedContentResource extends Resource
                         ->find((string) $state, $tenant?->site_key)?->label() ?? (string) $state)
                     ->visible(count(static::getContentTypes()) !== 1),
                 TextColumn::make('path')
+                    ->label('Pfad')
                     ->searchable()
                     ->visible($routable),
                 TextColumn::make('slug')
+                    ->label('Slug')
                     ->searchable()
                     ->visible(! $routable),
                 TextColumn::make('visibility')
@@ -840,6 +842,44 @@ abstract class TenantScopedContentResource extends Resource
     // -------------------------------------------------------------------------
     //  Content Type Helpers
     // -------------------------------------------------------------------------
+
+    /**
+     * How many of the record's ancestors this table itself lists — drives the
+     * "↳" title indent. The arrow visually attaches a child to its parent ROW,
+     * so it only makes sense when that parent can appear in the same listing:
+     * the unrestricted pages tree indents nested pages, while a type-restricted
+     * listing (machines, categories) or a parent-scoped children view shows a
+     * flat set and gets no indent. Mirrors the getEloquentQuery() restrictions;
+     * capped at 4 levels like the visual indent always was.
+     */
+    public static function listedAncestorDepth(Model $record): int
+    {
+        // Parent-scoped view: only ONE parent's children are listed — the
+        // parent row itself is never among them.
+        if (static::supportsParentScopedListing()
+            && static::resolveRequestedParentId(app(CurrentTenant::class)->get()) !== null) {
+            return 0;
+        }
+
+        $types = static::getContentTypes();
+        $requestedType = static::getRequestedContentType();
+        $depth = 0;
+        $ancestor = $record->parent;
+
+        while ($ancestor !== null && $depth < 4) {
+            $listed = ($types === [] || in_array($ancestor->content_type, $types, true))
+                && ($requestedType === null || $ancestor->content_type === $requestedType);
+
+            if (! $listed) {
+                break;
+            }
+
+            $depth++;
+            $ancestor = $ancestor->parent;
+        }
+
+        return $depth;
+    }
 
     /**
      * @return array<int, string>
