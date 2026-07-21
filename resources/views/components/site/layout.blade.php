@@ -44,6 +44,8 @@
 <body class="site min-h-screen antialiased text-white" style="{{ $siteBrandingStyle }}">
     {{ $slot }}
 
+    @include('cms::partials.preview-badge')
+
     {{-- Optional GDPR consent layer: rendered only when the project installs
          mmoollllee/filament-consent-control (which pulls in laravel-consent-control).
          The CMS engine wires the banner + runtime boot; the consent config and

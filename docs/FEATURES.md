@@ -162,6 +162,65 @@ The fallback header renders the trail with plain CSS truncation; richer behavior
 implementation) lives in app view/JS copies
 ([CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
 
+## Drafts & preview
+
+**Draft workflow** — the content + fragment edit pages replace the single save with a
+pair, rendered in the form footer AND the page header: **"Entwurf speichern"** stashes
+the validated form state into the record's `draft` JSON column (the live site keeps
+serving the applied version), **"Änderungen anwenden"** is the classic save — it applies
+the form state and clears the stash. The draft button is disabled while the form has no
+unsaved changes (client-side hash comparison against the last fill/stash/apply baseline
+— same formula as Filament's unsaved-changes alert, but independent of that panel
+option). Reopening the form continues on the draft (the
+virtual `status` derives from the DRAFT publishing window), the subheading + a warning
+badge in the list tables flag pending drafts, and **"Entwurf verwerfen"** (header, only
+while a draft exists) drops the stash after confirmation. The delete action moved from
+the header into the form footer as an icon-only trash button. Draft-only saves do NOT
+invalidate the warm frontend caches.
+
+**Creating as draft** — the create pages offer **"Als Entwurf anlegen"** beside
+"Erstellen" (footer + header): the normal create pipeline runs, but the applied row is
+neutralized — content pages persist with an EMPTY publishing window (unpublished, the
+entered window only takes effect on apply), the fragment page without active blocks
+(`hasContent()` false → renders nowhere, the branding cascade keeps serving its
+fallback) — and the full form state lands in the draft stash. The redirect target (the
+edit page) therefore opens directly in the draft workflow.
+
+**Preview mode ("Vorschau")** — the header's eye action first stashes the CURRENT form
+state as the draft (same validation as "Entwurf speichern"; on failure the tab closes
+and the form shows the errors), then opens the record's frontend URL with `?preview=1`
+in a new tab — the preview always shows exactly what the form shows. Fragments/
+non-routable types open the homepage/parent — they preview wherever they are embedded.
+The sticky session flag is scoped PER TENANT (shared-cookie multi-site installs don't
+leak the mode across sites), never activates on panel or Livewire request paths (an
+overlay there would corrupt admin write flows), and every guest-facing cache builder
+(sitemap, sections, redirect map, menu links, 404 candidates) bypasses the overlay —
+draft data cannot be frozen into caches guests read. Draft persistence itself is
+column-targeted: stash/discard write only the `draft` column, so they can never carry
+other attribute changes into the live row. The mode is session-sticky (leave via `?preview=0` or the
+floating badge's "Beenden"), and only superadmins/members of the resolved tenant can
+activate it. While active, EVERY retrieved Content/Fragment overlays its draft
+(`HasDraft` hooks the `retrieved` event) — pending changes show up on the record's own
+page, in listing blocks, fragments and onepager sections alike, with zero call-site
+changes. Guests always get the applied version; preview requests bypass the path cache
+(logged-in resolution always does) so drafts can never leak into cached responses.
+
+**App wiring** — the concrete models opt in:
+
+```php
+class Content extends Model implements \Mmoollllee\Cms\Contracts\Content
+{
+    use \Mmoollllee\Cms\Concerns\HasDraft;   // + Fragment model alike
+}
+```
+
+Existing installs add the `draft` column by copying the
+`add_draft_column_to_contents_and_fragments` reconcile migration (fresh installs get it
+via the create migrations). App-owned frontend shells include the floating indicator
+once per layout: `@include('cms::partials.preview-badge')` (inline-styled, no Tailwind
+build dependency). Models without the trait keep the classic save-only pages — every
+draft UI element hides.
+
 ## Block builder
 
 The customer-facing page composer, built on Filament's Builder field with a shared

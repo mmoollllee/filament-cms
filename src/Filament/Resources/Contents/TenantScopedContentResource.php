@@ -51,6 +51,7 @@ use Mmoollllee\Cms\Models\LayoutPreset;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
+use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 abstract class TenantScopedContentResource extends Resource
@@ -532,6 +533,14 @@ abstract class TenantScopedContentResource extends Resource
      * keys, rendered collapsed at the very end of the form. Only shown for blueprints
      * that set showsPayloadEditor() (off by default), and only meaningful for types
      * without structured payloadFormComponents() — it round-trips the whole payload.
+     *
+     * The editor works on a COPY (`raw_payload`), never on the `payload` state path
+     * itself: Filament drops a hidden component's state path from the dehydrated
+     * state ENTIRELY, so a hidden editor bound to `payload` would erase every
+     * sibling structured field on save (payload.hero.*, payload.has_teaser, teaser
+     * blocks — the catch-all keeps the editor in the tree and only toggles
+     * visibility). The pages fold the copy back via {@see mergeRawPayload()},
+     * which only sees the key when the editor was visible and dehydrated.
      */
     protected static function rawPayloadSection(): Section
     {
@@ -541,10 +550,38 @@ abstract class TenantScopedContentResource extends Resource
             ->collapsible()
             ->columnSpanFull()
             ->schema([
-                KeyValue::make('payload')
+                // The copy is FILLED by the edit page (ContentEditPage seeds
+                // `raw_payload` from the record's/draft's payload in its fill
+                // mutation) — hydrating from the sibling `payload` state here
+                // would pick up field-hydration artifacts (empty hero rows,
+                // toggles) instead of the stored payload.
+                KeyValue::make('raw_payload')
                     ->hiddenLabel()
                     ->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * Fold the raw payload editor's copy back into `payload`. The `raw_payload`
+     * key exists in the dehydrated form state only while the editor is visible;
+     * structured `payload.*` fields win on key collisions.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public static function mergeRawPayload(array $data): array
+    {
+        if (! array_key_exists('raw_payload', $data)) {
+            return $data;
+        }
+
+        $rawPayload = is_array($data['raw_payload']) ? $data['raw_payload'] : [];
+
+        $data['payload'] = ($data['payload'] ?? []) + $rawPayload;
+
+        unset($data['raw_payload']);
+
+        return $data;
     }
 
     // -------------------------------------------------------------------------
@@ -611,6 +648,7 @@ abstract class TenantScopedContentResource extends Resource
                         'expired' => 'danger',
                         default => 'gray',
                     }),
+                Drafts::tableBadgeColumn(Cms::contentModel()),
             ])
             ->filters(static::tableFilters())
             ->recordActions([
@@ -627,11 +665,20 @@ abstract class TenantScopedContentResource extends Resource
                     ReplicateAction::make()
                         ->label('Duplizieren')
                         ->icon(Heroicon::OutlinedDocumentDuplicate)
-                        ->schema([static::getDuplicateInput($tenant)])
-                        ->mutateRecordDataUsing(function (array $data): array {
+                        // Never copy a pending draft stash into the replica —
+                        // its edit page would load the SOURCE's draft over the
+                        // fresh title/path entered in this modal.
+                        ->excludeAttributes(['draft'])
+                        // Record-based blueprint resolution: the catch-all has
+                        // no static blueprint, but the record being duplicated
+                        // knows its type (slug-only modal for non-routable types).
+                        ->schema(fn (Model $record): array => [
+                            static::getDuplicateInput($tenant, static::blueprintForRecord($record)),
+                        ])
+                        ->mutateRecordDataUsing(function (array $data, Model $record): array {
                             // Prefill the modal: append "(Kopie)" to the title and derive a
                             // fresh, collision-free path/slug from it (the user can override).
-                            $blueprint = static::resolveFormBlueprint();
+                            $blueprint = static::blueprintForRecord($record);
                             $title = trim(($data['title'] ?? '').' (Kopie)');
 
                             $data['title'] = $title;
@@ -1184,9 +1231,8 @@ abstract class TenantScopedContentResource extends Resource
     //  Title / Path
     // -------------------------------------------------------------------------
 
-    protected static function buildTitleWithSlugInput(?Tenant $tenant): FusedGroup
+    protected static function buildTitleWithSlugInput(?Tenant $tenant): Grid|FusedGroup
     {
-        $config = static::titleSlugConfig();
         $blueprint = static::resolveFormBlueprint();
 
         // Non-routable types have no path/URL — edit a plain, tenant-unique slug instead
@@ -1195,6 +1241,34 @@ abstract class TenantScopedContentResource extends Resource
         if ($blueprint !== null && ! $blueprint->isRoutable()) {
             return static::getSlugOnlyInput($tenant);
         }
+
+        if ($blueprint !== null) {
+            return static::getRoutableTitleInput($tenant, $blueprint);
+        }
+
+        // Multi-type catch-all: no static blueprint — mirror the single-type
+        // choice REACTIVELY on the selected content type. Both variants share
+        // the `title` state path; only the visible one dehydrates it (and its
+        // own path/slug field), so a non-routable selection edits the slug and
+        // never demands the routable variant's required path.
+        $isRoutable = static::formIsRoutable();
+
+        return Grid::make(1)
+            ->columnSpanFull()
+            ->schema([
+                static::getRoutableTitleInput($tenant, null)
+                    ->visible($isRoutable),
+                static::getSlugOnlyInput($tenant)
+                    ->visible(fn (Get $get): bool => ! $isRoutable($get)),
+            ]);
+    }
+
+    /**
+     * The routable title + "Pfad" variant (URL preview, path slugifier).
+     */
+    protected static function getRoutableTitleInput(?Tenant $tenant, ?ContentBlueprint $blueprint): FusedGroup
+    {
+        $config = static::titleSlugConfig();
 
         $pathPrefix = $config['urlPath'] ?? $blueprint?->urlPathPrefix();
 
@@ -1288,13 +1362,24 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
+     * The record's blueprint by its stored content type — the reliable lookup
+     * for record-bound actions on the multi-type catch-all (falls back to the
+     * resource's static blueprint for single-type resources).
+     */
+    protected static function blueprintForRecord(Model $record): ?ContentBlueprint
+    {
+        return static::selectedBlueprint($record->getAttribute('content_type'))
+            ?? static::resolveFormBlueprint();
+    }
+
+    /**
      * Title + path (or slug, for non-routable types) input for the Duplizieren modal.
      * Unlike the form input it shows no URL host/visit link, and its uniqueness rule
      * does NOT ignore the source record — the copy must get its own path/slug.
      */
-    protected static function getDuplicateInput(?Tenant $tenant): FusedGroup
+    protected static function getDuplicateInput(?Tenant $tenant, ?ContentBlueprint $blueprint = null): FusedGroup
     {
-        $blueprint = static::resolveFormBlueprint();
+        $blueprint ??= static::resolveFormBlueprint();
         $routable = $blueprint?->isRoutable() ?? true;
 
         return TitleWithSlugInput::make(

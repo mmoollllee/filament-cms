@@ -28,6 +28,7 @@ return new class extends Migration
             $table->json('payload')->nullable();
             $table->json('references')->nullable();
             $table->json('meta')->nullable();
+            $table->json('draft')->nullable();
             $table->unsignedInteger('sort')->default(0);
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();

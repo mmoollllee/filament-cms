@@ -171,7 +171,7 @@ class DatabaseSeeder extends Seeder
             'publish_from' => now()->subWeek(),
             'payload' => ['hero' => [
                 'title' => 'The multi-tenant CMS toolkit for Filament',
-                'subtitle' => 'Build multi-tenant websites with content types, a block builder, layout presets and fragments — fully integrated into Filament.',
+                'subtitle' => 'Build multi-tenant websites with content types, a block builder, layout presets, fragments and a draft/preview workflow — fully integrated into Filament.',
                 'cta_label' => 'Explore the features',
                 'cta_url' => '/features',
             ]],
@@ -220,7 +220,7 @@ class DatabaseSeeder extends Seeder
 
     protected function seedFeatures(Tenant $tenant, array $presets): void
     {
-        Content::create([
+        $features = Content::create([
             'tenant_id' => $tenant->id,
             'content_type' => 'default.page',
             'title' => 'Features',
@@ -290,7 +290,29 @@ class DatabaseSeeder extends Seeder
                         ],
                     ]);
                     PHP)),
+                $this->textChild('Drafts & Vorschau', '<p><strong>„Entwurf speichern"</strong> stashes the validated form state in the record\'s <code>draft</code> column — the live site keeps serving the applied version until <strong>„Änderungen anwenden"</strong>. The <strong>Vorschau</strong> action saves the draft first, then opens the session-sticky preview mode (<code>?preview=1</code>, superadmins/members only): every retrieved content <em>and fragment</em> overlays its pending draft, wherever it renders — own page, listings, onepager sections, embedded fragments. <strong>Try it live:</strong> this very page carries a pending draft. <a href="/panel">Log in</a>, then open <a href="/features?preview=1">/features?preview=1</a> — an extra section appears; the floating badge leaves the mode.</p>'.$this->code('php', <<<'PHP'
+                    class Content extends Model implements ContentContract
+                    {
+                        use HasDraft;   // same trait on the Fragment model
+                    }
+
+                    // Panel: „Entwurf speichern" / „Änderungen anwenden" / Vorschau (eye).
+                    // Frontend: ?preview=1 enters, ?preview=0 (or the badge) leaves.
+                    PHP)),
             ])],
+        ]);
+
+        // Live demo for the draft workflow: the features page ships WITH a
+        // pending draft, so /features?preview=1 (logged in) shows this extra
+        // section while guests keep seeing the applied version above.
+        $features->stashDraft([
+            'title' => $features->title,
+            'blocks' => [
+                ...$features->blocks,
+                $this->section([
+                    $this->textChild('This section exists only in the pending draft', '<p>You are looking at the <strong>draft preview</strong>: the extra section is stashed in the page\'s <code>draft</code> column and never rendered for guests. Leave via <strong>„Beenden"</strong> on the floating badge (or <code>?preview=0</code>) — apply or discard the draft on the <a href="/panel">edit page</a>.</p>'),
+                ], ['title' => 'Draft preview — live demo', 'heading' => 'h2', 'header_preset_ids' => [$presets['header']->id]]),
+            ],
         ]);
     }
 
@@ -420,6 +442,7 @@ class DatabaseSeeder extends Seeder
                         use AssignsCurrentTenant;    // tenant_id from the request host
                         use ConvertsUploadedVideos;  // video re-encode job on save
                         use GeneratesPathAndSlug;    // collision-free path/slug
+                        use HasDraft;                // "Entwurf speichern" + Vorschau overlay
                         use HasPublishingStatus;     // status() + visibleTo()/ofType() scopes
                         use ResolvesLayoutPresets;   // resolvedLayoutPreset()
                     }
@@ -446,7 +469,7 @@ class DatabaseSeeder extends Seeder
                         public function siteKey(): string { return 'my-site'; }
                     }
                     PHP)),
-                $this->textChild('Resources & pages — 3-liners', '<p>Per-type Filament resources extend <code>TenantScopedContentResource</code>; their pages extend the package base pages and inherit block copy/paste, cross-builder drag &amp; drop, payload-preserving saves and parent-scoped listings:</p>'.$this->code('php', <<<'PHP'
+                $this->textChild('Resources & pages — 3-liners', '<p>Per-type Filament resources extend <code>TenantScopedContentResource</code>; their pages extend the package base pages and inherit block copy/paste, cross-builder drag &amp; drop, payload-preserving + draft-aware saves (Entwurf/Vorschau) and parent-scoped listings:</p>'.$this->code('php', <<<'PHP'
                     class ListPage extends ContentListPage
                     {
                         protected static string $resource = Resource::class;
@@ -713,6 +736,7 @@ class DatabaseSeeder extends Seeder
                 <tr><th>Path</th><th>Shows</th></tr>
                 <tr><td><code>/</code></td><td>Marketing home + this self-documentation (tenants, logins, feature matrix)</td></tr>
                 <tr><td><code>/features</code></td><td>Each feature with an intro + code snippet</td></tr>
+                <tr><td><code>/features?preview=1</code></td><td>Draft preview mode — the features page carries a pending draft (log in first)</td></tr>
                 <tr><td><code>/blocks</code></td><td>Live block showcase — every block rendered next to its code</td></tr>
                 <tr><td><code>/customize</code></td><td>Every extension point (the customization guide as seeded content)</td></tr>
                 <tr><td><code>/howto</code></td><td>Step-by-step guides: custom blocks (live HintBlock proof) + TipTap extensions</td></tr>
@@ -733,6 +757,7 @@ class DatabaseSeeder extends Seeder
                 <tr><td>Layout presets</td><td>Section grids, headers, listing wrapper — all preset-driven</td></tr>
                 <tr><td>Onepager &amp; sections</td><td>Tenant B (<code>localhost</code>): root <code>default.section</code> contents compose one page, each with its own path</td></tr>
                 <tr><td>Publishing states</td><td><code>/draft</code>, <code>/scheduled</code>, <code>/members</code> → 404 for guests</td></tr>
+                <tr><td>Drafts &amp; Vorschau</td><td><code>/features</code> carries a pending draft — log in, open <code>/features?preview=1</code>, leave via the floating badge</td></tr>
                 <tr><td>SEO</td><td><code>meta.*</code> per page; noindex on legal pages; tenant default SEO</td></tr>
                 <tr><td>Fragments / menus / spam quiz / roles</td><td>Seeded; visible in the panel and (menus) in the header/footer</td></tr>
             </table>

@@ -42,6 +42,23 @@ it('renders code snippets on the features page', function () {
         ->and($html)->toContain('fragment_model');          // fragments snippet
 });
 
+it('documents drafts & preview on the features page and demos it via the seeded pending draft', function () {
+    // Guests see the documentation section, but never the draft-only content.
+    $html = $this->get('http://127.0.0.1/features')->assertOk()->getContent();
+
+    expect($html)->toContain('Drafts &amp; Vorschau')
+        ->and($html)->toContain('HasDraft')
+        ->not->toContain('This section exists only in the pending draft');
+
+    // Logged in + ?preview=1: the stashed extra section and the badge render.
+    $this->actingAs(Workbench\App\Models\User::where('email', 'admin@example.test')->firstOrFail());
+
+    $preview = $this->get('http://127.0.0.1/features?preview=1')->assertOk()->getContent();
+
+    expect($preview)->toContain('This section exists only in the pending draft')
+        ->and($preview)->toContain('Vorschau: Entwürfe sichtbar');
+});
+
 it('renders the block showcase: live listing, media image and code', function () {
     $html = $this->get('http://127.0.0.1/blocks')->assertOk()->getContent();
 

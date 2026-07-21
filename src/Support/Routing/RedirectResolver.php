@@ -9,6 +9,7 @@ use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Observers\RedirectCacheObserver;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
  * Resolves an incoming path to an active redirect for a tenant.
@@ -56,7 +57,10 @@ class RedirectResolver
     {
         return Cache::rememberForever(
             $this->cacheKey($tenant->getKey()),
-            fn (): array => $this->buildMap($tenant),
+            // bypass(): buildMap() resolves content-target paths — built during
+            // a preview request they would freeze DRAFT paths into the
+            // guest-served redirect map.
+            fn (): array => app(PreviewMode::class)->bypass(fn (): array => $this->buildMap($tenant)),
         );
     }
 

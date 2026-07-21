@@ -19,4 +19,8 @@ class Blueprint extends ConfiguredContentBlueprint
     protected bool $isRoutable = false;
 
     protected bool $hasBuilder = false;
+
+    // Demo for the opt-in raw payload editor (and its delete-persistence
+    // contract, pinned by ContentRawPayloadEditorTest).
+    protected bool $showsPayloadEditor = true;
 }

@@ -4,17 +4,20 @@ namespace Mmoollllee\Cms;
 
 use Datlechin\FilamentMenuBuilder\Models\MenuItem;
 use Datlechin\FilamentMenuBuilder\Models\MenuLocation;
+use Filament\Resources\Events\RecordUpdated;
 use Filament\Support\Assets\Css;
 use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
+use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Observers\ContentCacheObserver;
@@ -29,6 +32,7 @@ use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Routing\HitRecorder;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Routing\PathSuggestionResolver;
@@ -52,6 +56,11 @@ class CmsServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/cms.php', 'cms');
 
         $this->app->singleton(CurrentTenant::class);
+        // Request-scoped draft-preview flag: set once by ResolveTenantFromHost,
+        // read by the HasDraft retrieved-overlay and the frontend badge.
+        // scoped(), not singleton(): the flag must never survive into the next
+        // request on long-lived runtimes (Octane flushes scoped bindings).
+        $this->app->scoped(PreviewMode::class);
         $this->app->singleton(SiteExtensionRegistry::class);
         $this->app->singleton(ContentBlueprintRegistry::class);
         $this->app->singleton(PathNormalizer::class);
@@ -186,6 +195,19 @@ class CmsServiceProvider extends ServiceProvider
         // Package frontend routes (the async /_resolve404 endpoint). Loaded during boot so it is
         // registered before the app's catch-all `/{path?}` and matched first.
         $this->loadRoutesFrom(__DIR__.'/../routes/frontend.php');
+
+        // "Änderungen anwenden" clears the applied draft stash. Wired to
+        // Filament's RecordUpdated event (EditRecord::save() dispatches it)
+        // instead of the afterSave() hook, so a page subclass overriding that
+        // common hook cannot silently break draft clearing. The page decides
+        // (stale-tab guard) whether the stash may actually be dropped.
+        // NOTE: Filament dispatches this as a string event with a payload
+        // array — the listener receives (record, data, page), not an object.
+        Event::listen(RecordUpdated::class, function ($record, array $data = [], $page = null): void {
+            if ($page !== null && in_array(ManagesDrafts::class, class_uses_recursive($page), true)) {
+                $page->handleAppliedDraft($record);
+            }
+        });
 
         // Daily pruning of stale, low-traffic 404 logs (runs only where a scheduler is configured).
         $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {

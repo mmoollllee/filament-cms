@@ -50,8 +50,10 @@ class PublishingFields extends FieldKit
                 // edit — it only seeds defaults when creating. formatStateUsing runs
                 // on both create and edit hydration, deriving the initial value from
                 // the record's publishing window so an existing published page loads
-                // as "Veröffentlicht" instead of "Entwurf".
-                ->formatStateUsing(fn ($record): string => $record?->status()->value ?? ContentStatus::Draft->value)
+                // as "Veröffentlicht" instead of "Entwurf". A provided state wins:
+                // the draft fill (ManagesDrafts) precomputes the status from the
+                // DRAFT window, which may differ from the record's.
+                ->formatStateUsing(fn ($state, $record): string => $state ?? $record?->status()->value ?? ContentStatus::Draft->value)
                 ->selectablePlaceholder(false)
                 ->dehydrated(false)
                 ->live()
@@ -179,6 +181,19 @@ class PublishingFields extends FieldKit
         }
 
         return Carbon::parse($value)->format('Y-m-d H:i');
+    }
+
+    /**
+     * The status value for an arbitrary publishing window (Carbon, string or
+     * null) — the public entry used by the draft fill to derive the virtual
+     * `status` from a stashed window instead of the record's.
+     */
+    public static function statusForWindow(mixed $publishFrom, mixed $publishUntil): string
+    {
+        return self::computeStatus(
+            self::normalizeDateTime($publishFrom),
+            self::normalizeDateTime($publishUntil),
+        );
     }
 
     /**

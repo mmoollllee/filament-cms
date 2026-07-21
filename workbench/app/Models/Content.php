@@ -14,6 +14,7 @@ use Mmoollllee\Cms\Concerns\Content\ConvertsUploadedVideos;
 use Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug;
 use Mmoollllee\Cms\Concerns\Content\HasPublishingStatus;
 use Mmoollllee\Cms\Concerns\Content\ResolvesLayoutPresets;
+use Mmoollllee\Cms\Concerns\HasDraft;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Support\AssetUrlResolver;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
@@ -24,6 +25,8 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use AssignsCurrentTenant;
     use ConvertsUploadedVideos;
     use GeneratesPathAndSlug;
+
+    use HasDraft;
 
     /** @use HasFactory<ContentFactory> */
     use HasFactory;

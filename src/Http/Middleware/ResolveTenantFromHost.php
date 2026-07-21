@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\ModelCache;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
@@ -27,6 +28,7 @@ class ResolveTenantFromHost
 {
     public function __construct(
         protected CurrentTenant $currentTenant,
+        protected PreviewMode $previewMode,
     ) {}
 
     /**
@@ -63,6 +65,10 @@ class ResolveTenantFromHost
 
         $this->currentTenant->set($tenant);
         $request->attributes->set('tenant', $tenant);
+
+        // Draft preview ("Vorschau"): toggled via ?preview=1/0, remembered in the
+        // session, only effective for superadmins/members of THIS tenant.
+        $this->previewMode->activateFromRequest($request, $tenant);
 
         return $next($request);
     }

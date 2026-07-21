@@ -20,11 +20,25 @@ class ModelCache
     /**
      * Raw (uncasted) attributes, ready for {@see Model::newFromBuilder()}.
      *
+     * Content payloads exclude the `draft` stash: these caches serve GUESTS,
+     * who never overlay drafts — packing the (potentially large) stash would
+     * only bloat the cache and carry unpublished content around.
+     *
      * @return array<string, mixed>|null
      */
-    public static function pack(?Model $model): ?array
+    public static function pack(?Model $model, bool $withDraft = true): ?array
     {
-        return $model?->getAttributes();
+        if ($model === null) {
+            return null;
+        }
+
+        $attributes = $model->getAttributes();
+
+        if (! $withDraft) {
+            unset($attributes['draft']);
+        }
+
+        return $attributes;
     }
 
     /**
@@ -50,9 +64,12 @@ class ModelCache
      * @param  Collection<int, Model>  $models
      * @return list<array<string, mixed>>
      */
-    public static function packMany(Collection $models): array
+    public static function packMany(Collection $models, bool $withDraft = true): array
     {
-        return $models->map(fn (Model $model): array => $model->getAttributes())->values()->all();
+        return $models
+            ->map(fn (Model $model): array => (array) static::pack($model, $withDraft))
+            ->values()
+            ->all();
     }
 
     /**

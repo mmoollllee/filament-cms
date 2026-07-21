@@ -6,12 +6,14 @@ each site keeps its own models, content types, blocks, views and design.
 
 - **Namespace:** `Mmoollllee\Cms\`
 - **What it ships:** domain-based multi-tenancy with branding inheritance, the content
-  engine (types/blueprints, hierarchical paths, publishing windows, templates), the
-  customer-friendly block builder (previews with inline editing, copy/paste, drag & drop
-  across sections, layout presets), the RichEditor stack (link picker with internal-path
-  autocomplete, custom blocks, HTML preservation), redirects + 404 management with fuzzy
-  auto-resolve, sitemap/robots, spam-protected contact output, video re-encoding, and
-  the complete Filament admin panel.
+  engine (types/blueprints, hierarchical paths, publishing windows, templates), a
+  draft/preview workflow ("Entwurf speichern" + session-sticky Vorschau mode that
+  overlays pending changes everywhere they render), the customer-friendly block builder
+  (previews with inline editing, copy/paste, drag & drop across sections, layout
+  presets), the RichEditor stack (link picker with internal-path autocomplete, custom
+  blocks, HTML preservation), redirects + 404 management with fuzzy auto-resolve,
+  sitemap/robots, spam-protected contact output, video re-encoding, and the complete
+  Filament admin panel.
 - **Feature reference (all of it, with examples):** [`docs/FEATURES.md`](docs/FEATURES.md)
 - **Extension points:** [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md)
 - **Self-documenting demo:** [`workbench/`](workbench) (see below)

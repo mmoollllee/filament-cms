@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
  * Tenant-scoped navigation menu (extends the datlechin menu-builder model).
@@ -43,7 +44,10 @@ class Menu extends BaseMenu
     {
         return Cache::rememberForever(
             CacheKeys::menu($tenant->getKey(), $location),
-            function () use ($location, $tenant): array {
+            // bypass(): the linkable Content models resolve item URLs — built
+            // during a preview request they would freeze DRAFT paths into this
+            // guest-served forever cache.
+            fn (): array => app(PreviewMode::class)->bypass(function () use ($location, $tenant): array {
                 $menu = self::locationForTenant($location, $tenant);
 
                 if ($menu === null) {
@@ -57,7 +61,7 @@ class Menu extends BaseMenu
                         'label' => $item->title,
                     ])
                     ->all();
-            },
+            }),
         );
     }
 }

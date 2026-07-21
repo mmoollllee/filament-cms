@@ -5,9 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Mmoollllee\Cms\Concerns\Fragment\ResolvesFragmentWithCascade;
+use Mmoollllee\Cms\Concerns\HasDraft;
 
 class Fragment extends Model implements \Mmoollllee\Cms\Contracts\Fragment
 {
+    use HasDraft;                 // "Entwurf speichern" stash + Vorschau overlay
     use ResolvesFragmentWithCascade;
 
     /** @var list<string> */

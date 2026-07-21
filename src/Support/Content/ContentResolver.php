@@ -12,6 +12,7 @@ use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\ModelCache;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 
 /**
@@ -75,7 +76,8 @@ class ContentResolver
 
         if ($content !== null) {
             // Real pages are cached indefinitely (busted by ContentCacheObserver on write).
-            Cache::forever($key, ModelCache::pack($content));
+            // withDraft: false — this cache serves guests, who never overlay drafts.
+            Cache::forever($key, ModelCache::pack($content, withDraft: false));
 
             return $content;
         }
@@ -138,9 +140,14 @@ class ContentResolver
         }
 
         // Cached as a list of attribute arrays (ModelCache) — see findByPath().
+        // bypass(): user-less callers (e.g. the sitemap) can run during a
+        // preview request; packing overlaid models would serve DRAFT sections
+        // to every guest until the next invalidation.
         $sections = ModelCache::unpackMany(Cms::contentModel(), Cache::rememberForever(
             CacheKeys::sections($tenant->getKey()),
-            fn (): array => ModelCache::packMany($this->resolveSections($tenant)),
+            fn (): array => app(PreviewMode::class)->bypass(
+                fn (): array => ModelCache::packMany($this->resolveSections($tenant), withDraft: false),
+            ),
         ));
 
         return $sections ?? $this->resolveSections($tenant);

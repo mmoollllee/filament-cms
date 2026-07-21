@@ -14,6 +14,7 @@ return new class extends Migration
             $table->string('title')->nullable();
             $table->string('slug');
             $table->json('blocks')->nullable();
+            $table->json('draft')->nullable();
             $table->timestamps();
 
             $table->unique(['tenant_id', 'slug']);

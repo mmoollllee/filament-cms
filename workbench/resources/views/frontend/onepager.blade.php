@@ -99,5 +99,7 @@
 
         document.querySelectorAll('.onepager-demo-section').forEach((section) => observer.observe(section));
     </script>
+    {{-- Draft preview indicator — every app shell should include this once. --}}
+    @include('cms::partials.preview-badge')
 </body>
 </html>

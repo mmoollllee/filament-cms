@@ -23,6 +23,9 @@ class ContentCacheObserver
 {
     public function contentSaved(Content $content): void
     {
+        // Draft stashes never reach this observer: HasDraft persists the
+        // `draft` column via a query-builder update without model events, so
+        // every `saved` seen here is a real (applied) content change.
         $this->invalidateContentCaches($content);
     }
 

@@ -8,6 +8,7 @@ use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\NavigationContextBuilder;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
  * Fuzzy-matches an unresolved path against a tenant's live content to power the "Meinten Sie?"
@@ -159,7 +160,10 @@ class PathSuggestionResolver
     {
         return Cache::rememberForever(
             CacheKeys::candidates($tenant->getKey()),
-            fn (): array => $this->buildCandidates($tenant),
+            // bypass(): candidates feed guest-facing 404 suggestions AND the
+            // auto-created redirect rows — built during a preview request they
+            // would leak DRAFT paths/titles (and persist them as redirects).
+            fn (): array => app(PreviewMode::class)->bypass(fn (): array => $this->buildCandidates($tenant)),
         );
     }
 

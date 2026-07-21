@@ -105,5 +105,7 @@
             </div>
         </div>
     </footer>
+    {{-- Draft preview indicator — every app shell should include this once. --}}
+    @include('cms::partials.preview-badge')
 </body>
 </html>

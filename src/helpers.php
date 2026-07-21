@@ -2,6 +2,7 @@
 
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Fragment;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 if (! function_exists('fragment_model')) {
@@ -22,5 +23,16 @@ if (! function_exists('fragment_model')) {
         }
 
         return $fragmentModel::resolveFragment($tenant, $slug);
+    }
+}
+
+if (! function_exists('cms_preview_active')) {
+    /**
+     * Whether the current frontend request renders stashed drafts ("Vorschau").
+     * Used by the shared layout's preview badge; available to app views alike.
+     */
+    function cms_preview_active(): bool
+    {
+        return app(PreviewMode::class)->active();
     }
 }

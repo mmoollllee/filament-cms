@@ -12,6 +12,7 @@ use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 /**
@@ -36,7 +37,10 @@ class SitemapController
 
         $xml = Cache::rememberForever(
             CacheKeys::sitemap($tenant->getKey()),
-            fn () => $this->generateSitemapXml($tenant),
+            // bypass(): generated during a preview request, the forever-cached
+            // XML (and the sections cache warmed inside) would otherwise carry
+            // DRAFT paths/titles to guests and crawlers.
+            fn (): string => app(PreviewMode::class)->bypass(fn (): string => $this->generateSitemapXml($tenant)),
         );
 
         return response($xml, 200, [

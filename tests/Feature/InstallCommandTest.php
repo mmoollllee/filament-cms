@@ -81,7 +81,11 @@ it('scaffolds config, models, providers and frontend routes', function () {
 
         // … the scaffolded models adopt the package traits (not copied code) …
         expect(File::get(app_path('Models/Tenant.php')))->toContain('use InheritsBranding;')
-            ->and(File::get(app_path('Models/Content.php')))->toContain('use GeneratesPathAndSlug;');
+            ->and(File::get(app_path('Models/Content.php')))->toContain('use GeneratesPathAndSlug;')
+            // The draft/preview workflow ships enabled: both scaffolded models
+            // must adopt HasDraft, or fresh installs silently lose the feature.
+            ->and(File::get(app_path('Models/Content.php')))->toContain('use HasDraft;')
+            ->and(File::get(app_path('Models/Fragment.php')))->toContain('use HasDraft;');
 
         // … the frontend catch-all is appended and both providers registered.
         expect(File::get(base_path('routes/web.php')))->toContain('ContentShowController');

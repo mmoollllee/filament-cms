@@ -26,6 +26,7 @@ use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\CreateFragment;
 use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\EditFragment;
 use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\ListFragments;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
+use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 /**
@@ -102,6 +103,7 @@ class FragmentResource extends Resource
                 TextColumn::make('blocks')
                     ->label('Blöcke')
                     ->state(fn (Model $record): string => count($record->blocks ?? []).' Block(s)'),
+                Drafts::tableBadgeColumn(Cms::fragmentModel()),
             ])
             ->recordActions([
                 EditAction::make(),
