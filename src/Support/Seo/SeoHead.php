@@ -3,10 +3,12 @@
 namespace Mmoollllee\Cms\Support\Seo;
 
 use Closure;
+use Illuminate\Support\Str;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\ContentBlueprint;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
+use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 
 /**
  * Extension seams for the shared SEO head (<x-site.seo-head> component and the
@@ -104,6 +106,25 @@ class SeoHead
         }
 
         return false;
+    }
+
+    /**
+     * The page's Open Graph image as an ABSOLUTE URL (crawlers reject relative
+     * ones): per-content media-library ref (`meta.og_image`, pre-cropped `og`
+     * conversion) → legacy per-content URL (`meta.og_image_url`) → the
+     * tenant's default OG image. Single source for the component, and the
+     * override seam for apps with their own cascade.
+     */
+    public static function ogImageUrl(?Content $content, Tenant $tenant): ?string
+    {
+        $url = MediaUrlResolver::absoluteUrl(data_get($content, 'meta.og_image'), 'og')
+            ?? (data_get($content, 'meta.og_image_url') ?: $tenant->resolvedDefaultOgImageUrl());
+
+        if (blank($url)) {
+            return null;
+        }
+
+        return Str::startsWith($url, ['http://', 'https://', '//']) ? $url : url($url);
     }
 
     /**

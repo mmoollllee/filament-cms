@@ -16,13 +16,17 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
+use Mmoollllee\Cms\Console\Commands\MediaImportCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
+use Mmoollllee\Cms\Filament\Actions\MediaPickerPreviewAction;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Observers\ContentCacheObserver;
 use Mmoollllee\Cms\Observers\RedirectCacheObserver;
 use Mmoollllee\Cms\Policies\ContentPolicy;
+use Mmoollllee\Cms\Policies\MediaFolderPolicy;
+use Mmoollllee\Cms\Policies\MediaItemPolicy;
 use Mmoollllee\Cms\Policies\TenantPolicy;
 use Mmoollllee\Cms\Policies\UserPolicy;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
@@ -32,7 +36,9 @@ use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
+use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\MediaPicker;
 use Mmoollllee\Cms\Support\Routing\HitRecorder;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Routing\PathSuggestionResolver;
@@ -155,17 +161,27 @@ class CmsServiceProvider extends ServiceProvider
             $views.'/components/site' => resource_path('views/components/site'),
         ], 'cms-frontend');
 
-        // Override Filament's two builder views (builder + block-picker) to add
+        // Override Filament's builder rendering (builder + block-picker) to add
         // cross-builder drag & drop, inline preview editing, the inactive-block UI and
         // the clipboard paste entry (the view half of the TransfersBuilderItems /
-        // PastesBuilderBlocks concerns). prependNamespace so these win over Filament's
-        // originals.
+        // PastesBuilderBlocks concerns).
         //
-        // NOTE: both files are vendored copies (baseline filament/filament v5.6.8) with
-        // the cms changes wrapped in `cms:start`/`cms:end` markers. Because this prepend
-        // wins over the vendor views, a Filament update changing them would be silently
-        // shadowed — tests/Feature/FilamentViewOverrideDriftTest.php hashes the vendor
-        // files and fails loudly when they drift, with re-vendoring instructions.
+        // Since Filament 5.7 the Builder ships NO Blade view — it renders PHP-side via
+        // toEmbeddedHtml() (HasEmbeddedView), and its published-view override check only
+        // looks at resource_path('views/vendor/…'), which a package cannot serve. A
+        // component with an EXPLICIT view skips the embedded path entirely — the
+        // package's BlockBuilder factory pins the classic view name on every CMS
+        // builder (see BlockBuilder::make()), and this prepend makes the override win
+        // the namespace lookup (the block-picker Blade component our view renders
+        // resolves through the same namespace). Builders outside the CMS keep
+        // Filament's embedded rendering untouched.
+        //
+        // NOTE: both files are vendored equivalents (baseline filament/filament v5.7.1;
+        // the builder view mirrors Builder::toEmbeddedHtml()) with the cms changes
+        // wrapped in `cms:start`/`cms:end` markers. Because this shadows vendor
+        // rendering, a Filament update changing it would be silently swallowed —
+        // tests/Feature/FilamentViewOverrideDriftTest.php hashes the vendor sources and
+        // fails loudly when they drift, with re-vendoring instructions.
         $this->app['view']->prependNamespace('filament-forms', __DIR__.'/../resources/overrides/filament-forms');
 
         // Client-side TipTap extensions (the JS halves of the package's PHP TipTap
@@ -189,6 +205,23 @@ class CmsServiceProvider extends ServiceProvider
             $this->registerCacheObservers();
             $this->registerPolicies();
         }
+
+        // Optional media-library integration — wired only when the (commercial)
+        // plugin is installed; without it every media field falls back to the
+        // classic FileUpload/path behavior.
+        if (MediaLibrary::installed()) {
+            $this->registerMediaLibrary();
+        }
+
+        // The media caches are REQUEST-scoped by contract but live in statics.
+        // terminating() runs per request under FPM and long-running runtimes
+        // alike (Octane calls Application::terminate() after every request) —
+        // without this, a worker would serve stale alt texts/URLs after an
+        // editor changes media, and the caches would grow unbounded.
+        $this->app->terminating(function (): void {
+            \Mmoollllee\Cms\Support\Media\MediaUrlResolver::flush();
+            \Mmoollllee\Cms\Support\Media\MediaFolders::flush();
+        });
 
         $this->registerShortcodes();
 
@@ -219,6 +252,33 @@ class CmsServiceProvider extends ServiceProvider
                 ClearTenantCacheCommand::class,
                 InstallCommand::class,
                 PruneNotFoundLogsCommand::class,
+            ]);
+        }
+    }
+
+    /**
+     * Media-library plugin wiring (guarded by MediaLibrary::installed()):
+     * Gate policies for the vendor models (not auto-discovered), the extended
+     * preview action on every MediaPicker, and the legacy-import command.
+     *
+     * MediaPicker::configureUsing runs here in the PACKAGE boot — app providers
+     * boot later, so an app's own configureUsing (e.g. nest's) overrides the
+     * preview action cleanly.
+     */
+    protected function registerMediaLibrary(): void
+    {
+        Gate::policy(\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem::class, MediaItemPolicy::class);
+        Gate::policy(\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder::class, MediaFolderPolicy::class);
+
+        if (MediaLibrary::enabled()) {
+            MediaPicker::configureUsing(function (MediaPicker $picker): void {
+                $picker->modifyPreviewActionUsing(fn (): MediaPickerPreviewAction => MediaPickerPreviewAction::make());
+            });
+        }
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                MediaImportCommand::class,
             ]);
         }
     }

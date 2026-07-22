@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Enums\SocialNetwork;
+use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 
 /**
  * The tenant branding cascade: every resolved*() value falls back from the
@@ -285,17 +286,9 @@ trait InheritsBranding
 
     public function resolvedDefaultOgImageUrl(): ?string
     {
-        $path = $this->resolvedDefaultOgImagePath();
-
-        if (blank($path)) {
-            return null;
-        }
-
-        if (Str::startsWith($path, ['http://', 'https://', '/'])) {
-            return $path;
-        }
-
-        return Storage::disk('public')->url($path);
+        // Library refs use the pre-cropped 1200×630 `og` conversion when it
+        // has been generated; crawlers require an absolute URL either way.
+        return $this->publicAssetUrl($this->resolvedDefaultOgImagePath(), conversion: 'og');
     }
 
     public function computedDefaultSeoTitle(): string
@@ -385,12 +378,34 @@ trait InheritsBranding
         return filled($inheritedPath) ? $inheritedPath : null;
     }
 
-    protected function publicAssetUrl(?string $path): ?string
+    /**
+     * Resolve a stored branding asset (media-library id or legacy path) to an
+     * ABSOLUTE URL — mail clients and social crawlers reject relative ones.
+     *
+     * Legacy paths keep the pre-library behavior (Storage::url on the public
+     * disk), so a configured disk URL (CDN/subdomain) still applies; library
+     * refs resolve through the Spatie UrlGenerator.
+     */
+    protected function publicAssetUrl(string|int|null $ref, ?string $conversion = null): ?string
     {
-        if (blank($path)) {
+        $normalized = MediaUrlResolver::normalize($ref);
+
+        if ($normalized === null) {
             return null;
         }
 
-        return Storage::disk('public')->url($path);
+        if (is_int($normalized)) {
+            return MediaUrlResolver::absoluteUrl($normalized, $conversion);
+        }
+
+        if (Str::startsWith($normalized, ['http://', 'https://', '//'])) {
+            return $normalized;
+        }
+
+        if (Str::startsWith($normalized, '/')) {
+            return url($normalized);
+        }
+
+        return Storage::disk('public')->url($normalized);
     }
 }

@@ -184,6 +184,45 @@ Without the package, the banner and the RichEditor iframe button are simply abse
 error. See
 [`mmoollllee/filament-consent-control`](https://github.com/mmoollllee/filament-consent-control).
 
+### Optional: Media library („Mediathek")
+
+The engine ships the complete *wiring* for
+[Filament Media Library Pro](https://filamentplugins.com/filament-media-library-pro)
+(commercial, by Ralph J. Smit) as a WordPress-style per-tenant media library: panel page,
+tenant-scoped driver + policies, picker fields on every media input (blocks, hero,
+branding incl. favicon, per-content OG image), an extended preview action (arrow-key
+navigation, inline PDF preview), default folders (Branding / Seiten / Dokumente) and a
+legacy importer. It activates automatically **only if the project installs the plugin**:
+
+```bash
+composer config 'repositories.ralphjsmit/*' composer https://satis.ralphjsmit.com
+composer require ralphjsmit/laravel-filament-media-library spatie/laravel-medialibrary
+php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag=medialibrary-migrations
+php artisan vendor:publish --tag=laravel-filament-media-library-migrations
+php artisan migrate
+```
+
+The plugin needs a license (`auth.json` credentials for `satis.ralphjsmit.com` — also on
+the deploy target, `auth.json` is usually gitignored) and its CSS imported into your
+Filament theme:
+
+```css
+/* resources/css/filament/theme.css */
+@import '../../../vendor/ralphjsmit/laravel-filament-media-library/resources/css/index.css';
+```
+
+Then migrate existing file references (paths in blocks/payload/drafts + tenant branding
+become media items; run BEFORE editors use the panel — pickers cannot hydrate raw paths):
+
+```bash
+php artisan cms:media:import --dry-run
+php artisan cms:media:import          # add --sync without a queue worker, --all for orphans
+```
+
+Without the plugin every media field falls back to the classic tenant-scoped
+`FileUpload`, and stored path references keep rendering either way (the resolver
+understands both). Wiring details + customization: [docs/CUSTOMIZATION.md §12](docs/CUSTOMIZATION.md).
+
 ## Testbench / demo
 
 The package ships a standalone **two-tenant demo** under [`workbench/`](workbench)

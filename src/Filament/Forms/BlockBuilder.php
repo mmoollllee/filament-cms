@@ -33,6 +33,14 @@ class BlockBuilder
         array $extraItemActions = [],
     ): Builder {
         $builder = Builder::make($statePath)
+            // Since Filament 5.7 the Builder renders PHP-side (toEmbeddedHtml);
+            // an explicit view re-enters the classic path, where the package's
+            // prependNamespace override (cross-builder DnD, inline preview
+            // editing, inactive-block UI, clipboard paste) wins the lookup.
+            // Scoped HERE — not via a global configureUsing — so builders
+            // outside the CMS keep vendor rendering and don't grow a paste
+            // entry whose pasteBuilderBlock() method their page lacks.
+            ->view('filament-forms::components.builder')
             ->hiddenLabel()
             ->blockIcons()
             ->blockNumbers(false)

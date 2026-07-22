@@ -538,15 +538,80 @@ publish tag `cms-lang`); the app locale (`APP_LOCALE`) picks the language.
 
 ## 11. Vendored Filament view overrides
 
-The package overrides exactly two Filament views (via `prependNamespace`):
-`filament-forms::components.builder` and `…builder.block-picker`
-(`resources/overrides/filament-forms/`). They carry the four builder UX features that
-have no Filament extension point: cross-builder drag & drop, inline preview editing,
-the inactive-block UI, and the clipboard-paste picker entry. Everything else
-(copy action, options gear, headings) lives in PHP and survives Filament updates.
+The package replaces Filament's builder rendering with two vendored views
+(`resources/overrides/filament-forms/`): `filament-forms::components.builder` and
+`…builder.block-picker`. They carry the four builder UX features that have no Filament
+extension point: cross-builder drag & drop, inline preview editing, the inactive-block
+UI, and the clipboard-paste picker entry. Everything else (copy action, options gear,
+headings) lives in PHP and survives Filament updates.
 
-Both files are vendored copies of the **filament v5.6.8** originals with every
-divergence wrapped in `cms:start`/`cms:end` markers.
-`tests/Feature/FilamentViewOverrideDriftTest.php` hashes the vendor originals — when a
-Filament update changes them, the test fails with re-vendoring instructions (copy the
-new vendor view, re-apply the marked blocks, update the hash). Nothing drifts silently.
+Since Filament 5.7 the builder has **no vendor Blade view** — it renders PHP-side via
+`Builder::toEmbeddedHtml()`. The package re-enters the classic view path by pinning the
+view name globally (`Builder::configureUsing(fn ($b) => $b->view('filament-forms::components.builder'))`
+in `CmsServiceProvider`); `prependNamespace` then resolves that name to the override,
+and the picker Blade component the view renders resolves through the same namespace.
+
+The builder view is a Blade translation of the **filament v5.7.1**
+`toEmbeddedHtml()`/`generateBlockPickerHtml()` markup, the picker a vendored copy of the
+still-existing vendor view — every divergence wrapped in `cms:start`/`cms:end` markers.
+`tests/Feature/FilamentViewOverrideDriftTest.php` hashes those vendor sources (method
+source + picker file) — when a Filament update changes them, the test fails with
+re-vendoring instructions (translate/copy the vendor changes, re-apply the marked
+blocks, update the hash). Nothing drifts silently.
+
+## 12. Media library (optional)
+
+With `ralphjsmit/laravel-filament-media-library` installed (commercial — install steps
+in the [README](../README.md#optional-media-library-mediathek)), the engine wires a
+per-tenant media library automatically; without it, every media field is a classic
+tenant-scoped `FileUpload`. All wiring gates on
+`Mmoollllee\Cms\Support\Media\MediaLibrary::enabled()`.
+
+**Registry knobs** (app service provider, like every other `Cms::` option):
+
+```php
+Cms::disableMediaLibrary();                      // classic uploads even when installed
+Cms::useMediaDriver(MyDriver::class);            // extend CmsMediaLibraryDriver: scope, disk,
+                                                 // conversions, accepted types (nest-style)
+Cms::useMediaItemModel(MyItem::class);           // must extend the plugin's MediaLibraryItem
+Cms::useMediaDisk('media-library');              // e.g. a private disk with an own
+                                                 // media-library.url_generator (policy-gated serving)
+Cms::useMediaFolderNames([                       // rename the default per-tenant folders
+    MediaFolders::BRANDING => 'Marke',
+    MediaFolders::PAGES => 'Inhalte',
+    MediaFolders::DOCUMENTS => 'Downloads',
+]);
+```
+
+**Panel options** — override `BasePanelProvider::mediaLibraryPlugin()` to change
+navigation/slug/accepted types or swap the library page; the driver stays the single
+owner of behavior. The `MediaPickerPreviewAction` (arrow-key navigation, PDF preview) is
+registered globally via `MediaPicker::configureUsing()` in the package boot — an app's
+own `configureUsing` (booting later) overrides it.
+
+**Fields** — use the dual-mode factory in your own blocks/resources instead of raw
+components, and chain only methods that exist on BOTH `MediaPicker` and `FileUpload`:
+
+```php
+MediaField::image('image_path', legacyDirectory: static::uploadDirectory($tenant))
+MediaField::media('media_path', ...)                      // images + videos
+MediaField::document('file_path')                         // PDF/ZIP/Office → „Dokumente"
+    ->label('…')->helperText('…')->acceptedFileTypes([...])
+```
+
+Values are media item ids (or legacy paths — same keys, both render). Resolve them via
+`AssetUrlResolver::resolve($ref, ?conversion)` / `MediaUrlResolver` (`srcset()`, `alt()`,
+`isVideo()`, `preload()`) or the `<x-site.image :media="$ref" :sizes="…">` component.
+Keep refs inside `blocks`/`payload` JSON or `$fillable` columns — the draft stash
+overlays via `fill()`, relations would bypass it.
+
+**Authorization** — `MediaItemPolicy`/`MediaFolderPolicy` (tenant members manage the
+current tenant, superadmin bypass via `before()`) are registered on the plugin models in
+`CmsServiceProvider`; re-register with `Gate::policy()` to replace them. Item/folder
+visibility itself comes from the driver's tenant scope (auto-active whenever a Filament
+tenant exists).
+
+**Legacy migration** — `cms:media:import` (idempotent; `--dry-run`, `--tenant=`,
+`--all`, `--sync`) imports every referenced file and rewrites refs to ids, draft stashes
+included. Run it BEFORE editors touch the panel — a picker cannot hydrate a raw path and
+would drop it on save. Originals stay on disk; prune later.

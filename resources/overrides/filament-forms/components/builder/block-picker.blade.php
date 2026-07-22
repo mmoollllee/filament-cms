@@ -1,7 +1,10 @@
 {{--
     cms:override — vendored copy of filament/forms resources/views/components/builder/block-picker.blade.php
-    (baseline: filament/filament v5.6.8). Shadows the vendor view via prependNamespace()
-    in CmsServiceProvider; drift is guarded by tests/Feature/FilamentViewOverrideDriftTest.php.
+    (baseline: filament/filament v5.7.1). Shadows the vendor view via prependNamespace()
+    in CmsServiceProvider — the cms builder view renders the picker as this Blade
+    component, so the namespace lookup still applies even though vendor's own builder
+    (toEmbeddedHtml) inlines the picker HTML in PHP since 5.7. Drift is guarded by
+    tests/Feature/FilamentViewOverrideDriftTest.php.
 
     Divergence from vendor (marked below): the picker accepts the builder's state path and
     appends an "Aus Zwischenablage einfügen" entry that pastes a block copied with the
@@ -11,7 +14,7 @@
 @php
     use Filament\Support\Enums\Alignment;
     use Filament\Support\Enums\GridDirection;
-    use Illuminate\View\ComponentAttributeBag;
+    use Filament\Support\View\ComponentAttributeBag as FilamentComponentAttributeBag;
 @endphp
 
 @props([
@@ -52,7 +55,7 @@
 
     <x-filament::dropdown.list>
         <div
-            {{ (new ComponentAttributeBag)->grid($columns, GridDirection::Column) }}
+            {{ (new FilamentComponentAttributeBag)->grid($columns, GridDirection::Column) }}
         >
             @foreach ($blocks as $block)
                 @php

@@ -9,19 +9,21 @@
 ])
 
 @php
-    use Mmoollllee\Cms\Support\AssetUrlResolver;
+    use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 
-    $mediaPath = is_array($data['media_path'] ?? null)
-        ? array_values($data['media_path'])[0] ?? null
-        : ($data['media_path'] ?? null);
-    $mediaUrl = AssetUrlResolver::resolve($mediaPath);
+    $mediaRef = $data['media_path'] ?? null;
+    $mediaUrl = MediaUrlResolver::url($mediaRef);
+    $isVideo = MediaUrlResolver::isVideo($mediaRef);
 
-    $posterPath = is_array($data['poster_path'] ?? null)
-        ? array_values($data['poster_path'])[0] ?? null
-        : ($data['poster_path'] ?? null);
-    $posterUrl = AssetUrlResolver::resolve($posterPath);
+    $posterRef = $data['poster_path'] ?? null;
+    $posterUrl = MediaUrlResolver::url($posterRef);
 
-    $mediaAlt = filled($data['media_alt'] ?? '') ? $data['media_alt'] : ($data['title'] ?? '');
+    // Per-use override → central alt text from the library → block title.
+    $mediaAlt = filled($data['media_alt'] ?? '')
+        ? $data['media_alt']
+        : (MediaUrlResolver::alt($mediaRef) ?? ($data['title'] ?? ''));
+
+    $srcset = $isVideo ? null : MediaUrlResolver::srcset($mediaRef);
 
     $presetIds = array_map('intval', array_filter((array) ($data['layout_preset_ids'] ?? [])));
     $layoutPreset = app(\Mmoollllee\Cms\Support\Content\LayoutPresetResolver::class)->resolve($presetIds);
@@ -32,7 +34,12 @@
         :src="$mediaUrl"
         :alt="$mediaAlt"
         :poster="$posterUrl"
-        {{ $attributes->class(['anim min-h-[inherit]']) }}
+        {{ $attributes->class(['anim min-h-[inherit]'])->merge(array_filter([
+            'srcset' => $srcset,
+            'sizes' => $srcset ? '100vw' : null,
+            'loading' => $isVideo ? null : 'lazy',
+            'decoding' => $isVideo ? null : 'async',
+        ])) }}
         :id="$anchorId"
     />
 @endif

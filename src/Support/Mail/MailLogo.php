@@ -5,6 +5,7 @@ namespace Mmoollllee\Cms\Support\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 
 /**
  * Resolves a mail-client-safe logo URL for a tenant.
@@ -28,22 +29,36 @@ class MailLogo
     /** Formats that render across all major mail clients. */
     private const RASTER_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
 
+    /** The same set as MIME types — media-library refs carry no file extension. */
+    private const RASTER_MIMES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
     public static function urlFor(?Tenant $tenant): ?string
     {
         if ($tenant === null) {
             return null;
         }
 
-        $path = self::sourcePath($tenant);
+        $ref = self::sourcePath($tenant);
 
-        if (blank($path)) {
+        if (blank($ref)) {
             return null;
         }
 
-        $extension = Str::lower(pathinfo((string) $path, PATHINFO_EXTENSION));
+        // Media-library item id: raster check by the item's MIME type, URL via
+        // the resolver (UrlGenerator-aware) — pathinfo() on an id would yield
+        // no extension and silently drop every library-managed mail logo.
+        if (MediaUrlResolver::isLibraryRef($ref)) {
+            if (! in_array(MediaUrlResolver::mime($ref), self::RASTER_MIMES, true)) {
+                return null;
+            }
+
+            return self::absolutize(MediaUrlResolver::url($ref), $tenant);
+        }
+
+        $extension = Str::lower(pathinfo((string) $ref, PATHINFO_EXTENSION));
 
         if (in_array($extension, self::RASTER_EXTENSIONS, true)) {
-            return self::absolutize(self::publicUrl((string) $path), $tenant);
+            return self::absolutize(self::publicUrl((string) $ref), $tenant);
         }
 
         // SVG or unknown format → no <img>; the layout renders the brand name as text.

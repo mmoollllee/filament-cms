@@ -5,7 +5,7 @@ namespace Mmoollllee\Cms\Support\Content\Blocks;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Builder;
 use Filament\Forms\Components\CodeEditor;
-use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
@@ -19,6 +19,7 @@ use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Support\Icons\Heroicon;
 use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Filament\Forms\MediaField;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\ButtonGroupBlock;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\NavigationCardGroupBlock;
 use Mmoollllee\Cms\Models\LayoutPreset;
@@ -186,17 +187,13 @@ abstract class BaseBuilderBlock implements BuilderBlock
     }
 
     /**
-     * The background-image upload offered in the block options of section items.
+     * The background-image field offered in the block options of section items
+     * (media-library picker when active, classic upload otherwise).
      */
-    protected static function sectionBackgroundImageField(?Tenant $tenant): FileUpload
+    protected static function sectionBackgroundImageField(?Tenant $tenant): Field
     {
-        return FileUpload::make('background_image')
-            ->label('Hintergrundbild')
-            ->disk('public')
-            ->visibility('public')
-            ->directory(static::uploadDirectory($tenant))
-            ->image()
-            ->imagePreviewHeight('120');
+        return MediaField::image('background_image', legacyDirectory: static::uploadDirectory($tenant))
+            ->label('Hintergrundbild');
     }
 
     /**

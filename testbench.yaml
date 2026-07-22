@@ -17,6 +17,10 @@ providers:
   - Filament\QueryBuilder\QueryBuilderServiceProvider
   - Filament\FilamentServiceProvider
   - Awcodes\RicherEditor\RicherEditorServiceProvider
+  # Optional media-library stack (require-dev here; consumers install it themselves).
+  - Spatie\MediaLibrary\MediaLibraryServiceProvider
+  - RalphJSmit\Filament\Explore\FilamentExploreServiceProvider
+  - RalphJSmit\Filament\MediaLibrary\FilamentMediaLibraryServiceProvider
   - Datlechin\FilamentMenuBuilder\FilamentMenuBuilderServiceProvider
   - Blendbyte\FilamentTitleWithSlug\FilamentTitleWithSlugServiceProvider
   - DefStudio\SearchableInput\SearchableInputServiceProvider
@@ -29,6 +33,9 @@ providers:
 
 migrations:
   - database/migrations
+  # Media-library tables (spatie media + plugin tables) — workbench-local copies
+  # of the vendor stubs; consumers publish them from the plugins directly.
+  - workbench/database/migrations
 
 seeders:
   - Workbench\Database\Seeders\DatabaseSeeder

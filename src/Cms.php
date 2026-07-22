@@ -316,6 +316,115 @@ class Cms
     }
 
     // -------------------------------------------------------------------------
+    //  Media library (optional ralphjsmit/laravel-filament-media-library)
+    // -------------------------------------------------------------------------
+
+    protected static bool $mediaLibraryDisabled = false;
+
+    /** @var class-string|null */
+    protected static ?string $mediaDriver = null;
+
+    /** @var class-string|null */
+    protected static ?string $mediaItemModel = null;
+
+    protected static ?string $mediaDisk = null;
+
+    /** @var array<string, string>|null */
+    protected static ?array $mediaFolderNames = null;
+
+    /**
+     * Opt out of the media library integration even when the package is
+     * installed (fields fall back to plain uploads, no panel page).
+     */
+    public static function disableMediaLibrary(bool $disabled = true): void
+    {
+        static::$mediaLibraryDisabled = $disabled;
+    }
+
+    public static function mediaLibraryDisabled(): bool
+    {
+        return static::$mediaLibraryDisabled;
+    }
+
+    /**
+     * Swap the media-library driver (visibility scope, disk, conversions,
+     * accepted types). Extend the package default to adjust behavior:
+     *
+     *     Cms::useMediaDriver(App\Support\Media\MyDriver::class);
+     *
+     * @param  class-string  $driver
+     */
+    public static function useMediaDriver(string $driver): void
+    {
+        static::$mediaDriver = $driver;
+    }
+
+    /**
+     * @return class-string
+     */
+    public static function mediaDriver(): string
+    {
+        return static::$mediaDriver ?? Support\Media\CmsMediaLibraryDriver::class;
+    }
+
+    /**
+     * Swap the media item model (must extend the plugin's MediaLibraryItem).
+     * The driver re-registers the `filament_media_library_item` morph alias.
+     *
+     * @param  class-string  $model
+     */
+    public static function useMediaItemModel(string $model): void
+    {
+        static::$mediaItemModel = $model;
+    }
+
+    /**
+     * @return class-string
+     */
+    public static function mediaItemModel(): string
+    {
+        return static::$mediaItemModel ?? \RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem::class;
+    }
+
+    /**
+     * The disk media-library uploads are stored on. Defaults to `public` —
+     * CMS sites serve media statically. Apps with a private library (policy-
+     * gated serving à la nest) point this at their own disk.
+     */
+    public static function useMediaDisk(string $disk): void
+    {
+        static::$mediaDisk = $disk;
+    }
+
+    public static function mediaDisk(): string
+    {
+        return static::$mediaDisk ?? 'public';
+    }
+
+    /**
+     * Rename the default per-tenant media folders (key => visible name).
+     * Keys: `branding`, `pages`, `documents` — see MediaFolders.
+     *
+     * @param  array<string, string>  $names
+     */
+    public static function useMediaFolderNames(array $names): void
+    {
+        static::$mediaFolderNames = $names;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function mediaFolderNames(): array
+    {
+        return static::$mediaFolderNames ?? [
+            Support\Media\MediaFolders::BRANDING => 'Branding',
+            Support\Media\MediaFolders::PAGES => 'Seiten',
+            Support\Media\MediaFolders::DOCUMENTS => 'Dokumente',
+        ];
+    }
+
+    // -------------------------------------------------------------------------
     //  Menus
     // -------------------------------------------------------------------------
 
@@ -407,5 +516,13 @@ class Cms
         static::$rootBlockAllowlists = [];
         static::$menuLocations = null;
         static::$footerTagline = null;
+        static::$mediaLibraryDisabled = false;
+        static::$mediaDriver = null;
+        static::$mediaItemModel = null;
+        static::$mediaDisk = null;
+        static::$mediaFolderNames = null;
+        Support\Media\MediaLibrary::flush();
+        Support\Media\MediaUrlResolver::flush();
+        Support\Media\MediaFolders::flush();
     }
 }

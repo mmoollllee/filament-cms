@@ -453,13 +453,44 @@ Everything is tunable under `config('cms.redirects')` — thresholds, statuses, 
 
 ## Media & video conversion
 
-The media block accepts images and videos. Videos are automatically made web-friendly:
-`ConvertsUploadedVideos` (Content model trait) detects media blocks whose upload needs
-conversion (`.mov`/`.avi`/`.wmv` … or MP4 > 10 MB) and dispatches `ConvertVideoForWeb`
-(queued, 10 min timeout, 2 tries): H.264 MP4, scaled to ≤1920px, CRF by the editor-chosen
-quality preset (high 23 / medium 28 / low 33), optional audio strip, temp-file cleanup,
-`video_status` processing/complete/failed on the block. Requires an `ffmpeg` binary on
-the server (bundled `pbmedia/laravel-ffmpeg`).
+**Media library (optional)** — with `ralphjsmit/laravel-filament-media-library`
+installed (commercial; see the README for setup), every media input becomes a
+WordPress-style picker against one **per-tenant Mediathek**: panel page („Mediathek",
+group Inhalt), folders, search, filters, bulk actions, image editor, central
+`alt_text`/`caption`. The wiring the package ships:
+
+- `MediaField` (image/media/document) renders a `MediaPicker` — or the classic
+  tenant-scoped `FileUpload` when the plugin is absent (`MediaLibrary::enabled()` gate,
+  opt-out via `Cms::disableMediaLibrary()`). Same data keys in both modes.
+- `CmsMediaLibraryDriver` owns behavior: tenancy auto-detected from the Filament tenant
+  (items + folders stamped and scoped per tenant), disk from `Cms::useMediaDisk()`
+  (default `public`), policy re-bridge, conversions (`responsive`, `800`, `400`, `thumb`
+  + `og` 1200×630 for social embeds) — swappable via `Cms::useMediaDriver()`.
+- **References are item ids in the same JSON keys** that used to hold paths;
+  `MediaUrlResolver` (behind the stable `AssetUrlResolver` façade) renders both — ints
+  via the Spatie Media API (URL-generator-aware, so private-disk installs work),
+  strings as before. `<x-site.image>` emits `srcset`/`sizes`/`loading="lazy"` from the
+  responsive conversions; block trees batch-preload refs (no N+1).
+- Default folders per tenant — flat, context-based: **Branding** (logos, favicon, OG),
+  **Seiten** (block/hero media), **Dokumente** (downloads); provisioned lazily,
+  renamable via `Cms::useMediaFolderNames()`.
+- Extended picker preview (`MediaPickerPreviewAction`): arrow-key navigation through the
+  picker's files, inline PDF preview, "open in new tab".
+- `cms:media:import` migrates legacy installs: a VALUE-based scan over
+  contents/fragments (blocks, payload, meta **and draft stash**) + tenant `*_path`
+  columns imports every existing file reference (arbitrary keys — `payload.galerie`
+  arrays, WordPress-era `2020/01/…` paths) and rewrites it to an item id. Idempotent,
+  `--dry-run`/`--tenant=`/`--all`/`--sync`, originals stay on disk.
+
+**Video conversion** — the media block accepts images and videos. Videos are
+automatically made web-friendly: `ConvertsUploadedVideos` (Content model trait) detects
+media blocks whose upload needs conversion (`.mov`/`.avi`/`.wmv` … or MP4 > 10 MB) and
+dispatches `ConvertVideoForWeb` (queued, 10 min timeout, 2 tries): H.264 MP4, scaled to
+≤1920px, CRF by the editor-chosen quality preset (high 23 / medium 28 / low 33), optional
+audio strip, temp-file cleanup, `video_status` processing/complete/failed on the block.
+Requires an `ffmpeg` binary on the server (bundled `pbmedia/laravel-ffmpeg`). Applies to
+legacy path-based uploads; library uploads are served as uploaded (upload-time conversion
+is on the roadmap, see `docs/KONZEPT-MEDIATHEK.md` P4).
 
 ## Admin panel
 
@@ -596,5 +627,7 @@ model (it never touches existing app code).
 | `ueberdosis/tiptap-php` | server-side rich-text rendering |
 | `yannkuesthardt/laravel-spamprotect` | e-mail/phone obfuscation components |
 | `pbmedia/laravel-ffmpeg` | the video re-encode job |
+| `ralphjsmit/laravel-filament-media-library` | *(optional, commercial)* the per-tenant media library + picker |
+| `spatie/laravel-medialibrary` | *(optional, with the plugin)* file storage/conversions backend |
 
 `filament/filament` v5 and Laravel 12 are peer requirements of the consuming app.

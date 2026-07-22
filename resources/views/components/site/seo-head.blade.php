@@ -21,8 +21,7 @@
         $pageTitle = \Mmoollllee\Cms\Support\Seo\SeoHead::title($content, $tenant);
         $pageDescription = data_get($content, 'meta.seo_description')
             ?: $tenant->resolvedDefaultSeoDescription();
-        $ogImageUrl = data_get($content, 'meta.og_image_url')
-            ?: $tenant->resolvedDefaultOgImageUrl();
+        $ogImageUrl = \Mmoollllee\Cms\Support\Seo\SeoHead::ogImageUrl($content, $tenant);
         $canonicalUrl = request()->url();
         $logoUrl = $tenant->resolvedMainLogoUrl();
         $isNoindex = \Mmoollllee\Cms\Support\Seo\SeoHead::isNoindex($content, $tenant);

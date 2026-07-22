@@ -1,14 +1,19 @@
 {{--
-    cms:override — vendored copy of filament/forms resources/views/components/builder.blade.php
-    (baseline: filament/filament v5.6.8). Registered via prependNamespace() in CmsServiceProvider,
-    so it shadows the vendor view for EVERY builder in the app.
+    cms:override — Blade equivalent of Filament\Forms\Components\Builder::toEmbeddedHtml()
+    (baseline: filament/filament v5.7.1). Since 5.7 the Builder has NO vendor Blade view
+    anymore (HasEmbeddedView renders PHP-side); this view re-enters the classic render
+    path because CmsServiceProvider sets it explicitly via
+    Builder::configureUsing(fn ($builder) => $builder->view('filament-forms::components.builder'))
+    — a component with an explicit view skips toEmbeddedHtml(), and the prependNamespace()
+    registration makes THIS file win the namespace lookup for every builder in the app.
 
-    Every divergence from the vendor file is wrapped in "cms:start" / "cms:end" marker
-    comments. (Blade comments do NOT nest — never write literal comment tokens inside
-    this header, they would terminate it early and leak the rest as page output.)
-    To re-vendor after a Filament update: copy the new vendor file over this one and
-    re-apply the marked blocks (tests/Feature/FilamentViewOverrideDriftTest.php fails
-    whenever the vendor baseline changes, so drift is never silent).
+    Every divergence from the vendor-equivalent markup is wrapped in "cms:start" /
+    "cms:end" marker comments. (Blade comments do NOT nest — never write literal comment
+    tokens inside this header, they would terminate it early and leak the rest as page
+    output.) To re-vendor after a Filament update: translate the changes in
+    Builder::toEmbeddedHtml() / generateBlockPickerHtml() into this view and re-apply the
+    marked blocks (tests/Feature/FilamentViewOverrideDriftTest.php hashes those method
+    sources and fails whenever they change, so drift is never silent).
 
     cms features carried by this view:
       1. cross-builder drag & drop — items can be dragged between builders sharing a
@@ -25,7 +30,11 @@
     use Filament\Support\Enums\Alignment;
 
     $fieldWrapperView = $getFieldWrapperView();
-    $items = $getItems();
+    // Vendor 5.7 filters before counting so first/last flags agree with the loop.
+    $items = array_filter(
+        $getItems(),
+        static fn ($item): bool => $item->getParentComponent() instanceof \Filament\Forms\Components\Builder\Block,
+    );
     $blockPickerBlocks = $getBlockPickerBlocks();
     $blockPickerColumns = $getBlockPickerColumns();
     $blockPickerWidth = $getBlockPickerWidth();
@@ -68,11 +77,16 @@
     // cms:end
 @endphp
 
-<x-dynamic-component :component="$fieldWrapperView" :field="$field">
+<x-dynamic-component :component="$fieldWrapperView" :field="$field" label-tag="div">
     <div
         {{
             $attributes
                 ->merge($getExtraAttributes(), escape: false)
+                ->merge([
+                    'aria-labelledby' => $getId() . '-label',
+                    'id' => $getId(),
+                    'role' => 'group',
+                ], escape: false)
                 ->class([
                     'fi-fo-builder',
                     'fi-collapsible' => $isCollapsible,
@@ -230,11 +244,11 @@
                                 @endif
 
                                 @php
-                                    $blockIcon = $item->getParentComponent()->getIcon($item->getRawState(), $itemKey);
+                                    $blockIcon = $item->getParentComponent()->getIcon();
                                 @endphp
 
                                 @if ($hasBlockIcons && filled($blockIcon))
-                                    {{ \Filament\Support\generate_icon_html($blockIcon, attributes: (new \Illuminate\View\ComponentAttributeBag)->class(['fi-fo-builder-item-header-icon'])) }}
+                                    {{ \Filament\Support\generate_icon_html($blockIcon, attributes: (new \Filament\Support\View\ComponentAttributeBag)->class(['fi-fo-builder-item-header-icon'])) }}
                                 @endif
 
                                 @if ($hasBlockLabels)

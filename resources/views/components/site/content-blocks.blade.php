@@ -13,6 +13,10 @@
     // ourselves: explicit prop → the content's tenant → the request-scoped singleton.
     // Child blocks (listing, section) need it to query and propagate the tenant.
     $tenant = $tenant ?? $content?->tenant ?? app(\Mmoollllee\Cms\Support\Tenancy\CurrentTenant::class)->get();
+
+    // One query for every media-library ref in this block tree instead of one
+    // per image (blocks resolve refs individually during the loop below).
+    \Mmoollllee\Cms\Support\Media\MediaUrlResolver::preload($blocks);
 @endphp
 
 @if ($blocks === [])

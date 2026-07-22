@@ -4,7 +4,6 @@ namespace Mmoollllee\Cms\Filament\Pages\Tenancy;
 
 use Filament\Facades\Filament;
 use Filament\Forms\Components\ColorPicker;
-use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -22,6 +21,8 @@ use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Concerns\Tenant\HasSpamQuestions;
 use Mmoollllee\Cms\Enums\SocialNetwork;
 use Mmoollllee\Cms\Enums\TenantUserRole;
+use Mmoollllee\Cms\Filament\Forms\MediaField;
+use Mmoollllee\Cms\Support\Media\MediaFolders;
 
 /**
  * Shared tenant profile page (branding, contact, SEO/social). The concrete
@@ -128,51 +129,54 @@ class EditTenantProfilePage extends EditTenantProfile
                                                 configuredValue: $get('brand_claim'),
                                             ))
                                             ->columnSpanFull(),
-                                        FileUpload::make('logo_path')
+                                        MediaField::image(
+                                            'logo_path',
+                                            legacyDirectory: fn (): string => $this->tenantUploadDirectory('branding'),
+                                            folderKey: MediaFolders::BRANDING,
+                                            imageEditor: true,
+                                        )
                                             ->label('Main Logo')
-                                            ->disk('public')
-                                            ->visibility('public')
-                                            ->directory(fn (): string => $this->tenantUploadDirectory('branding'))
-                                            ->image()
-                                            ->imageEditor()
-                                            ->imagePreviewHeight('120')
-                                            ->placeholder(fn (): string => $this->assetPlaceholderText('logo_path', 'Main Logo'))
                                             ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
                                                 field: 'logo_path',
                                                 configuredValue: $get('logo_path'),
                                             )),
-                                        FileUpload::make('secondary_logo_path')
+                                        MediaField::image(
+                                            'secondary_logo_path',
+                                            legacyDirectory: fn (): string => $this->tenantUploadDirectory('branding'),
+                                            folderKey: MediaFolders::BRANDING,
+                                            imageEditor: true,
+                                        )
                                             ->label('Secondary Logo')
-                                            ->disk('public')
-                                            ->visibility('public')
-                                            ->directory(fn (): string => $this->tenantUploadDirectory('branding'))
-                                            ->image()
-                                            ->imageEditor()
-                                            ->imagePreviewHeight('120')
-                                            ->placeholder(fn (): string => $this->assetPlaceholderText('secondary_logo_path', 'Secondary Logo'))
                                             ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
                                                 field: 'secondary_logo_path',
                                                 configuredValue: $get('secondary_logo_path'),
                                             )),
-                                        FileUpload::make('mail_logo_path')
+                                        MediaField::image(
+                                            'mail_logo_path',
+                                            legacyDirectory: fn (): string => $this->tenantUploadDirectory('branding'),
+                                            folderKey: MediaFolders::BRANDING,
+                                            imageEditor: true,
+                                        )
                                             ->label('E-Mail-Logo')
-                                            ->disk('public')
-                                            ->visibility('public')
-                                            ->directory(fn (): string => $this->tenantUploadDirectory('branding'))
-                                            ->image()
-                                            ->imageEditor()
-                                            ->imagePreviewHeight('120')
-                                            // Raster only: SVG doesn't render in Gmail/Outlook. MUST come after
-                                            // ->image(), which resets the accept list back to image/* (SVG
-                                            // included). Optional — when empty, e-mails use the inherited mail
-                                            // logo, else the Main Logo if it is a raster image, otherwise the
-                                            // brand name is shown as text. The helper previews the inherited
-                                            // default like the other brand assets.
-                                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
-                                            ->placeholder(fn (): string => $this->assetPlaceholderText('mail_logo_path', 'E-Mail-Logo'))
+                                            // Raster only: SVG doesn't render in Gmail/Outlook. Optional — when
+                                            // empty, e-mails use the inherited mail logo, else the Main Logo if
+                                            // it is a raster image, otherwise the brand name is shown as text.
+                                            ->acceptedFileTypes(MediaField::RASTER_IMAGE_TYPES)
                                             ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
                                                 field: 'mail_logo_path',
                                                 configuredValue: $get('mail_logo_path')
+                                            )),
+                                        MediaField::image(
+                                            'favicon_path',
+                                            legacyDirectory: fn (): string => $this->tenantUploadDirectory('branding'),
+                                            folderKey: MediaFolders::BRANDING,
+                                        )
+                                            ->label('Favicon')
+                                            ->acceptedFileTypes(MediaField::FAVICON_TYPES)
+                                            ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
+                                                field: 'favicon_path',
+                                                configuredValue: $get('favicon_path'),
+                                                defaultText: 'Quadratisch, mind. 96×96 px. SVG, PNG oder ICO.',
                                             )),
                                         ColorPicker::make('primary_color')
                                             ->label('Primary Color')
@@ -240,15 +244,14 @@ class EditTenantProfilePage extends EditTenantProfile
                                         TextInput::make('default_seo_title')
                                             ->maxLength(255)
                                             ->placeholder(fn (): string => $this->resolvedTextPlaceholder('default_seo_title', $this->currentTenant()?->resolvedDefaultSeoTitle())),
-                                        FileUpload::make('default_og_image_path')
+                                        MediaField::image(
+                                            'default_og_image_path',
+                                            legacyDirectory: fn (): string => $this->tenantUploadDirectory('seo'),
+                                            folderKey: MediaFolders::BRANDING,
+                                            imagePreviewHeight: '100',
+                                            imageEditor: true,
+                                        )
                                             ->label('Default OG Image')
-                                            ->disk('public')
-                                            ->visibility('public')
-                                            ->directory(fn (): string => $this->tenantUploadDirectory('seo'))
-                                            ->image()
-                                            ->imageEditor()
-                                            ->imagePreviewHeight('100')
-                                            ->placeholder(fn (): string => $this->assetPlaceholderText('default_og_image_path', 'Default OG Image'))
                                             ->helperText(fn (Get $get): HtmlString => $this->assetFieldHelperText(
                                                 field: 'default_og_image_path',
                                                 configuredValue: $get('default_og_image_path'),
@@ -436,18 +439,6 @@ class EditTenantProfilePage extends EditTenantProfile
         return "tenants/{$tenant->site_key}/{$segment}";
     }
 
-    protected function assetPlaceholderText(string $field, string $label): string
-    {
-        $defaultDomain = $this->defaultBrandingDomain();
-        $defaultUrl = $this->defaultAssetUrl($field);
-
-        if (filled($defaultUrl)) {
-            return "Default: {$label} von {$defaultDomain}";
-        }
-
-        return "Kein Default-{$label} hinterlegt";
-    }
-
     protected function resolvedPrimaryColorPlaceholder(): string
     {
         $tenantClass = Cms::tenantModel();
@@ -525,6 +516,7 @@ class EditTenantProfilePage extends EditTenantProfile
             // The effective mail logo the tenant inherits (dedicated mail logo, else the
             // raster main-logo fallback) — what its e-mails will actually show.
             'mail_logo_path' => $brandingTenant->resolvedMailLogoUrl(),
+            'favicon_path' => $brandingTenant->resolvedFaviconUrl(),
             'default_og_image_path' => $brandingTenant->resolvedDefaultOgImageUrl(),
             default => null,
         };

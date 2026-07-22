@@ -2,11 +2,12 @@
 
 namespace Mmoollllee\Cms\Fields;
 
-use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Utilities\Get;
+use Mmoollllee\Cms\Filament\Forms\MediaField;
 
 /**
  * Page-header fields (heading, subheading, header image, card thumbnail) stored
@@ -63,15 +64,10 @@ class PageHeaderFields extends FieldKit
         ];
     }
 
-    private function upload(string $key, string $label, string $helperText): FileUpload
+    private function upload(string $key, string $label, string $helperText): Field
     {
-        return FileUpload::make($key)
+        return MediaField::image($key, legacyDirectory: $this->uploadDirectory, imagePreviewHeight: '80')
             ->label($label)
-            ->helperText($helperText)
-            ->image()
-            ->disk('public')
-            ->visibility('public')
-            ->directory($this->uploadDirectory)
-            ->imagePreviewHeight('80');
+            ->helperText($helperText);
     }
 }

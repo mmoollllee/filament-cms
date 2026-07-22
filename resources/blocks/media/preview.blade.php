@@ -1,16 +1,10 @@
 @php
-    use Mmoollllee\Cms\Support\AssetUrlResolver;
+    use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 
-    $mediaPath = is_array($media_path ?? null)
-        ? array_values($media_path)[0] ?? null
-        : ($media_path ?? null);
-    $mediaUrl = AssetUrlResolver::resolve($mediaPath);
-    $isVideo = $mediaUrl && str($mediaUrl)->lower()->endsWith(['.mp4', '.webm', '.mov']);
+    $mediaUrl = MediaUrlResolver::url($media_path ?? null);
+    $isVideo = MediaUrlResolver::isVideo($media_path ?? null);
 
-    $posterPath = is_array($poster_path ?? null)
-        ? array_values($poster_path)[0] ?? null
-        : ($poster_path ?? null);
-    $posterUrl = AssetUrlResolver::resolve($posterPath);
+    $posterUrl = MediaUrlResolver::url($poster_path ?? null);
 
     $presetIds = array_map('intval', array_filter((array) ($layout_preset_ids ?? [])));
     $presetClasses = $presetIds

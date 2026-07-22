@@ -6,6 +6,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
+use Mmoollllee\Cms\Filament\Forms\MediaField;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 /**
@@ -38,6 +39,13 @@ class SeoFields extends FieldKit
                 ->maxLength(200)
                 // Placeholder mirrors the tenant's default SEO description used on the frontend.
                 ->placeholder($tenant?->resolvedDefaultSeoDescription())
+                ->columnSpanFull(),
+            'og_image' => MediaField::image(
+                'meta.og_image',
+                legacyDirectory: $tenant ? "tenants/{$tenant->site_key}/seo" : null,
+            )
+                ->label('Social-Media-Bild (OG)')
+                ->helperText('Bild für Link-Vorschauen (Facebook, LinkedIn, WhatsApp, …). Leer = Standardbild der Website-Einstellungen. Empfohlen: 1200×630.')
                 ->columnSpanFull(),
             'noindex' => Toggle::make('meta.noindex')
                 ->label('Von Suchmaschinen ausschließen (noindex)'),

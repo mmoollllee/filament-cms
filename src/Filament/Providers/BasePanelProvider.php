@@ -43,6 +43,9 @@ use Mmoollllee\Cms\Filament\Resources\NotFoundLogs\NotFoundLogResource;
 use Mmoollllee\Cms\Filament\Resources\Redirects\RedirectResource;
 use Mmoollllee\Cms\Filament\Resources\Users\UserResource;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\ButtonGroupBlock;
+use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
+use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\NavigationCardGroupBlock;
 use Mmoollllee\Cms\Filament\RichEditor\HtmlPreservePlugin;
 use Mmoollllee\Cms\Filament\RichEditor\LinkPickerPlugin;
@@ -144,7 +147,54 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                 fn (): View => view('cms::filament.header-actions'),
             );
 
+        // Optional media library — one "Mediathek" per tenant. Only registered
+        // when the (commercial) plugin is installed and not opted out; without
+        // it the media fields fall back to classic uploads.
+        if (MediaLibrary::enabled()) {
+            $panel->plugin($this->mediaLibraryPlugin());
+        }
+
         return $this->configurePanel($panel);
+    }
+
+    /**
+     * The configured media-library plugin (called only when
+     * {@see MediaLibrary::enabled()}). Behavior — tenancy, disk, conversions,
+     * item model — lives in the driver ({@see Cms::useMediaDriver()});
+     * override this method for page-level options (navigation, slug, accepted
+     * types, modal width).
+     */
+    protected function mediaLibraryPlugin(): FilamentMediaLibrary
+    {
+        $plugin = FilamentMediaLibrary::make()
+            ->navigationLabel('Mediathek')
+            ->navigationGroup('Inhalt')
+            ->slug('mediathek')
+            ->acceptVideo()
+            ->acceptPdf()
+            ->acceptZip()
+            ->acceptMicrosoftWord()
+            ->acceptMicrosoftExcel()
+            ->acceptMicrosoftPowerPoint();
+
+        // Mirror FilamentMediaLibrary::getDefaultDriver(): an EXPLICIT driver
+        // skips that method, which is the only place plugin-level
+        // ->conversions() / ->spatieTagsIntegration() reach the driver — an
+        // app override chaining those would otherwise be silently ignored.
+        return $plugin->driver(
+            Cms::mediaDriver(),
+            modifyDriverUsing: function (MediaLibraryItemDriver $driver) use ($plugin): MediaLibraryItemDriver {
+                if (is_bool($conversionsEnabled = $plugin->areConversionsEnabled())) {
+                    $driver->conversions($conversionsEnabled);
+                }
+
+                if (is_bool($tagsEnabled = $plugin->isSpatieTagsIntegrationEnabled())) {
+                    $driver->spatieTagsIntegration($tagsEnabled, $plugin->getSpatieTagsIntegrationModifyQueryCallback());
+                }
+
+                return $driver;
+            },
+        );
     }
 
     public function register(): void

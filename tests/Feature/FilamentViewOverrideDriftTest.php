@@ -1,46 +1,82 @@
 <?php
 
 /*
- * The package ships vendored copies of two Filament builder views
- * (resources/overrides/filament-forms/…) that shadow the originals via
- * prependNamespace(). A Filament update that changes the ORIGINAL views would be
- * silently swallowed by the override — this guard turns that silence into a
- * failing test.
+ * The package replaces Filament's builder rendering with vendored Blade
+ * equivalents (resources/overrides/filament-forms/…), re-entered via the
+ * explicit ->view() in BlockBuilder::make() + prependNamespace(). A Filament
+ * update that changes the ORIGINAL rendering would be silently swallowed by
+ * the override — this guard turns that silence into a failing test.
+ *
+ * Since Filament 5.7 the builder has no vendor Blade view: it renders via
+ * Builder::toEmbeddedHtml() / generateBlockPickerHtml(), wrapped by
+ * Field::wrapEmbeddedHtml() (whose wrapper contract the override reproduces
+ * as <x-dynamic-component :component="$fieldWrapperView" label-tag="div">).
+ * The guard hashes each METHOD SOURCE via reflection — immune to unrelated
+ * methods being added or the file being reordered — plus the still-existing
+ * block-picker Blade view.
  *
  * When this test fails after a `composer update`:
- *  1. diff the vendor view against the previous baseline to see what Filament changed,
- *  2. re-apply the change to the override copy (all cms divergences are wrapped in
+ *  1. diff the flagged vendor method (or the picker view) against the
+ *     previous baseline to see what Filament changed,
+ *  2. translate/re-apply the change to the override in
+ *     resources/overrides/filament-forms/ (all cms divergences are wrapped in
  *     `cms:start` / `cms:end` markers — everything else must match vendor),
  *  3. update the hash + baseline version below.
  */
 
 use Illuminate\Support\Facades\File;
 
-const FILAMENT_VIEW_BASELINE = 'v5.6.8';
+const FILAMENT_VIEW_BASELINE = 'v5.7.1';
 
-dataset('overridden vendor views', [
-    'builder' => [
-        'vendor/filament/forms/resources/views/components/builder.blade.php',
-        'ad09bf8d8843778ac53929a403589caeafa00db0a639d72a278f30a197917a36',
+dataset('embedded render methods', [
+    'Builder::toEmbeddedHtml' => [
+        \Filament\Forms\Components\Builder::class,
+        'toEmbeddedHtml',
+        'f8a7c1351bd303499c8ec8ae90bf0fa7ee2dcd1a365f46595d3eb7aa02b82e88',
     ],
-    'block-picker' => [
-        'vendor/filament/forms/resources/views/components/builder/block-picker.blade.php',
-        'a6c0fcbf7e8f944e590c382dbe8bca13963e56afaddf28f325e7c4ab923bd315',
+    'Builder::generateBlockPickerHtml' => [
+        \Filament\Forms\Components\Builder::class,
+        'generateBlockPickerHtml',
+        'bfa8d87ac26089574f5f38775b5f60fead54f376fb0614910df93b730e5aad5e',
+    ],
+    'Field::wrapEmbeddedHtml' => [
+        \Filament\Forms\Components\Field::class,
+        'wrapEmbeddedHtml',
+        '6796bfb5f45a5fe3fb5f5eafdd1c550ea496f03ece16a6da7b3458dfeffbc82b',
     ],
 ]);
 
-it('matches the vendor baseline the builder view overrides were vendored from', function (string $vendorPath, string $expectedHash) {
-    $absolute = dirname(__DIR__, 2).'/'.$vendorPath;
+it('matches the vendor baseline the builder override was translated from', function (string $class, string $method, string $expectedHash) {
+    expect(method_exists($class, $method))->toBeTrue(
+        "{$class}::{$method}() no longer exists — Filament changed the builder rendering "
+            .'architecture again; rebuild resources/overrides/filament-forms/components/builder.blade.php '
+            .'against the new mechanism and update this guard.',
+    );
 
-    expect(File::exists($absolute))->toBeTrue("Vendor view {$vendorPath} is missing — did the Filament view move?");
+    $reflection = new ReflectionMethod($class, $method);
+    $lines = file($reflection->getFileName());
+    $source = implode('', array_slice($lines, $reflection->getStartLine() - 1, $reflection->getEndLine() - $reflection->getStartLine() + 1));
+
+    expect(hash('sha256', $source))->toBe(
+        $expectedHash,
+        "Filament changed {$class}::{$method}() since baseline ".FILAMENT_VIEW_BASELINE.'. '
+            .'Translate the change into resources/overrides/filament-forms/components/builder.blade.php '
+            .'(keep the cms:start/cms:end blocks), then update the hash in this test.',
+    );
+})->with('embedded render methods');
+
+it('matches the vendor baseline the block-picker view override was vendored from', function () {
+    $absolute = dirname(__DIR__, 2).'/vendor/filament/forms/resources/views/components/builder/block-picker.blade.php';
+
+    expect(File::exists($absolute))->toBeTrue('Vendor block-picker view is missing — did the Filament view move?');
 
     expect(hash_file('sha256', $absolute))->toBe(
-        $expectedHash,
-        "Filament changed {$vendorPath} since baseline ".FILAMENT_VIEW_BASELINE.'. '
+        '3bfe9847733b1e995416a638eb40eb2c2083ea56da77ff4a6da17f6ac0fcdff0',
+        'Filament changed the block-picker view since baseline '.FILAMENT_VIEW_BASELINE.'. '
             .'Re-apply the vendor changes to the override in resources/overrides/filament-forms/ '
             .'(keep the cms:start/cms:end blocks), then update the hash in this test.',
     );
-})->with('overridden vendor views');
+});
 
 /*
  * Same guard, different vendor: the package's link-suggestions field wrapper
