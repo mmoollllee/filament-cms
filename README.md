@@ -198,7 +198,7 @@ legacy importer. It activates automatically **only if the project installs the p
 composer config 'repositories.ralphjsmit/*' composer https://satis.ralphjsmit.com
 composer require ralphjsmit/laravel-filament-media-library spatie/laravel-medialibrary
 php artisan vendor:publish --provider="Spatie\MediaLibrary\MediaLibraryServiceProvider" --tag=medialibrary-migrations
-php artisan vendor:publish --tag=laravel-filament-media-library-migrations
+php artisan vendor:publish --tag=filament-media-library-migrations
 php artisan migrate
 ```
 
