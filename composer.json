@@ -7,7 +7,7 @@
         "php": "^8.2",
         "awcodes/richer-editor": "^2.1",
         "blendbyte/filament-title-with-slug": "^3.0",
-        "datlechin/filament-menu-builder": "^1.0.3",
+        "datlechin/filament-menu-builder": "1.0.3",
         "defstudio/filament-searchable-input": "^5.0",
         "filament/filament": "^5.0",
         "mmoollllee/filament-builder-title": "^0.3.0",
@@ -54,7 +54,9 @@
             "name": "ralphjsmit/*",
             "type": "composer",
             "url": "https://satis.ralphjsmit.com",
-            "only": ["ralphjsmit/*"]
+            "only": [
+                "ralphjsmit/*"
+            ]
         },
         {
             "type": "composer",
