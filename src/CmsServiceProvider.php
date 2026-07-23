@@ -196,6 +196,9 @@ class CmsServiceProvider extends ServiceProvider
             // Precompiled builder UX styles (inactive pill, preview interaction, inline
             // editing) — plain CSS, so every panel works without a custom vite theme.
             Css::make('filament-cms-builder', __DIR__.'/../resources/css/builder.css'),
+            // Precompiled diff styles for the revisions pages (the plugin's own
+            // CSS is Tailwind source and would need a custom theme build).
+            Css::make('filament-cms-versionable', __DIR__.'/../resources/css/versionable.css'),
         ], package: 'mmoollllee/filament-cms');
 
         // Both wire the registered Content/Tenant models, which are unset until
@@ -204,6 +207,16 @@ class CmsServiceProvider extends ServiceProvider
         if (Cms::modelsConfigured()) {
             $this->registerCacheObservers();
             $this->registerPolicies();
+
+            // Versions record their author via versionable.user_model — point it
+            // at the registered user model (the packaged default assumes
+            // \App\Models\User, which the workbench/testbench doesn't have).
+            // Retention is env-driven via cms.versions.keep (HasVersions
+            // force-deletes pruned rows, so the cap actually frees storage).
+            config([
+                'versionable.user_model' => Cms::userModel(),
+                'versionable.keep_versions' => (int) config('cms.versions.keep', 50),
+            ]);
         }
 
         // Optional media-library integration — wired only when the (commercial)

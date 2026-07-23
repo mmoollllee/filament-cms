@@ -1,0 +1,82 @@
+/*
+ * Precompiled copy of mansoor/filament-versionable's plugin.css (v5.1) — the
+ * original uses Tailwind @apply and therefore needs a custom vite theme build,
+ * which the CMS panels deliberately avoid (plain-CSS FilamentAsset, same
+ * pattern as builder.css). Re-derive from
+ * vendor/mansoor/filament-versionable/resources/css/plugin.css on plugin updates.
+ */
+
+.diff-wrapper.diff {
+    width: 100%;
+    word-break: break-all;
+    border-collapse: separate;
+    border-spacing: 0.25rem 0;
+}
+
+.diff-wrapper.diff td {
+    line-height: 1.625;
+    padding: 0.5rem 0.75rem;
+    vertical-align: top;
+}
+
+.diff-wrapper.diff.diff-html .change.change-eq .old,
+.diff-wrapper.diff.diff-html .change.change-eq .new {
+    background-color: transparent;
+    width: 50%;
+}
+
+.diff-wrapper.diff.diff-html .change-rep .old,
+.diff-wrapper.diff.diff-html .change-del .old {
+    background-color: #fcf0f1;
+    width: 50%;
+}
+
+.dark .diff-wrapper.diff.diff-html .change-rep .old,
+.dark .diff-wrapper.diff.diff-html .change-del .old {
+    background-color: #ef535033;
+}
+
+.diff-wrapper.diff.diff-html .change-rep .new,
+.diff-wrapper.diff.diff-html .change-ins .new {
+    background-color: #edfaef;
+    width: 50%;
+}
+
+.dark .diff-wrapper.diff.diff-html .change-rep .new,
+.dark .diff-wrapper.diff.diff-html .change-ins .new {
+    background-color: #1d3a26;
+}
+
+.diff-wrapper.diff.diff-html .change ins,
+.diff-wrapper.diff.diff-html .change del {
+    text-decoration: none;
+}
+
+.diff-wrapper.diff.diff-html .change ins {
+    background-color: #68de7c;
+}
+
+.dark .diff-wrapper.diff.diff-html .change ins {
+    background-color: #30824c;
+}
+
+.diff-wrapper.diff.diff-html .change del {
+    background-color: #ffabaf;
+}
+
+.dark .diff-wrapper.diff.diff-html .change del {
+    background-color: #ef535090;
+}
+
+.diff-wrapper.diff.diff-html .change .old.none,
+.diff-wrapper.diff.diff-html .change .new.none,
+.diff-wrapper.diff.diff-html .change .rep.none {
+    cursor: not-allowed;
+    background: repeating-linear-gradient(-40deg, transparent, transparent 0.5em, #f3f4f6 0em, #f3f4f6 1em);
+}
+
+.dark .diff-wrapper.diff.diff-html .change .old.none,
+.dark .diff-wrapper.diff.diff-html .change .new.none,
+.dark .diff-wrapper.diff.diff-html .change .rep.none {
+    background: repeating-linear-gradient(-40deg, transparent, transparent 0.5em, #1f2937 0, #1f2937 1em);
+}

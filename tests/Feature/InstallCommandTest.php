@@ -80,12 +80,14 @@ it('scaffolds config, models, providers and frontend routes', function () {
         expect(File::get(config_path('cms.php')))->toContain('CMS_DEV_LOGIN_EMAIL');
 
         // … the scaffolded models adopt the package traits (not copied code) …
+        // Draft/preview AND versioning ship enabled: the scaffolded models must
+        // adopt the traits, or fresh installs silently lose those features.
+        $contentModel = File::get(app_path('Models/Content.php'));
+        $fragmentModel = File::get(app_path('Models/Fragment.php'));
+
         expect(File::get(app_path('Models/Tenant.php')))->toContain('use InheritsBranding;')
-            ->and(File::get(app_path('Models/Content.php')))->toContain('use GeneratesPathAndSlug;')
-            // The draft/preview workflow ships enabled: both scaffolded models
-            // must adopt HasDraft, or fresh installs silently lose the feature.
-            ->and(File::get(app_path('Models/Content.php')))->toContain('use HasDraft;')
-            ->and(File::get(app_path('Models/Fragment.php')))->toContain('use HasDraft;');
+            ->and($contentModel)->toContain('use GeneratesPathAndSlug;', 'use HasDraft;', 'use HasVersions;')
+            ->and($fragmentModel)->toContain('use HasDraft;', 'use HasVersions;');
 
         // … the frontend catch-all is appended and both providers registered.
         expect(File::get(base_path('routes/web.php')))->toContain('ContentShowController');

@@ -11,8 +11,10 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Js;
 use Livewire\Attributes\Locked;
+use Mansoor\FilamentVersionable\Page\RevisionsAction;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use Mmoollllee\Cms\Support\Versioning\Versions;
 
 /**
  * Draft-aware save flow for the content + fragment edit pages.
@@ -220,12 +222,43 @@ trait ManagesDrafts
                 merge: true,
             ),
             [
+                $this->getRevisionsHeaderAction(),
                 $this->getDiscardDraftAction(),
                 $this->getPreviewAction(),
                 $this->getSaveDraftHeaderAction(),
                 $this->getApplyHeaderAction(),
             ],
         );
+    }
+
+    /**
+     * "Revisionen" (mansoor/filament-versionable): link to the resource's
+     * revisions page with the revision count as badge.
+     *
+     * The plugin's own hidden()/badge() closures each call
+     * $record->versions()->count() unconditionally — and Filament evaluates
+     * hidden() BEFORE visible(), so a visible() gate could never protect a
+     * model without {@see HasVersions} from fataling. Both closures are
+     * therefore REPLACED: supported-check first, one memoized count per
+     * request instead of two queries per roundtrip.
+     */
+    protected function getRevisionsHeaderAction(): Action
+    {
+        $revisionCount = null;
+        $resolveCount = function () use (&$revisionCount): int {
+            $record = $this->getRecord();
+
+            return $revisionCount ??= Versions::supported($record)
+                ? $record->versions()->count()
+                : 0;
+        };
+
+        return RevisionsAction::make()
+            ->color('gray')
+            ->hidden(fn (): bool => ! Versions::supported($this->getRecord())
+                || ! static::getResource()::hasPage('revisions')
+                || $resolveCount() <= 1)
+            ->badge(fn (): ?string => $resolveCount() > 1 ? (string) ($resolveCount() - 1) : null);
     }
 
     /**

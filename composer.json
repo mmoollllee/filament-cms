@@ -13,7 +13,8 @@
         "mmoollllee/filament-builder-title": "^0.3.0",
         "pbmedia/laravel-ffmpeg": "^8.9",
         "ueberdosis/tiptap-php": "^2.1",
-        "yannkuesthardt/laravel-spamprotect": "^2.0|^3.0"
+        "yannkuesthardt/laravel-spamprotect": "^2.0|^3.0",
+        "mansoor/filament-versionable": "^5.1"
     },
     "require-dev": {
         "mockery/mockery": "^1.6",

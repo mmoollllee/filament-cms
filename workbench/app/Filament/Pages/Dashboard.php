@@ -5,6 +5,7 @@ namespace Workbench\App\Filament\Pages;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\HtmlString;
+use Mmoollllee\Cms\Filament\Widgets\RecentVersionsWidget;
 use Workbench\App\Filament\Widgets\DemoOverviewStats;
 
 /**
@@ -29,6 +30,7 @@ class Dashboard extends BaseDashboard
     {
         return [
             DemoOverviewStats::class,
+            RecentVersionsWidget::class,
         ];
     }
 

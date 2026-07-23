@@ -5,6 +5,7 @@ namespace Mmoollllee\Cms\Support\Preview;
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Concerns\HasDraft;
+use Mmoollllee\Cms\Support\TraitAdoption;
 
 /**
  * Capability checks around the {@see HasDraft} trait.
@@ -15,22 +16,10 @@ use Mmoollllee\Cms\Concerns\HasDraft;
  */
 final class Drafts
 {
-    /** @var array<class-string, bool> */
-    private static array $supportedMemo = [];
-
     /** Whether the model (class or instance) has adopted {@see HasDraft}. */
     public static function supported(object|string|null $model): bool
     {
-        if ($model === null) {
-            return false;
-        }
-
-        $class = is_object($model) ? $model::class : $model;
-
-        // class_uses_recursive() walks the full parent/trait tree per call —
-        // memoized because tables ask per row. Trait composition is immutable
-        // per process, so the memo is also Octane-safe.
-        return self::$supportedMemo[$class] ??= in_array(HasDraft::class, class_uses_recursive($class), true);
+        return TraitAdoption::adopted(HasDraft::class, $model);
     }
 
     /** Whether the record supports drafts AND currently has one stashed. */

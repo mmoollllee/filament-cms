@@ -221,6 +221,43 @@ once per layout: `@include('cms::partials.preview-badge')` (inline-styled, no Ta
 build dependency). Models without the trait keep the classic save-only pages — every
 draft UI element hides.
 
+## Versioning & restore
+
+**Snapshot history** — models adopting `HasVersions` (Content + Fragment, opt-in like
+HasDraft) record a full snapshot version for every APPLIED change: create, "Änderungen
+anwenden" and restores. Built on `overtrue/laravel-versionable` +
+`mansoor/filament-versionable`; the acting panel user is stored per version. The
+**draft workflow stays invisible to the history**: stashing/discarding creates no
+version (column-targeted persistence fires no model events) AND `draft` is excluded
+from the snapshot whitelist — the whitelist derives from `$fillable` minus
+`draft`/`sort`/tenancy/authorship bookkeeping, so table reordering never spams the
+timeline and app-added columns version automatically.
+
+**Revisions UI** — the edit pages' header gains a "Revisionen" action (badge = number
+of revisions, hidden until history exists) linking to a per-resource revisions page
+with side-by-side diff, version browser and restore. The shared base is
+`ContentRevisionsPage`; the catch-all and fragments ship theirs, a site resource adds
+a 3-liner + one `getPages()` route (see the workbench Service resource). **Restore
+discards a pending draft** (announced via notification) — the stash would otherwise
+re-overlay the just-restored state — and the restore itself records a new version.
+The diff styles ship precompiled (`versionable.css` FilamentAsset), so panels without
+a custom vite theme render them too.
+
+**Dashboard: Letzte Änderungen** — `RecentVersionsWidget` lists the tenant's most
+recent applied changes across contents AND fragments (author, relative time, blueprint
+type label) with deep links to the managing resource's edit + revisions pages
+(type-specific site resources win over the catch-all via ContentResourceLocator).
+Strictly tenant-scoped; drafts appear only after applying.
+
+**App wiring** — `use HasVersions;` on Content + Fragment, copy the
+`create_versions_table` migration (or publish it from overtrue — identical shape),
+done. `versionable.user_model` is pointed at `Cms::userModel()` automatically. Models
+without the trait hide every versioning element, including the widget — safe to
+upgrade before adopting. Retention defaults to 50 versions per record
+(`CMS_VERSIONS_KEEP`, 0 = unlimited); pruned versions are force-deleted so the cap
+actually frees storage, and hard-deleting a record removes its history. Deep links in
+the widget honor resource `canAccess()`.
+
 ## Block builder
 
 The customer-facing page composer, built on Filament's Builder field with a shared

@@ -22,6 +22,9 @@ providers:
   - RalphJSmit\Filament\Explore\FilamentExploreServiceProvider
   - RalphJSmit\Filament\MediaLibrary\FilamentMediaLibraryServiceProvider
   - Datlechin\FilamentMenuBuilder\FilamentMenuBuilderServiceProvider
+  # Content versioning (config merge + revisions UI views/translations).
+  - Overtrue\LaravelVersionable\ServiceProvider
+  - Mansoor\FilamentVersionable\FilamentVersionableServiceProvider
   - Blendbyte\FilamentTitleWithSlug\FilamentTitleWithSlugServiceProvider
   - DefStudio\SearchableInput\SearchableInputServiceProvider
   - ProtoneMedia\LaravelFFMpeg\Support\ServiceProvider

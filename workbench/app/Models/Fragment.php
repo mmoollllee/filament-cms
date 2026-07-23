@@ -6,11 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Mmoollllee\Cms\Concerns\Fragment\ResolvesFragmentWithCascade;
 use Mmoollllee\Cms\Concerns\HasDraft;
+use Mmoollllee\Cms\Concerns\HasVersions;
 use Mmoollllee\Cms\Contracts\Fragment as FragmentContract;
 
 class Fragment extends Model implements FragmentContract
 {
     use HasDraft;
+    use HasVersions;
     use ResolvesFragmentWithCascade;
 
     /** @var list<string> */

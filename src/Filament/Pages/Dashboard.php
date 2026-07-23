@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Filament\Pages;
 
 use Filament\Pages\Dashboard as BaseDashboard;
 use Mmoollllee\Cms\Filament\Widgets\ContentOverviewWidget;
+use Mmoollllee\Cms\Filament\Widgets\RecentVersionsWidget;
 use Mmoollllee\Cms\Filament\Widgets\TenantOverviewWidget;
 
 class Dashboard extends BaseDashboard
@@ -15,6 +16,7 @@ class Dashboard extends BaseDashboard
         return [
             TenantOverviewWidget::class,
             ContentOverviewWidget::class,
+            RecentVersionsWidget::class,
         ];
     }
 

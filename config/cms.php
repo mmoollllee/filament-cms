@@ -61,4 +61,16 @@ return [
         'ignore_extensions' => ['php', 'env', 'asp', 'aspx', 'cgi', 'jsp', 'sql', 'bak'],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Versioning (HasVersions)
+    |--------------------------------------------------------------------------
+    | keep   snapshot versions kept per record (older ones are pruned and
+    |        force-deleted on each new version). 0 = unlimited — mind that a
+    |        SNAPSHOT stores the full blocks/payload JSON per applied save.
+    */
+    'versions' => [
+        'keep' => (int) env('CMS_VERSIONS_KEEP', 50),
+    ],
+
 ];

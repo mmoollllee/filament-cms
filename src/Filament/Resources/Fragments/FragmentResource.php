@@ -24,6 +24,7 @@ use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Filament\Forms\BlockBuilder;
 use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\CreateFragment;
 use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\EditFragment;
+use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\FragmentRevisions;
 use Mmoollllee\Cms\Filament\Resources\Fragments\Pages\ListFragments;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Preview\Drafts;
@@ -135,6 +136,7 @@ class FragmentResource extends Resource
             'index' => ListFragments::route('/'),
             'create' => CreateFragment::route('/create'),
             'edit' => EditFragment::route('/{record}/edit'),
+            'revisions' => FragmentRevisions::route('/{record}/revisions'),
         ];
     }
 }

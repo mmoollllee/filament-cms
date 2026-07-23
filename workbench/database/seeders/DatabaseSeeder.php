@@ -299,6 +299,16 @@ class DatabaseSeeder extends Seeder
                     // Panel: „Entwurf speichern" / „Änderungen anwenden" / Vorschau (eye).
                     // Frontend: ?preview=1 enters, ?preview=0 (or the badge) leaves.
                     PHP)),
+                $this->textChild('Versioning & restore', '<p>Every <strong>applied</strong> change records a snapshot version (create, „Änderungen anwenden", restores) — browse them via the edit page\'s <strong>Revisionen</strong> action with a side-by-side diff and restore any state. Drafts stay out of the history by design: stashing creates no version and the <code>draft</code> column is excluded from snapshots. The dashboard\'s <strong>„Letzte Änderungen"</strong> widget lists the tenant\'s recent changes across contents and fragments with author and deep links.</p>'.$this->code('php', <<<'PHP'
+                    class Content extends Model implements ContentContract
+                    {
+                        use HasDraft;
+                        use HasVersions;   // snapshot per applied change; draft/sort excluded
+                    }
+
+                    // Resource: 'revisions' => Revisions::route('/{record}/revisions')
+                    // Restore discards a pending draft and records a new version.
+                    PHP)),
             ])],
         ]);
 

@@ -8,7 +8,9 @@ each site keeps its own models, content types, blocks, views and design.
 - **What it ships:** domain-based multi-tenancy with branding inheritance, the content
   engine (types/blueprints, hierarchical paths, publishing windows, templates), a
   draft/preview workflow ("Entwurf speichern" + session-sticky Vorschau mode that
-  overlays pending changes everywhere they render), the customer-friendly block builder
+  overlays pending changes everywhere they render), snapshot versioning with
+  side-by-side diffs, restore and a tenant-wide "Letzte Änderungen" dashboard widget
+  (drafts stay out of the history), the customer-friendly block builder
   (previews with inline editing, copy/paste, drag & drop across sections, layout
   presets), the RichEditor stack (link picker with internal-path autocomplete, custom
   blocks, HTML preservation), redirects + 404 management with fuzzy auto-resolve,

@@ -624,7 +624,7 @@ abstract class TenantScopedContentResource extends Resource
                     ->label('Typ')
                     ->badge()
                     ->formatStateUsing(fn ($state): string => app(ContentBlueprintRegistry::class)
-                        ->find((string) $state, $tenant?->site_key)?->label() ?? (string) $state)
+                        ->labelFor((string) $state, $tenant?->site_key))
                     ->visible(count(static::getContentTypes()) !== 1),
                 TextColumn::make('path')
                     ->label('Pfad')

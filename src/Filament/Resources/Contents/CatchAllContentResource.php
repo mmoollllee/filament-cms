@@ -10,6 +10,7 @@ use Filament\Support\Icons\Heroicon;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Filament\Resources\Concerns\RendersPageHeader;
+use Mmoollllee\Cms\Filament\Resources\Contents\Pages\ContentRevisions;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\CreateContent;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\EditContent;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\ListContents;
@@ -145,6 +146,7 @@ class CatchAllContentResource extends TenantScopedContentResource
             'index' => ListContents::route('/'),
             'create' => CreateContent::route('/create'),
             'edit' => EditContent::route('/{record}/edit'),
+            'revisions' => ContentRevisions::route('/{record}/revisions'),
         ];
     }
 

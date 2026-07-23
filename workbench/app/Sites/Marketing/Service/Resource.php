@@ -12,6 +12,7 @@ use Mmoollllee\Cms\Filament\Resources\Concerns\RendersPageHeader;
 use Workbench\App\Sites\Marketing\Service\Pages\CreatePage;
 use Workbench\App\Sites\Marketing\Service\Pages\EditPage;
 use Workbench\App\Sites\Marketing\Service\Pages\ListPage;
+use Workbench\App\Sites\Marketing\Service\Pages\RevisionsPage;
 
 class Resource extends TenantScopedContentResource
 {
@@ -44,6 +45,7 @@ class Resource extends TenantScopedContentResource
             'index' => ListPage::route('/'),
             'create' => CreatePage::route('/create'),
             'edit' => EditPage::route('/{record}/edit'),
+            'revisions' => RevisionsPage::route('/{record}/revisions'),
         ];
     }
 }

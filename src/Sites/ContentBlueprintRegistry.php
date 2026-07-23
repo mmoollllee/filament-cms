@@ -71,6 +71,15 @@ class ContentBlueprintRegistry
     }
 
     /**
+     * Human label for a content type, falling back to the raw key — the single
+     * lookup shared by the content tables and the recent-versions widget.
+     */
+    public function labelFor(string $key, ?string $siteKey = null): string
+    {
+        return $this->find($key, $siteKey)?->label() ?? $key;
+    }
+
+    /**
      * @return array<string, string>
      */
     public function options(?string $siteKey = null): array
