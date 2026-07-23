@@ -32,6 +32,18 @@ it('is enabled by default in the workbench and can be opted out', function () {
         ->and(MediaLibrary::enabled())->toBeFalse();
 });
 
+it('defaults the driver to the extensions variant when the extensions package is installed', function () {
+    // require-dev in this repo — the trait-carrying subclass is picked
+    // automatically; installs without the package get the base driver.
+    expect(MediaLibrary::extensionsInstalled())->toBeTrue()
+        ->and(Cms::mediaDriver())->toBe(\Mmoollllee\Cms\Support\Media\CmsMediaLibraryDriverWithExtensions::class)
+        ->and(is_subclass_of(Cms::mediaDriver(), CmsMediaLibraryDriver::class))->toBeTrue();
+
+    Cms::useMediaDriver(CmsMediaLibraryDriver::class);
+
+    expect(Cms::mediaDriver())->toBe(CmsMediaLibraryDriver::class);
+});
+
 it('builds a MediaPicker when the library is enabled', function () {
     expect(MediaField::image('logo_path'))->toBeInstanceOf(MediaPicker::class)
         ->and(MediaField::media('media_path'))->toBeInstanceOf(MediaPicker::class)

@@ -22,6 +22,8 @@ final class MediaLibrary
 {
     private static ?bool $installedMemo = null;
 
+    private static ?bool $extensionsMemo = null;
+
     /** Whether the plugin package is installed (composer-level). */
     public static function installed(): bool
     {
@@ -34,9 +36,23 @@ final class MediaLibrary
         return static::installed() && ! Cms::mediaLibraryDisabled();
     }
 
-    /** Reset the memo ({@see Cms::flush()} calls this between tests). */
+    /**
+     * Whether mmoollllee/filament-media-library-extensions is installed
+     * (upload button, inline/dropzone uploads, auto-selection, extended
+     * preview). Its service provider wires the picker UX itself via
+     * configureUsing(); the CMS only switches the default driver to the
+     * trait-carrying subclass ({@see Cms::mediaDriver()}).
+     */
+    public static function extensionsInstalled(): bool
+    {
+        return self::$extensionsMemo ??= static::installed()
+            && class_exists(\Mmoollllee\FilamentMediaLibraryExtensions\FilamentMediaLibraryExtensionsServiceProvider::class);
+    }
+
+    /** Reset the memos ({@see Cms::flush()} calls this between tests). */
     public static function flush(): void
     {
         self::$installedMemo = null;
+        self::$extensionsMemo = null;
     }
 }

@@ -21,6 +21,7 @@ providers:
   - Spatie\MediaLibrary\MediaLibraryServiceProvider
   - RalphJSmit\Filament\Explore\FilamentExploreServiceProvider
   - RalphJSmit\Filament\MediaLibrary\FilamentMediaLibraryServiceProvider
+  - Mmoollllee\FilamentMediaLibraryExtensions\FilamentMediaLibraryExtensionsServiceProvider
   - Datlechin\FilamentMenuBuilder\FilamentMenuBuilderServiceProvider
   # Content versioning (config merge + revisions UI views/translations).
   - Overtrue\LaravelVersionable\ServiceProvider

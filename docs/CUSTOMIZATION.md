@@ -603,9 +603,21 @@ Cms::useMediaFolderNames([                       // rename the default per-tenan
 
 **Panel options** — override `BasePanelProvider::mediaLibraryPlugin()` to change
 navigation/slug/accepted types or swap the library page; the driver stays the single
-owner of behavior. The `MediaPickerPreviewAction` (arrow-key navigation, PDF preview) is
-registered globally via `MediaPicker::configureUsing()` in the package boot — an app's
-own `configureUsing` (booting later) overrides it.
+owner of behavior.
+
+**Picker UX (optional):** install
+[`mmoollllee/filament-media-library-extensions`](https://github.com/mmoollllee/filament-media-library-extensions)
+for the upload button, inline/dropzone uploads, auto-selection of fresh uploads and the
+extended preview action (arrow-key navigation, PDF iframe, policy-aware URLs). Its
+service provider wires the picker via `configureUsing()` on its own; the CMS only
+switches the default driver to the trait-carrying subclass
+(`CmsMediaLibraryDriverWithExtensions`) so modal tiles / the file-info sidebar get the
+extended preview and fresh uploads auto-select. Feature toggles publish via
+`--tag=filament-media-library-extensions-config`; an app registering its OWN driver via
+`Cms::useMediaDriver()` opts in by using the
+`Mmoollllee\FilamentMediaLibraryExtensions\Drivers\Concerns\HasMediaLibraryExtensions`
+trait itself. Run `php artisan filament:assets` after every update of the extensions
+package — its JS/CSS asset URLs are content-hashed.
 
 **Fields** — use the dual-mode factory in your own blocks/resources instead of raw
 components, and chain only methods that exist on BOTH `MediaPicker` and `FileUpload`:

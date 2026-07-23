@@ -511,8 +511,11 @@ group Inhalt), folders, search, filters, bulk actions, image editor, central
 - Default folders per tenant — flat, context-based: **Branding** (logos, favicon, OG),
   **Seiten** (block/hero media), **Dokumente** (downloads); provisioned lazily,
   renamable via `Cms::useMediaFolderNames()`.
-- Extended picker preview (`MediaPickerPreviewAction`): arrow-key navigation through the
-  picker's files, inline PDF preview, "open in new tab".
+- **Picker UX via `mmoollllee/filament-media-library-extensions`** *(optional, auto-wired
+  when installed — the default driver switches to the trait-carrying subclass)*: upload
+  button on the picker, inline/dropzone uploads with progress tiles, auto-selection of
+  fresh uploads, and the extended preview action (arrow-key navigation, inline PDF
+  preview, policy-aware URLs) on field/modal tiles and the file-info sidebar.
 - `cms:media:import` migrates legacy installs: a VALUE-based scan over
   contents/fragments (blocks, payload, meta **and draft stash**) + tenant `*_path`
   columns imports every existing file reference (arbitrary keys — `payload.galerie`
@@ -668,5 +671,6 @@ model (it never touches existing app code).
 | `pbmedia/laravel-ffmpeg` | the video re-encode job |
 | `ralphjsmit/laravel-filament-media-library` | *(optional, commercial)* the per-tenant media library + picker |
 | `spatie/laravel-medialibrary` | *(optional, with the plugin)* file storage/conversions backend |
+| `mmoollllee/filament-media-library-extensions` | *(optional, with the plugin)* picker upload button, inline/dropzone uploads, extended preview |
 
 `filament/filament` v5 and Laravel 12 are peer requirements of the consuming app.

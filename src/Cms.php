@@ -364,7 +364,12 @@ class Cms
      */
     public static function mediaDriver(): string
     {
-        return static::$mediaDriver ?? Support\Media\CmsMediaLibraryDriver::class;
+        // The extensions variant only differs by the opt-in trait of the
+        // optional extensions package — chosen at runtime so the base class
+        // keeps working on installs without that package.
+        return static::$mediaDriver ?? (Support\Media\MediaLibrary::extensionsInstalled()
+            ? Support\Media\CmsMediaLibraryDriverWithExtensions::class
+            : Support\Media\CmsMediaLibraryDriver::class);
     }
 
     /**

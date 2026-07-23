@@ -18,7 +18,6 @@ use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
 use Mmoollllee\Cms\Console\Commands\MediaImportCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
-use Mmoollllee\Cms\Filament\Actions\MediaPickerPreviewAction;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
@@ -38,7 +37,6 @@ use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
-use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\MediaPicker;
 use Mmoollllee\Cms\Support\Routing\HitRecorder;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Routing\PathSuggestionResolver;
@@ -271,23 +269,19 @@ class CmsServiceProvider extends ServiceProvider
 
     /**
      * Media-library plugin wiring (guarded by MediaLibrary::installed()):
-     * Gate policies for the vendor models (not auto-discovered), the extended
-     * preview action on every MediaPicker, and the legacy-import command.
+     * Gate policies for the vendor models (not auto-discovered) and the
+     * legacy-import command.
      *
-     * MediaPicker::configureUsing runs here in the PACKAGE boot — app providers
-     * boot later, so an app's own configureUsing (e.g. nest's) overrides the
-     * preview action cleanly.
+     * Picker UX (upload button, dropzones, extended preview action) is NOT
+     * wired here: it comes from the optional
+     * mmoollllee/filament-media-library-extensions package, whose service
+     * provider applies itself via configureUsing() — the driver default picks
+     * up its opt-in trait automatically ({@see Cms::mediaDriver()}).
      */
     protected function registerMediaLibrary(): void
     {
         Gate::policy(\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem::class, MediaItemPolicy::class);
         Gate::policy(\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder::class, MediaFolderPolicy::class);
-
-        if (MediaLibrary::enabled()) {
-            MediaPicker::configureUsing(function (MediaPicker $picker): void {
-                $picker->modifyPreviewActionUsing(fn (): MediaPickerPreviewAction => MediaPickerPreviewAction::make());
-            });
-        }
 
         if ($this->app->runningInConsole()) {
             $this->commands([

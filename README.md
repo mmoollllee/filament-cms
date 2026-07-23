@@ -221,6 +221,23 @@ php artisan cms:media:import --dry-run
 php artisan cms:media:import          # add --sync without a queue worker, --all for orphans
 ```
 
+**Recommended companion** — the free
+[`mmoollllee/filament-media-library-extensions`](https://github.com/mmoollllee/filament-media-library-extensions)
+adds the WordPress-grade picker UX: an upload button on every picker, inline/drag-and-drop
+uploads with progress tiles, auto-selection of fresh uploads, and an extended preview
+(arrow keys, PDF iframe, policy-aware URLs). The CMS wires it automatically when
+installed (the default media driver switches to the extensions-aware subclass):
+
+```jsonc
+// composer.json — the package is distributed via GitHub, not Packagist:
+{ "repositories": [{ "type": "vcs", "url": "https://github.com/mmoollllee/filament-media-library-extensions" }] }
+```
+
+```bash
+composer require mmoollllee/filament-media-library-extensions
+php artisan filament:assets   # ⚠️ also after every update — asset URLs are content-hashed
+```
+
 Without the plugin every media field falls back to the classic tenant-scoped
 `FileUpload`, and stored path references keep rendering either way (the resolver
 understands both). Wiring details + customization: [docs/CUSTOMIZATION.md §12](docs/CUSTOMIZATION.md).

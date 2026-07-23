@@ -17,6 +17,7 @@
         "mansoor/filament-versionable": "^5.1"
     },
     "require-dev": {
+        "mmoollllee/filament-media-library-extensions": "^0.1",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^10.0",
         "pestphp/pest": "^4.4",
@@ -25,6 +26,7 @@
         "spatie/laravel-medialibrary": "^11.0"
     },
     "suggest": {
+        "mmoollllee/filament-media-library-extensions": "Upload-Button, Inline-/Dropzone-Uploads, Auto-Selektion und erweiterte Vorschau für den MediaPicker (^0.1, MIT — VCS-Repo github.com/mmoollllee/filament-media-library-extensions). Das CMS nutzt es automatisch, sobald installiert.",
         "ralphjsmit/laravel-filament-media-library": "Zentrale Mediathek pro Tenant mit WordPress-artigem Media-Picker (^4.1, kommerziell — braucht Lizenz + satis.ralphjsmit.com-Repository). Das CMS verdrahtet sie automatisch, sobald installiert.",
         "spatie/laravel-medialibrary": "Erforderlich zusammen mit ralphjsmit/laravel-filament-media-library (^11.0)."
     },
@@ -66,6 +68,10 @@
         {
             "type": "vcs",
             "url": "https://github.com/mmoollllee/filament-builder-title"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/mmoollllee/filament-media-library-extensions"
         }
     ],
     "scripts": {
