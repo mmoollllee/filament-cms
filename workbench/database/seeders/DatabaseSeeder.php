@@ -162,7 +162,7 @@ class DatabaseSeeder extends Seeder
     /** @param array<string, LayoutPreset> $presets */
     protected function seedHome(Tenant $tenant, array $presets): void
     {
-        Content::create([
+        $home = Content::create([
             'tenant_id' => $tenant->id,
             'content_type' => 'default.page',
             'title' => 'filament-cms',
@@ -171,7 +171,10 @@ class DatabaseSeeder extends Seeder
             'publish_from' => now()->subWeek(),
             'payload' => ['hero' => [
                 'title' => 'The multi-tenant CMS toolkit for Filament',
-                'subtitle' => 'Build multi-tenant websites with content types, a block builder, layout presets, fragments and a draft/preview workflow — fully integrated into Filament.',
+                // Deliberately the OLDEST wording — the two applied edits below
+                // grow it into the final text, so the demo ships a real,
+                // diffable version history (see the end of this method).
+                'subtitle' => 'Build multi-tenant websites with content types, a block builder and layout presets — fully integrated into Filament.',
                 'cta_label' => 'Explore the features',
                 'cta_url' => '/features',
             ]],
@@ -216,6 +219,24 @@ class DatabaseSeeder extends Seeder
                 ]),
             ],
         ]);
+
+        // Live demo for the versioning history: two APPLIED edits on top of the
+        // initial version, so the home page's "Revisionen" action offers a real
+        // side-by-side diff and the dashboard widget lists actual changes.
+        // (Applied edits only — the draft demo on /features stays out of this.)
+        $home->update(['payload' => ['hero' => [
+            'title' => 'The multi-tenant CMS toolkit for Filament',
+            'subtitle' => 'Build multi-tenant websites with content types, a block builder, layout presets and fragments — fully integrated into Filament.',
+            'cta_label' => 'Explore the features',
+            'cta_url' => '/features',
+        ]]]);
+
+        $home->update(['payload' => ['hero' => [
+            'title' => 'The multi-tenant CMS toolkit for Filament',
+            'subtitle' => 'Build multi-tenant websites with content types, a block builder, layout presets, fragments, drafts with preview and full version history — fully integrated into Filament.',
+            'cta_label' => 'Explore the features',
+            'cta_url' => '/features',
+        ]]]);
     }
 
     protected function seedFeatures(Tenant $tenant, array $presets): void
@@ -454,6 +475,7 @@ class DatabaseSeeder extends Seeder
                         use GeneratesPathAndSlug;    // collision-free path/slug
                         use HasDraft;                // "Entwurf speichern" + Vorschau overlay
                         use HasPublishingStatus;     // status() + visibleTo()/ofType() scopes
+                        use HasVersions;             // Snapshot-Historie + Revisionen/Restore
                         use ResolvesLayoutPresets;   // resolvedLayoutPreset()
                     }
 
@@ -747,6 +769,7 @@ class DatabaseSeeder extends Seeder
                 <tr><td><code>/</code></td><td>Marketing home + this self-documentation (tenants, logins, feature matrix)</td></tr>
                 <tr><td><code>/features</code></td><td>Each feature with an intro + code snippet</td></tr>
                 <tr><td><code>/features?preview=1</code></td><td>Draft preview mode — the features page carries a pending draft (log in first)</td></tr>
+                <tr><td><code>/panel</code> → Dashboard</td><td>„Letzte Änderungen" widget + the <strong>Revisionen</strong> action on any edited page (the home page ships with history)</td></tr>
                 <tr><td><code>/blocks</code></td><td>Live block showcase — every block rendered next to its code</td></tr>
                 <tr><td><code>/customize</code></td><td>Every extension point (the customization guide as seeded content)</td></tr>
                 <tr><td><code>/howto</code></td><td>Step-by-step guides: custom blocks (live HintBlock proof) + TipTap extensions</td></tr>
@@ -768,6 +791,7 @@ class DatabaseSeeder extends Seeder
                 <tr><td>Onepager &amp; sections</td><td>Tenant B (<code>localhost</code>): root <code>default.section</code> contents compose one page, each with its own path</td></tr>
                 <tr><td>Publishing states</td><td><code>/draft</code>, <code>/scheduled</code>, <code>/members</code> → 404 for guests</td></tr>
                 <tr><td>Drafts &amp; Vorschau</td><td><code>/features</code> carries a pending draft — log in, open <code>/features?preview=1</code>, leave via the floating badge</td></tr>
+                <tr><td>Versionierung &amp; Restore</td><td>The home page was seeded, then edited twice: its edit page shows <strong>Revisionen</strong> (diff + restore), the dashboard lists the changes. Drafts never appear in the history.</td></tr>
                 <tr><td>SEO</td><td><code>meta.*</code> per page; noindex on legal pages; tenant default SEO</td></tr>
                 <tr><td>Fragments / menus / spam quiz / roles</td><td>Seeded; visible in the panel and (menus) in the header/footer</td></tr>
             </table>

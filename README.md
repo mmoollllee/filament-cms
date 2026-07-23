@@ -66,8 +66,8 @@ skipped, `--force` overwrites):
 - publishes `config/cms.php` (environment-driven settings only: branding
   tenant, dev-login prefill, redirect tunables)
 - publishes the migrations (`tenants`, `tenant_user`, `contents`, `fragments`,
-  `layout_presets`, the menu tables, `redirects`/`not_found_logs` + the
-  `users.is_superadmin` alter)
+  `layout_presets`, the menu tables, `redirects`/`not_found_logs`, `versions`
+  (content history) + the `users.is_superadmin` alter)
 - writes `App\Models\{Content, Tenant, Fragment}` — thin models on the package
   traits, ready to extend
 - writes `App\Providers\CmsServiceProvider` (registered in

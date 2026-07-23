@@ -660,6 +660,8 @@ model (it never touches existing app code).
 | `blendbyte/filament-title-with-slug` | title + slug/path input with URL preview |
 | `datlechin/filament-menu-builder` | drag-and-drop menus (tenant-scoped by the package) |
 | `defstudio/filament-searchable-input` | the internal-path autocomplete inputs |
+| `mansoor/filament-versionable` | the revisions page (side-by-side diff, restore) |
+| `overtrue/laravel-versionable` | the snapshot storage behind `HasVersions` |
 | `awcodes/richer-editor` | RichEditor source-code / id / embed plugins |
 | `ueberdosis/tiptap-php` | server-side rich-text rendering |
 | `yannkuesthardt/laravel-spamprotect` | e-mail/phone obfuscation components |

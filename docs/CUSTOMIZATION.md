@@ -100,13 +100,16 @@ use them instead of copying code; improvements reach every site via `composer up
 ```php
 use Mmoollllee\Cms\Concerns\Content\{AssignsCurrentTenant, ConvertsUploadedVideos,
     GeneratesPathAndSlug, HasPublishingStatus, ResolvesLayoutPresets};
+use Mmoollllee\Cms\Concerns\{HasDraft, HasVersions};
 
 class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPanelable
 {
     use AssignsCurrentTenant;     // fills tenant_id from the resolved host tenant
     use ConvertsUploadedVideos;   // dispatches the video re-encode job on save
     use GeneratesPathAndSlug;     // path/slug generation incl. non-routable types
+    use HasDraft;                 // "Entwurf speichern" stash + Vorschau overlay
     use HasPublishingStatus;      // status(), resolved_status, scopePublished/VisibleTo/OfType
+    use HasVersions;              // snapshot per applied change + Revisionen/restore
     use ResolvesLayoutPresets;    // resolvedLayoutPreset() for the frontend
 
     // yours: casts, relations (tenant/parent/children), payload accessors, …
@@ -132,7 +135,22 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
 {
     use BelongsToTenants;         // tenants()/roles + host-aware Filament tenancy methods
 }
+
+// The Fragment model takes the same two opt-in workflow traits:
+class Fragment extends Model implements \Mmoollllee\Cms\Contracts\Fragment
+{
+    use HasDraft;
+    use HasVersions;
+    use ResolvesFragmentWithCascade;   // resolveFragment() + branding cascade
+}
 ```
+
+`HasDraft` and `HasVersions` are **opt-in and independent**: they need the `draft`
+column / the `versions` table (both in the published migrations), and every UI element
+they drive hides on models that don't use them — so a package upgrade never breaks an
+install that has not adopted them yet. Details:
+[FEATURES.md → Drafts & preview](FEATURES.md#drafts--preview) and
+[Versioning & restore](FEATURES.md#versioning--restore).
 
 What the tenant/user traits cover in detail:
 

@@ -42,6 +42,22 @@ it('renders code snippets on the features page', function () {
         ->and($html)->toContain('fragment_model');          // fragments snippet
 });
 
+it('ships the home page with a real version history for the revisions demo', function () {
+    $home = Workbench\App\Models\Content::where('path', '/')
+        ->where('tenant_id', Tenant::where('site_key', 'marketing')->firstOrFail()->getKey())
+        ->firstOrFail();
+
+    // Initial version + two applied edits — enough for the Revisionen action
+    // (hidden below 2) and a meaningful side-by-side diff.
+    expect($home->versions()->count())->toBe(3)
+        ->and(data_get($home->payload, 'hero.subtitle'))->toContain('full version history')
+        ->and(data_get($home->firstVersion->contents, 'payload'))->not->toContain('full version history');
+
+    // The frontend shows the LATEST applied state.
+    expect($this->get('http://127.0.0.1/')->assertOk()->getContent())
+        ->toContain('full version history');
+});
+
 it('documents drafts & preview on the features page and demos it via the seeded pending draft', function () {
     // Guests see the documentation section, but never the draft-only content.
     $html = $this->get('http://127.0.0.1/features')->assertOk()->getContent();
