@@ -7,6 +7,7 @@ use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Contracts\User;
 use Mmoollllee\Cms\Enums\ContentStatus;
 use Mmoollllee\Cms\Enums\ContentVisibility;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
  * Publishing window + visibility for Content models.
@@ -69,14 +70,21 @@ trait HasPublishingStatus
     }
 
     /**
-     * The tenant's content as the given user may see it: everything for
-     * superadmins and tenant members, published public content for guests.
+     * The tenant's content as the given user may see it on the FRONTEND.
+     *
+     * Superadmins and tenant members see everything (drafts, scheduled, expired)
+     * — but ONLY while the "Vorschau" is active, the same gate {@see HasDraft}
+     * uses for stash overlays. Without an active preview the frontend renders the
+     * live site (published + public) for everyone, so leaving preview mode hides
+     * unpublished content again. The panel never calls visibleTo() (it scopes with
+     * whereBelongsTo()), so this preview gate never hides drafts from editors there.
      */
     public function scopeVisibleTo(Builder $query, Tenant $tenant, ?User $user = null): Builder
     {
         $query->whereBelongsTo($tenant);
 
-        if ($user?->isSuperadmin() || $tenant->hasUser($user)) {
+        // active() is the cheap check — short-circuit before the membership query.
+        if (app(PreviewMode::class)->active() && ($user?->isSuperadmin() || $tenant->hasUser($user))) {
             return $query;
         }
 

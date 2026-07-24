@@ -383,3 +383,71 @@ it('keeps the warm path cache on draft stashes and never serves drafts to guests
     $page->fresh()->update(['title' => 'Angewendeter Titel']);
     expect(Cache::has($cacheKey))->toBeFalse();
 });
+
+// -----------------------------------------------------------------------------
+//  Publish-STATUS visibility (publish_from = null, i.e. "als Entwurf gespeichert")
+//  — distinct from the draft STASH above: a brand-new unpublished record must be
+//  invisible on the live site even to a logged-in member, and reappear only in
+//  preview. Regression guard for scopeVisibleTo() honoring the preview gate.
+// -----------------------------------------------------------------------------
+
+/** A routable page that was "saved as draft" — never published (publish_from null). */
+function draftStatusPage(Tenant $tenant): Content
+{
+    return Content::create([
+        'tenant_id' => $tenant->id,
+        'content_type' => 'default.page',
+        'title' => 'Entwurf-Status',
+        'path' => '/entwurf-status-fixture',
+        'visibility' => ContentVisibility::Public,
+        'publish_from' => null,
+        'blocks' => [[
+            'type' => 'section',
+            'data' => ['blocks' => [[
+                'type' => 'text',
+                'data' => ['active' => true, 'content' => '<p>ENTWURF-STATUS-INHALT</p>'],
+            ]]],
+        ]],
+    ]);
+}
+
+it('excludes unpublished content from visibleTo for a member unless preview is active', function () {
+    $tenant = previewTenant();
+    $draft = draftStatusPage($tenant);
+
+    $member = User::factory()->create();
+    $tenant->users()->attach($member, ['role' => TenantUserRole::Editor->value]);
+
+    // Live site: a member does NOT see the unpublished record.
+    expect(Content::query()->visibleTo($tenant, $member)->pluck('id')->all())
+        ->not->toContain($draft->id);
+
+    // Preview on: the same query surfaces it.
+    app(PreviewMode::class)->activate();
+    expect(Content::query()->visibleTo($tenant, $member)->pluck('id')->all())
+        ->toContain($draft->id);
+
+    // Preview off again: hidden once more.
+    app(PreviewMode::class)->deactivate();
+    expect(Content::query()->visibleTo($tenant, $member)->pluck('id')->all())
+        ->not->toContain($draft->id);
+});
+
+it('serves a draft-status page to a superadmin only while previewing, 404 once preview is left', function () {
+    $tenant = previewTenant();
+    draftStatusPage($tenant);
+
+    $this->actingAs(User::factory()->superadmin()->create());
+
+    // No preview: the unpublished page is not routable → 404 (this was the bug:
+    // it stayed visible because visibleTo() ignored the preview state).
+    $this->get('http://127.0.0.1/entwurf-status-fixture')->assertNotFound();
+
+    // ?preview=1: now reachable.
+    $this->get('http://127.0.0.1/entwurf-status-fixture?preview=1')
+        ->assertOk()
+        ->assertSee('ENTWURF-STATUS-INHALT', escape: false);
+
+    // ?preview=0: back to 404 for the live site.
+    $this->get('http://127.0.0.1/entwurf-status-fixture?preview=0')->assertNotFound();
+});
