@@ -46,7 +46,10 @@ class ContentResolver
     {
         $normalizedPath = $this->normalizePath($path);
 
-        if ($user !== null) {
+        // Only an ACTIVE preview changes what visibleTo() returns (and overlays
+        // drafts on retrieval) — a merely logged-in user sees exactly the guest
+        // result, so the warm cache serves them too.
+        if ($user !== null && app(PreviewMode::class)->active()) {
             return $this->resolveFindByPath($tenant, $normalizedPath, $user);
         }
 
@@ -75,9 +78,13 @@ class ContentResolver
         $content = $this->resolveFindByPath($tenant, $normalizedPath);
 
         if ($content !== null) {
-            // Real pages are cached indefinitely (busted by ContentCacheObserver on write).
-            // withDraft: false — this cache serves guests, who never overlay drafts.
-            Cache::forever($key, ModelCache::pack($content, withDraft: false));
+            // Cached until the page's own publish_until (null = indefinitely) —
+            // the status is time-derived, so a write-invalidated forever cache
+            // would keep serving the page past its expiry. Scheduled pages heal
+            // through the short 404-miss TTL below. Busted early by
+            // ContentCacheObserver on write. withDraft: false — this cache
+            // serves the live site, which never overlays drafts.
+            Cache::put($key, ModelCache::pack($content, withDraft: false), $content->publish_until);
 
             return $content;
         }
@@ -135,16 +142,22 @@ class ContentResolver
      */
     public function sections(Tenant $tenant, ?Authenticatable $user = null): Collection
     {
-        if ($user !== null) {
+        // Same gate as findByPath(): without an active preview the user-aware
+        // result equals the guest result — serve the warm cache.
+        if ($user !== null && app(PreviewMode::class)->active()) {
             return $this->resolveSections($tenant, $user);
         }
 
         // Cached as a list of attribute arrays (ModelCache) — see findByPath().
+        // TTL until the tenant's next publishing transition: a scheduled section
+        // must appear (and an expiring one vanish) on time, not on the next write.
         // bypass(): user-less callers (e.g. the sitemap) can run during a
         // preview request; packing overlaid models would serve DRAFT sections
         // to every guest until the next invalidation.
-        $sections = ModelCache::unpackMany(Cms::contentModel(), Cache::rememberForever(
+        $sections = ModelCache::unpackMany(Cms::contentModel(), Cache::remember(
             CacheKeys::sections($tenant->getKey()),
+            // Closure TTL: only evaluated when the cache actually stores.
+            fn (): ?\Carbon\CarbonInterface => PublishingTransitions::nextFor($tenant),
             fn (): array => app(PreviewMode::class)->bypass(
                 fn (): array => ModelCache::packMany($this->resolveSections($tenant), withDraft: false),
             ),

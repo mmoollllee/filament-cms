@@ -1,7 +1,10 @@
 <?php
 
+use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
+use Workbench\App\Models\User;
 use Workbench\Database\Seeders\DatabaseSeeder;
 
 beforeEach(function () {
@@ -43,7 +46,7 @@ it('renders code snippets on the features page', function () {
 });
 
 it('ships the home page with a real version history for the revisions demo', function () {
-    $home = Workbench\App\Models\Content::where('path', '/')
+    $home = Content::where('path', '/')
         ->where('tenant_id', Tenant::where('site_key', 'marketing')->firstOrFail()->getKey())
         ->firstOrFail();
 
@@ -67,12 +70,12 @@ it('documents drafts & preview on the features page and demos it via the seeded 
         ->not->toContain('This section exists only in the pending draft');
 
     // Logged in + ?preview=1: the stashed extra section and the badge render.
-    $this->actingAs(Workbench\App\Models\User::where('email', 'admin@example.test')->firstOrFail());
+    $this->actingAs(User::where('email', 'admin@example.test')->firstOrFail());
 
     $preview = $this->get('http://127.0.0.1/features?preview=1')->assertOk()->getContent();
 
     expect($preview)->toContain('This section exists only in the pending draft')
-        ->and($preview)->toContain('Vorschau: Entwürfe sichtbar');
+        ->and($preview)->toContain('Vorschau: Entwürfe &amp; Unveröffentlichtes sichtbar');
 });
 
 it('renders the block showcase: live listing, media image and code', function () {
@@ -164,8 +167,8 @@ it('renders the second tenant as an onepager composed of sections', function () 
 it('resolves tenant-scoped header and footer menus', function () {
     $tenant = Tenant::where('site_key', 'marketing')->first();
 
-    $header = \Mmoollllee\Cms\Models\Menu::linksForLocation('header', $tenant);
-    $footer = \Mmoollllee\Cms\Models\Menu::linksForLocation('footer', $tenant);
+    $header = Menu::linksForLocation('header', $tenant);
+    $footer = Menu::linksForLocation('footer', $tenant);
 
     expect(collect($header)->pluck('label'))->toContain('Features', 'Blocks')
         ->and(collect($footer)->pluck('label'))->toContain('Imprint');

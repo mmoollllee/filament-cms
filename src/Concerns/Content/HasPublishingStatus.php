@@ -24,19 +24,7 @@ trait HasPublishingStatus
 {
     public function status(): ContentStatus
     {
-        if ($this->publish_from === null) {
-            return ContentStatus::Draft;
-        }
-
-        if ($this->publish_from->isFuture()) {
-            return ContentStatus::Scheduled;
-        }
-
-        if ($this->publish_until !== null && $this->publish_until->isPast()) {
-            return ContentStatus::Expired;
-        }
-
-        return ContentStatus::Published;
+        return ContentStatus::forWindow($this->publish_from, $this->publish_until);
     }
 
     public function isPublished(): bool
@@ -72,12 +60,19 @@ trait HasPublishingStatus
     /**
      * The tenant's content as the given user may see it on the FRONTEND.
      *
-     * Superadmins and tenant members see everything (drafts, scheduled, expired)
-     * — but ONLY while the "Vorschau" is active, the same gate {@see HasDraft}
-     * uses for stash overlays. Without an active preview the frontend renders the
-     * live site (published + public) for everyone, so leaving preview mode hides
-     * unpublished content again. The panel never calls visibleTo() (it scopes with
-     * whereBelongsTo()), so this preview gate never hides drafts from editors there.
+     * Superadmins and tenant members see everything (unpublished, scheduled,
+     * expired) — but ONLY while the "Vorschau" is active, the same gate
+     * {@see HasDraft} uses for stash overlays. Without an active preview the
+     * frontend renders the live site (published + public) for everyone, so
+     * leaving preview mode hides unpublished content again. The panel never
+     * calls visibleTo() (it scopes with whereBelongsTo()), so this preview gate
+     * never hides anything from editors there.
+     *
+     * The `visibility = public` filter guards LEGACY rows: the "Nur Eingeloggt"
+     * option was removed from the UI (no code path ever honored it for merely
+     * logged-in visitors — it behaved exactly like "unveröffentlicht"), but
+     * existing `members` rows must keep their only real semantics: hidden
+     * outside the preview.
      */
     public function scopeVisibleTo(Builder $query, Tenant $tenant, ?User $user = null): Builder
     {

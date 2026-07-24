@@ -12,7 +12,7 @@ use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
 /**
  * Base create page for every content resource (catch-all AND site-extension types).
  * Wires the builder's clipboard-paste + cross-builder drag & drop Livewire halves,
- * the "Als Entwurf anlegen" flow ({@see CreatesDrafts}) and the wide content
+ * the "Unveröffentlicht anlegen" flow ({@see CreatesDrafts}) and the wide content
  * layout, so a site page class only pins its `$resource`:
  *
  *     class CreatePage extends ContentCreatePage
@@ -38,8 +38,9 @@ abstract class ContentCreatePage extends CreateRecord
     }
 
     /**
-     * Creating as draft: the applied row goes live UNPUBLISHED — the entered
-     * publishing window only takes effect once the draft is applied.
+     * "Unveröffentlicht anlegen": the row is created with an empty publishing
+     * window and carries the FULL entered state — nothing is live, so no draft
+     * stash duplicates it ({@see shouldStashOnDraftCreation()}).
      */
     protected function neutralizeDraftCreationData(array $data): array
     {
@@ -47,5 +48,34 @@ abstract class ContentCreatePage extends CreateRecord
         $data['publish_until'] = null;
 
         return $data;
+    }
+
+    protected function shouldStashOnDraftCreation(): bool
+    {
+        return false;
+    }
+
+    protected function createDraftActionLabel(): string
+    {
+        return 'Unveröffentlicht anlegen';
+    }
+
+    protected function draftCreatedNotificationTitle(): string
+    {
+        return 'Unveröffentlicht angelegt';
+    }
+
+    protected function draftCreatedNotificationBody(): string
+    {
+        return 'Gespeichert, aber nicht veröffentlicht — sichtbar über die Vorschau.';
+    }
+
+    /**
+     * Unpublished creation needs a publishing window, not the draft stash —
+     * available even where the model has not adopted HasDraft.
+     */
+    protected function draftsSupportedForCreation(): bool
+    {
+        return method_exists(static::getResource()::getModel(), 'isPublished');
     }
 }

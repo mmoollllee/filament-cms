@@ -314,7 +314,9 @@ abstract class TenantScopedContentResource extends Resource
     // -------------------------------------------------------------------------
 
     /**
-     * Publishing fields: visibility, sort, publish_from, publish_until.
+     * Publishing fields: the "Veröffentlicht" toggle with its publish_from /
+     * publish_until window, the derived status badge, and the persisted (but
+     * UI-less) visibility value.
      *
      * @return array<int, Component>
      */
@@ -456,7 +458,7 @@ abstract class TenantScopedContentResource extends Resource
     // -------------------------------------------------------------------------
 
     /**
-     * @return array{urlPath?: string|\Closure|null, urlVisitLinkVisible?: bool|\Closure, urlVisitLinkRoute?: \Closure|null}
+     * @return array{urlPath?: string|Closure|null, urlVisitLinkVisible?: bool|Closure, urlVisitLinkRoute?: Closure|null}
      */
     protected static function titleSlugConfig(): array
     {
@@ -634,20 +636,11 @@ abstract class TenantScopedContentResource extends Resource
                     ->label('Slug')
                     ->searchable()
                     ->visible(! $routable),
-                TextColumn::make('visibility')
-                    ->label('Sichtbarkeit')
-                    ->badge()
-                    ->formatStateUsing(fn ($state): string => ContentVisibility::options()[$state instanceof ContentVisibility ? $state->value : (string) $state] ?? (string) $state),
                 TextColumn::make('resolved_status')
                     ->label('Status')
                     ->badge()
-                    ->formatStateUsing(fn ($state): string => ContentStatus::options()[(string) $state] ?? (string) $state)
-                    ->color(fn ($state): string => match ((string) $state) {
-                        'published' => 'success',
-                        'scheduled' => 'info',
-                        'expired' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn ($state): string => ContentStatus::tryFrom((string) $state)?->label() ?? (string) $state)
+                    ->color(fn ($state): string => ContentStatus::tryFrom((string) $state)?->color() ?? 'gray'),
                 Drafts::tableBadgeColumn(Cms::contentModel()),
             ])
             ->filters(static::tableFilters())
@@ -1298,10 +1291,10 @@ abstract class TenantScopedContentResource extends Resource
 
     protected static function getTitleWithSlugInput(
         ?Tenant $tenant,
-        string|\Closure|null $urlPath = '/',
+        string|Closure|null $urlPath = '/',
         ?string $pathPrefix = null,
-        bool|\Closure $urlVisitLinkVisible = false,
-        ?\Closure $urlVisitLinkRoute = null,
+        bool|Closure $urlVisitLinkVisible = false,
+        ?Closure $urlVisitLinkRoute = null,
     ): FusedGroup {
         return TitleWithSlugInput::make(
             fieldTitle: 'title',
@@ -1325,7 +1318,7 @@ abstract class TenantScopedContentResource extends Resource
      * double it (e.g. "/projekte/kanalbau" → "kanalbau" → "/projekte/kanalbau") and
      * re-applies the blueprint's urlPathPrefix.
      */
-    protected static function pathSlugifier(?string $pathPrefix): \Closure
+    protected static function pathSlugifier(?string $pathPrefix): Closure
     {
         $normalizedPrefix = $pathPrefix ? trim($pathPrefix, '/') : null;
 

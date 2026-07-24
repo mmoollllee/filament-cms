@@ -12,6 +12,7 @@ use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
+use Mmoollllee\Cms\Support\Content\PublishingTransitions;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
@@ -35,11 +36,15 @@ class SitemapController
 
         abort_if($tenant === null, 404);
 
-        $xml = Cache::rememberForever(
+        $xml = Cache::remember(
             CacheKeys::sitemap($tenant->getKey()),
-            // bypass(): generated during a preview request, the forever-cached
-            // XML (and the sections cache warmed inside) would otherwise carry
-            // DRAFT paths/titles to guests and crawlers.
+            // TTL until the next publishing transition (null = forever): the
+            // sitemap must gain scheduled pages and drop expiring ones on time,
+            // not on the next content write. Closure — only evaluated on store.
+            fn (): ?\Carbon\CarbonInterface => PublishingTransitions::nextFor($tenant),
+            // bypass(): generated during a preview request, the cached XML (and
+            // the sections cache warmed inside) would otherwise carry DRAFT
+            // paths/titles to guests and crawlers.
             fn (): string => app(PreviewMode::class)->bypass(fn (): string => $this->generateSitemapXml($tenant)),
         );
 
@@ -113,7 +118,7 @@ class SitemapController
      * derived from the tenant's blueprints, so a consuming app's own content types are
      * included without the engine hardcoding any names.
      *
-     * @return iterable<int, \Mmoollllee\Cms\Contracts\Content>
+     * @return iterable<int, Content>
      */
     protected function standaloneContent(Tenant $tenant): iterable
     {

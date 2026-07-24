@@ -8,18 +8,25 @@ use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 
 /**
- * "Als Entwurf anlegen" for the content + fragment create pages — the create
- * side of {@see ManagesDrafts}.
+ * The secondary "hold it back" create action for the content + fragment create
+ * pages — the create side of {@see ManagesDrafts}.
  *
  * The button runs the exact create() pipeline (validation, hooks, notification,
- * redirect), but the applied (live) row is the NEUTRALIZED form state — content
- * pages empty the publishing window, the fragment page the active blocks — and
- * the full form state is stashed as a pending draft. The edit page the user is
- * redirected to therefore opens directly in the draft workflow ("Entwurf …
- * noch nicht angewendet", Vorschau, "Änderungen anwenden").
+ * redirect), but the applied (live) row is the NEUTRALIZED form state. What
+ * "held back" means depends on the model:
  *
- * On a model without the HasDraft trait the button hides and the page keeps the
- * classic create-only flow ({@see Drafts::supported()}).
+ * - Content ("Unveröffentlicht anlegen"): the publishing window is emptied and
+ *   the row simply starts unpublished — visible in the Vorschau, invisible to
+ *   guests. NO draft stash is created: an unpublished row protects nothing, so
+ *   duplicating its state into a stash would only reopen the edit page in a
+ *   pointless "Entwurf geladen" state ({@see shouldStashOnDraftCreation()}).
+ * - Fragments ("Als Entwurf anlegen"): fragments have no publishing window —
+ *   they are live wherever they are embedded. The applied row is neutralized
+ *   to no active blocks and the FULL form state is stashed as a pending draft,
+ *   so the edit page continues directly in the draft workflow.
+ *
+ * On a model that supports neither variant the button hides and the page keeps
+ * the classic create-only flow ({@see draftsSupportedForCreation()}).
  *
  * NOTE for subclasses: this trait implements handleRecordCreation(),
  * getCreatedNotification(), getFormActions() and getHeaderActions(). Overrides
@@ -55,8 +62,9 @@ trait CreatesDrafts
     // -------------------------------------------------------------------------
 
     /**
-     * Draft creation: persist the neutralized state as the applied row, stash
-     * the full form state as the pending draft.
+     * Held-back creation: persist the neutralized state as the applied row —
+     * and stash the full form state as a pending draft only where a stash has
+     * a job ({@see shouldStashOnDraftCreation()}).
      */
     protected function handleRecordCreation(array $data): Model
     {
@@ -66,11 +74,22 @@ trait CreatesDrafts
 
         $record = parent::handleRecordCreation($this->neutralizeDraftCreationData($data));
 
-        if (Drafts::supported($record)) {
+        if ($this->shouldStashOnDraftCreation() && Drafts::supported($record)) {
             $record->stashDraft($data);
         }
 
         return $record;
+    }
+
+    /**
+     * Whether the held-back create also stashes the full form state as a
+     * pending draft. True for window-less models (fragments) whose neutralized
+     * row would otherwise lose the entered state; content pages return false —
+     * their applied row keeps the full state and is merely unpublished.
+     */
+    protected function shouldStashOnDraftCreation(): bool
+    {
+        return true;
     }
 
     /**
@@ -91,11 +110,21 @@ trait CreatesDrafts
         $notification = parent::getCreatedNotification();
 
         if ($this->creatingAsDraft) {
-            $notification?->title('Als Entwurf angelegt')
-                ->body('Gespeichert, aber noch nicht angewendet — sichtbar über die Vorschau.');
+            $notification?->title($this->draftCreatedNotificationTitle())
+                ->body($this->draftCreatedNotificationBody());
         }
 
         return $notification;
+    }
+
+    protected function draftCreatedNotificationTitle(): string
+    {
+        return 'Als Entwurf angelegt';
+    }
+
+    protected function draftCreatedNotificationBody(): string
+    {
+        return 'Gespeichert, aber noch nicht angewendet — sichtbar über die Vorschau.';
     }
 
     // -------------------------------------------------------------------------
@@ -145,14 +174,19 @@ trait CreatesDrafts
         return $this->makeCreateDraftAction('createDraftHeader');
     }
 
-    /** The shared "Als Entwurf anlegen" definition (footer + header mirror). */
+    /** The shared held-back-create definition (footer + header mirror). */
     protected function makeCreateDraftAction(string $name): Action
     {
         return Action::make($name)
-            ->label('Als Entwurf anlegen')
+            ->label($this->createDraftActionLabel())
             ->color('gray')
             ->action('createAsDraft')
             ->visible(fn (): bool => $this->draftsSupportedForCreation());
+    }
+
+    protected function createDraftActionLabel(): string
+    {
+        return 'Als Entwurf anlegen';
     }
 
     protected function getCreateHeaderAction(): Action

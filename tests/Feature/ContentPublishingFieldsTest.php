@@ -1,17 +1,25 @@
 <?php
 
 /*
- * The "Sichtbarkeit" section's `status` field is virtual (no DB column): it is
- * derived from the publishing window (publish_from / publish_until). Filament
- * only applies ->default() when CREATING, so the initial value on an EDIT form
- * must come from ->formatStateUsing() instead — otherwise an already-published
- * page would load showing "Entwurf". These tests pin that hydration for every
- * status, plus the create-time default and the bidirectional reactive update.
+ * The "Veröffentlicht" toggle + publishing window (PublishingFields):
+ *
+ * - `is_published` is virtual (no DB column) and CANNOT self-derive (its
+ *   Boolean state cast folds "unfilled" into false), so ContentEditPage seeds
+ *   it from the — live or draft — publishing window on every fill.
+ * - The window pickers only show while the toggle is on, but stay dehydrated
+ *   (`dehydratedWhenHidden`): switching a live page off must actually persist
+ *   the cleared window.
+ * - The status badge is READ-ONLY, derived via ContentStatus::forWindow() —
+ *   "Geplant"/"Abgelaufen" are outcomes of the entered window, never inputs.
+ * - `visibility` persists as a Hidden field (the "Nur Eingeloggt" UI is gone);
+ *   legacy values round-trip unchanged.
  */
 
+use Carbon\CarbonInterface;
 use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Livewire\Livewire;
+use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\CreateContent;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\EditContent;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
@@ -35,20 +43,20 @@ beforeEach(function () {
 /**
  * Create a marketing `default.page` with the given publishing window.
  */
-function makeContent(Tenant $tenant, string $path, ?Carbon\CarbonInterface $from, ?Carbon\CarbonInterface $until = null): Content
+function makeContent(Tenant $tenant, string $path, ?CarbonInterface $from, ?CarbonInterface $until = null): Content
 {
     return Content::create([
         'tenant_id' => $tenant->id,
         'content_type' => 'default.page',
         'title' => 'Fixture '.$path,
         'path' => $path,
-        'visibility' => \Mmoollllee\Cms\Enums\ContentVisibility::Public,
+        'visibility' => ContentVisibility::Public,
         'publish_from' => $from,
         'publish_until' => $until,
     ]);
 }
 
-it('hydrates the status field from an already published record on edit', function () {
+it('hydrates the toggle ON for an already published record and shows the status badge', function () {
     // Seeded home page: publish_from a week ago, no publish_until → published.
     $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
 
@@ -56,53 +64,106 @@ it('hydrates the status field from an already published record on edit', functio
 
     Livewire::test(EditContent::class, ['record' => $home->getKey()])
         ->assertOk()
-        ->assertFormSet(['status' => 'published']);
+        ->assertFormSet(['is_published' => true])
+        ->assertSee('Veröffentlicht');
 });
 
-it('hydrates the status field for a draft record on edit', function () {
-    $record = makeContent($this->tenant, '/fixture-draft', from: null);
+it('hydrates the toggle OFF for an unpublished record', function () {
+    $record = makeContent($this->tenant, '/fixture-unpublished', from: null);
 
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
-        ->assertFormSet(['status' => 'draft']);
+        ->assertFormSet(['is_published' => false])
+        ->assertSee('Unveröffentlicht');
 });
 
-it('hydrates the status field for a scheduled record on edit', function () {
+it('shows "Geplant" for a scheduled record — toggle ON, badge derived', function () {
     $record = makeContent($this->tenant, '/fixture-scheduled', from: now()->addWeek());
 
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
-        ->assertFormSet(['status' => 'scheduled']);
+        ->assertFormSet(['is_published' => true])
+        ->assertSee('Geplant');
 });
 
-it('hydrates the status field for an expired record on edit', function () {
+it('shows "Abgelaufen" for an expired record — toggle ON, badge derived', function () {
     $record = makeContent($this->tenant, '/fixture-expired', from: now()->subWeek(), until: now()->subDay());
 
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
-        ->assertFormSet(['status' => 'expired']);
+        ->assertFormSet(['is_published' => true])
+        ->assertSee('Abgelaufen');
 });
 
-it('defaults the status field to draft on the create form', function () {
+it('defaults the toggle to OFF on the create form', function () {
     Livewire::test(CreateContent::class)
         ->assertOk()
-        ->assertFormSet(['status' => 'draft']);
+        ->assertFormSet(['is_published' => false]);
 });
 
-it('recomputes the status when the publishing window changes (bidirectional)', function () {
-    $record = makeContent($this->tenant, '/fixture-bidi', from: null);
+it('seeds publish_from with now when toggling ON, clears the window when toggling OFF', function () {
+    $record = makeContent($this->tenant, '/fixture-toggle', from: null);
+
+    $component = Livewire::test(EditContent::class, ['record' => $record->getKey()])
+        ->assertOk()
+        ->assertFormSet(['is_published' => false, 'publish_from' => null])
+        // ->set() fires afterStateUpdated (fillForm would not).
+        ->set('data.is_published', true);
+
+    expect($component->instance()->data['publish_from'])->not->toBeNull();
+
+    $component
+        ->set('data.is_published', false)
+        ->assertFormSet(['publish_from' => null, 'publish_until' => null]);
+});
+
+it('flips the toggle OFF when publish_from is cleared', function () {
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+
+    Livewire::test(EditContent::class, ['record' => $home->getKey()])
+        ->assertOk()
+        ->assertFormSet(['is_published' => true])
+        ->set('data.publish_from', null)
+        ->assertFormSet(['is_published' => false]);
+});
+
+it('actually persists the cleared window when unpublishing via the toggle (dehydratedWhenHidden)', function () {
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+
+    expect($home->publish_from)->not->toBeNull();
+
+    // Toggling off hides the pickers — their (cleared) state must still
+    // dehydrate, or the "unpublish" would silently keep the page live.
+    Livewire::test(EditContent::class, ['record' => $home->getKey()])
+        ->assertOk()
+        ->set('data.is_published', false)
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $fresh = $home->fresh();
+
+    expect($fresh->publish_from)->toBeNull()
+        ->and($fresh->publish_until)->toBeNull()
+        ->and($fresh->status()->value)->toBe('draft');
+});
+
+it('round-trips a legacy members visibility unchanged through the hidden field', function () {
+    $record = makeContent($this->tenant, '/fixture-members', from: now()->subWeek());
+    $record->forceFill(['visibility' => ContentVisibility::Members])->save();
 
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
-        ->assertFormSet(['status' => 'draft'])
-        // Setting publish_from into the future fires the field's afterStateUpdated
-        // (must use ->set(), since ->fillForm() disables state-update hooks) which
-        // recomputes status → scheduled.
-        ->set('data.publish_from', now()->addWeek()->format('Y-m-d H:i:s'))
-        ->assertFormSet(['status' => 'scheduled']);
+        // No visibility UI anymore …
+        ->assertDontSee('Nur Eingeloggt')
+        ->fillForm(['title' => 'Umbenannt'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    // … but the stored value is not silently flipped by an unrelated save.
+    expect($record->fresh()->visibility)->toBe(ContentVisibility::Members);
 });
 
-it('shows the reset hint action only when publish_from is dirty and reverts it', function () {
+it('shows the reset hint action only when publish_from is dirty and reverts it (re-syncing the toggle)', function () {
     // Home page: publish_from a week ago, no publish_until → published.
     $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
 
@@ -113,14 +174,14 @@ it('shows the reset hint action only when publish_from is dirty and reverts it',
         // Pristine load: value matches the saved record → the reset action is hidden.
         // A hidden hint action is not resolvable, so "does not exist" is the assertion.
         ->assertActionDoesNotExist($resetFrom)
-        // Change the field → status recomputes and the reset action appears.
+        // Change the field → the reset action appears.
         ->set('data.publish_from', now()->addWeek()->format('Y-m-d H:i:s'))
-        ->assertFormSet(['status' => 'scheduled'])
+        ->assertSee('Geplant')
         ->assertActionVisible($resetFrom)
         // Click the reset button (the raw mountAction the UI dispatches while it is
-        // visible): the value + status revert to the saved state, hiding it again.
+        // visible): the value reverts to the saved state and the toggle re-syncs.
         ->call('mountAction', 'reset_publish_from', [], ['schemaComponent' => 'form.publish_from'])
-        ->assertFormSet(['status' => 'published'])
+        ->assertFormSet(['is_published' => true])
         ->assertActionDoesNotExist($resetFrom);
 });
 
@@ -134,10 +195,10 @@ it('reverts publish_until to its saved (empty) value via the reset hint action',
         ->assertActionDoesNotExist($resetUntil)
         // A past "bis" expires an otherwise-published page.
         ->set('data.publish_until', now()->subDay()->format('Y-m-d H:i:s'))
-        ->assertFormSet(['status' => 'expired'])
+        ->assertSee('Abgelaufen')
         ->assertActionVisible($resetUntil)
         ->call('mountAction', 'reset_publish_until', [], ['schemaComponent' => 'form.publish_until'])
         // Saved value was empty → reverts to null, page is published again.
-        ->assertFormSet(['status' => 'published', 'publish_until' => null])
+        ->assertFormSet(['publish_until' => null])
         ->assertActionDoesNotExist($resetUntil);
 });

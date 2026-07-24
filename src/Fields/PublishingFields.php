@@ -3,30 +3,51 @@
 namespace Mmoollllee\Cms\Fields;
 
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
-use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Hidden;
+use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Enums\ContentStatus;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 
 /**
- * Publishing fields: a `status` UI helper that drives the scheduling pair
- * (`publish_from` / `publish_until`), plus `visibility`. Shared by every content
- * type. The visibility default is blueprint-aware, so the consuming resource
- * injects it via {@see defaultVisibilityUsing()} rather than the kit reaching
- * into the Sites layer.
+ * Publishing fields: a single "Veröffentlicht" toggle steering the scheduling
+ * pair (`publish_from` / `publish_until`), plus a derived read-only status
+ * badge. Shared by every content type.
  *
+ * One axis, one direction: the toggle and the window fields WRITE, the badge
+ * only READS ({@see ContentStatus::forWindow()}) — "Geplant" and "Abgelaufen"
+ * are outcomes of the entered window, not selectable states. This replaces the
+ * former four-option status select whose bidirectional select↔window coupling
+ * invited accidental unpublishing.
+ *
+ * `is_published` is virtual (dehydrated(false)); its Boolean state cast turns
+ * an unfilled null into `false` BEFORE any hydration hook could derive a
+ * fallback, so the host edit page must seed it in its fill data
+ * (`ContentEditPage` sets it from the — live or draft — publishing window).
+ * The window pickers are hidden while unpublished but stay dehydrated
+ * (`dehydratedWhenHidden`), so toggling off actually persists the cleared
+ * window instead of silently keeping the record live.
+ *
+ * `visibility` persists as a Hidden field: the former "Nur Eingeloggt" option
+ * never had frontend semantics beyond "invisible outside the preview" (exactly
+ * like unpublished), so it left the UI. The column keeps round-tripping — the
+ * blueprint default still applies via {@see defaultVisibilityUsing()} and
+ * legacy `members` rows are not silently flipped.
  */
 class PublishingFields extends FieldKit
 {
     protected Closure|string|null $defaultVisibility = null;
 
     /**
-     * Provide the (blueprint-aware) default for the visibility select.
+     * Provide the (blueprint-aware) default for the persisted visibility value.
      */
     public function defaultVisibilityUsing(Closure|string $default): static
     {
@@ -38,78 +59,59 @@ class PublishingFields extends FieldKit
     protected function fields(): array
     {
         return [
-            // Bidirectional: choosing a status resets the publishing window below
-            // (afterStateUpdated), and editing that window recomputes the status
-            // (publish_from / publish_until → computeStatus()). Each branch sets a
-            // window that computeStatus() maps back to the same status, so the pair
-            // round-trips.
-            'status' => Select::make('status')
-                ->label('Status')
-                ->options(ContentStatus::options())
-                // `status` is virtual (no column), so Filament skips ->default() on
-                // edit — it only seeds defaults when creating. formatStateUsing runs
-                // on both create and edit hydration, deriving the initial value from
-                // the record's publishing window so an existing published page loads
-                // as "Veröffentlicht" instead of "Entwurf". A provided state wins:
-                // the draft fill (ManagesDrafts) precomputes the status from the
-                // DRAFT window, which may differ from the record's.
-                ->formatStateUsing(fn ($state, $record): string => $state ?? $record?->status()->value ?? ContentStatus::Draft->value)
-                ->selectablePlaceholder(false)
+            'is_published' => Toggle::make('is_published')
+                ->label('Veröffentlicht')
                 ->dehydrated(false)
+                ->default(false)
                 ->live()
-                ->afterStateUpdated(function (?string $state, Set $set): void {
-                    match ($state) {
-                        'draft' => (function () use ($set): void {
-                            $set('publish_from', null);
-                            $set('publish_until', null);
-                        })(),
-                        'published' => (function () use ($set): void {
-                            $set('publish_from', now()->format('Y-m-d H:i:s'));
-                            $set('publish_until', null);
-                        })(),
-                        'scheduled' => (function () use ($set): void {
-                            $set('publish_from', now()->addDay()->startOfDay()->format('Y-m-d H:i:s'));
-                            $set('publish_until', null);
-                        })(),
-                        'expired' => (function () use ($set): void {
-                            $set('publish_from', now()->subDay()->startOfDay()->format('Y-m-d H:i:s'));
-                            $set('publish_until', now()->subDay()->endOfDay()->format('Y-m-d H:i:s'));
-                        })(),
-                        default => null,
-                    };
+                ->afterStateUpdated(function (bool $state, Get $get, Set $set): void {
+                    if (! $state) {
+                        $set('publish_from', null);
+                        $set('publish_until', null);
+
+                        return;
+                    }
+
+                    if (blank($get('publish_from'))) {
+                        $set('publish_from', now()->format('Y-m-d H:i:s'));
+                    }
                 }),
             'publish_from' => DateTimePicker::make('publish_from')
                 ->label('Veröffentlichen ab')
                 ->seconds(false)
                 ->live()
+                ->visible(fn (Get $get): bool => (bool) $get('is_published'))
+                ->dehydratedWhenHidden()
                 ->hintAction(self::resetToSavedValueAction('publish_from'))
-                ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => $set('status', self::computeStatus($state, $get('publish_until'))))
+                // A cleared start date IS "unveröffentlicht" — reflect it on the
+                // toggle instead of saving a live-looking form as offline.
+                ->afterStateUpdated(fn (?string $state, Set $set) => blank($state) ? $set('is_published', false) : null)
                 ->afterContent(
                     Action::make('setPublishFromNow')
                         ->label('Jetzt')
                         ->link()
                         ->size('sm')
-                        ->action(fn (Set $set, Get $get): mixed => $set('publish_from', now()->format('Y-m-d H:i:s')) ?? $set('status', self::computeStatus(now()->format('Y-m-d H:i:s'), $get('publish_until')))),
+                        ->action(fn (Set $set): mixed => $set('publish_from', now()->format('Y-m-d H:i:s'))),
                 ),
             'publish_until' => DateTimePicker::make('publish_until')
                 ->label('Veröffentlichen bis')
                 ->seconds(false)
                 ->live()
+                ->visible(fn (Get $get): bool => (bool) $get('is_published'))
+                ->dehydratedWhenHidden()
                 ->hintAction(self::resetToSavedValueAction('publish_until'))
-                ->afterStateUpdated(fn (?string $state, Set $set, Get $get) => $set('status', self::computeStatus($get('publish_from'), $state)))
                 ->afterContent(
                     Action::make('setPublishUntilNow')
                         ->label('Jetzt')
                         ->link()
                         ->size('sm')
-                        ->action(fn (Set $set, Get $get): mixed => $set('publish_until', now()->format('Y-m-d H:i:s')) ?? $set('status', self::computeStatus($get('publish_from'), now()->format('Y-m-d H:i:s')))),
+                        ->action(fn (Set $set): mixed => $set('publish_until', now()->format('Y-m-d H:i:s'))),
                 ),
-            'visibility' => Select::make('visibility')
-                ->label('Zugriff')
-                ->required()
-                ->options(ContentVisibility::options())
-                ->default($this->defaultVisibility ?? ContentVisibility::Public->value)
-                ->columnSpanFull(),
+            'status' => Text::make(fn (Get $get): string => self::windowStatus($get('publish_from'), $get('publish_until'))->label())
+                ->badge()
+                ->color(fn (Get $get): string => self::windowStatus($get('publish_from'), $get('publish_until'))->color()),
+            'visibility' => Hidden::make('visibility')
+                ->default($this->defaultVisibility ?? ContentVisibility::Public->value),
         ];
     }
 
@@ -117,7 +119,7 @@ class PublishingFields extends FieldKit
      * A revert-icon hint action (top-right of the field label) for one of the two
      * datetime fields. It only appears while the field is "dirty" — i.e. its current
      * form value differs from the record's saved value — and resets the field back to
-     * that saved value, recomputing the derived status from the resulting window.
+     * that saved value, re-syncing the published toggle with the resulting window.
      * On create there is no saved value, so the action reverts an entered value to empty.
      */
     protected static function resetToSavedValueAction(string $field): Action
@@ -134,9 +136,10 @@ class PublishingFields extends FieldKit
                 $original = self::normalizeDateTime(self::savedValue($livewire, $field));
 
                 $set($field, $original);
-                $set('status', $field === 'publish_from'
-                    ? self::computeStatus($original, $get('publish_until'))
-                    : self::computeStatus($get('publish_from'), $original));
+
+                if ($field === 'publish_from') {
+                    $set('is_published', filled($original));
+                }
             });
     }
 
@@ -151,7 +154,7 @@ class PublishingFields extends FieldKit
             ? $livewire->getRecord()
             : null;
 
-        return $record instanceof \Illuminate\Database\Eloquent\Model
+        return $record instanceof Model
             ? $record->getAttribute($field)
             : null;
     }
@@ -172,7 +175,7 @@ class PublishingFields extends FieldKit
      */
     protected static function normalizeDateTime(mixed $value): ?string
     {
-        if ($value instanceof \Carbon\CarbonInterface) {
+        if ($value instanceof CarbonInterface) {
             return $value->format('Y-m-d H:i');
         }
 
@@ -184,35 +187,17 @@ class PublishingFields extends FieldKit
     }
 
     /**
-     * The status value for an arbitrary publishing window (Carbon, string or
-     * null) — the public entry used by the draft fill to derive the virtual
-     * `status` from a stashed window instead of the record's.
+     * The derived status for an arbitrary form-state publishing window (Carbon,
+     * string or null) — feeds the read-only badge.
      */
-    public static function statusForWindow(mixed $publishFrom, mixed $publishUntil): string
+    protected static function windowStatus(mixed $publishFrom, mixed $publishUntil): ContentStatus
     {
-        return self::computeStatus(
-            self::normalizeDateTime($publishFrom),
-            self::normalizeDateTime($publishUntil),
-        );
-    }
+        $parse = fn (mixed $value): ?Carbon => match (true) {
+            $value instanceof CarbonInterface => Carbon::instance($value),
+            $value === null, $value === '' => null,
+            default => Carbon::parse($value),
+        };
 
-    /**
-     * Derive the status value from the scheduling window.
-     */
-    protected static function computeStatus(?string $publishFrom, ?string $publishUntil): string
-    {
-        if ($publishFrom === null || $publishFrom === '') {
-            return ContentStatus::Draft->value;
-        }
-
-        if (Carbon::parse($publishFrom)->isFuture()) {
-            return ContentStatus::Scheduled->value;
-        }
-
-        if ($publishUntil !== null && $publishUntil !== '' && Carbon::parse($publishUntil)->isPast()) {
-            return ContentStatus::Expired->value;
-        }
-
-        return ContentStatus::Published->value;
+        return ContentStatus::forWindow($parse($publishFrom), $parse($publishUntil));
     }
 }

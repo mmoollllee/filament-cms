@@ -12,6 +12,7 @@
  * - Draft stashes never invalidate or poison the warm frontend caches.
  */
 
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Enums\TenantUserRole;
@@ -204,7 +205,7 @@ it('lets a superadmin enter and leave preview mode, sticky across requests', fun
     $html = $this->get('http://127.0.0.1/preview-fixture?preview=1')->assertOk()->getContent();
     expect($html)->toContain('ENTWURF-INHALT')
         ->not->toContain('LIVE-INHALT')
-        ->toContain('Vorschau: Entwürfe sichtbar');
+        ->toContain('Vorschau: Entwürfe &amp; Unveröffentlichtes sichtbar');
 
     // No param: the session keeps the mode active.
     $this->get('http://127.0.0.1/preview-fixture')->assertOk()->assertSee('ENTWURF-INHALT', escape: false);
@@ -213,7 +214,7 @@ it('lets a superadmin enter and leave preview mode, sticky across requests', fun
     $html = $this->get('http://127.0.0.1/preview-fixture?preview=0')->assertOk()->getContent();
     expect($html)->toContain('LIVE-INHALT')
         ->not->toContain('ENTWURF-INHALT')
-        ->not->toContain('Vorschau: Entwürfe sichtbar');
+        ->not->toContain('Vorschau: Entwürfe &amp; Unveröffentlichtes sichtbar');
 });
 
 it('activates preview for a member of the tenant', function () {
@@ -255,7 +256,7 @@ it('never activates on panel or livewire request paths, even with a sticky sessi
     $session->put(PreviewMode::SESSION_KEY.'.'.$tenant->getKey(), true);
 
     $makeRequest = function (string $url, string $method = 'GET') use ($session, $superadmin) {
-        $request = Illuminate\Http\Request::create($url, $method);
+        $request = Request::create($url, $method);
         $request->setLaravelSession($session);
         $request->setUserResolver(fn () => $superadmin);
 
@@ -303,7 +304,7 @@ it('scopes the sticky preview flag per tenant', function () {
 
     expect($bHtml)->toContain('LIVE-INHALT')
         ->not->toContain('ENTWURF-INHALT')
-        ->not->toContain('Vorschau: Entwürfe sichtbar');
+        ->not->toContain('Vorschau: Entwürfe &amp; Unveröffentlichtes sichtbar');
 
     // Tenant A remains sticky.
     $this->get('http://127.0.0.1/preview-fixture')->assertOk()->assertSee('ENTWURF-INHALT', escape: false);

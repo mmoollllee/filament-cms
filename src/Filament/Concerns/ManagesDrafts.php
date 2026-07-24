@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Js;
 use Livewire\Attributes\Locked;
 use Mansoor\FilamentVersionable\Page\RevisionsAction;
+use Mmoollllee\Cms\Concerns\HasDraft;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Versioning\Versions;
@@ -19,19 +20,31 @@ use Mmoollllee\Cms\Support\Versioning\Versions;
 /**
  * Draft-aware save flow for the content + fragment edit pages.
  *
- * Replaces the single "Speichern" with the pair
+ * A draft stash only ever has one job: protecting LIVE-VISIBLE content from
+ * half-finished changes. The workflow therefore only activates on records
+ * whose applied row is live ({@see draftWorkflowActive()}: `isPublished()`
+ * where the model has a publishing window; always for window-less models like
+ * fragments). Active, it replaces the single "Speichern" with the pair
  * - "Entwurf speichern" — stashes the validated form state into the record's
- *   `draft` column ({@see \Mmoollllee\Cms\Concerns\HasDraft}) without touching
+ *   `draft` column ({@see HasDraft}) without touching
  *   the served content, and
  * - "Änderungen anwenden" — the classic save (applies the form state), which
  *   also clears the stash (via the RecordUpdated listener wired in
  *   CmsServiceProvider — event-based so a subclass overriding afterSave()
  *   cannot silently disable it).
  * Both render in the form footer AND the page header; the delete action moves
- * from the header into the footer as an icon-only trash button. A "Vorschau"
- * header action stashes the current form state as the draft and THEN opens the
- * frontend with `?preview=1` ({@see PreviewMode}) — the preview always shows
- * the form's state. "Entwurf verwerfen" appears while a draft is pending.
+ * from the header into the footer as an icon-only trash button.
+ *
+ * On unpublished/scheduled/expired records nothing is live to protect, so the
+ * page keeps the classic save-only flow — no second button for a choice that
+ * makes no difference. A pending stash is still honored there (loaded into the
+ * form, discardable, cleared on apply), it just cannot be re-created.
+ *
+ * The "Vorschau" header action persists the CURRENT form state — as the stash
+ * while the workflow is active, via a normal save otherwise ({@see
+ * saveForPreview()}) — and THEN opens the frontend with `?preview=1`
+ * ({@see PreviewMode}), so the preview always shows exactly the form's state.
+ * "Entwurf verwerfen" appears while a draft is pending.
  *
  * On a model without the HasDraft trait every draft element hides and the page
  * degrades to the classic save flow ({@see Drafts::supported()}).
@@ -75,7 +88,7 @@ trait ManagesDrafts
      */
     public function saveDraft(): bool
     {
-        if (! $this->draftsSupported()) {
+        if (! $this->draftWorkflowActive()) {
             return false;
         }
 
@@ -110,6 +123,24 @@ trait ManagesDrafts
             ->title('Entwurf gespeichert')
             ->body('Die Änderungen sind gespeichert, aber noch nicht angewendet — sichtbar über die Vorschau.')
             ->send();
+
+        return true;
+    }
+
+    /**
+     * "Vorschau" persistence: stash the form state while the draft workflow is
+     * active; otherwise (nothing live to protect — unpublished record, or a
+     * model without HasDraft) apply it via the normal save. Returns true once
+     * the state is persisted — a validation failure throws before the return,
+     * so the preview click handler keeps its tab closed.
+     */
+    public function saveForPreview(): bool
+    {
+        if ($this->draftWorkflowActive()) {
+            return $this->saveDraft();
+        }
+
+        $this->save();
 
         return true;
     }
@@ -274,12 +305,12 @@ trait ManagesDrafts
         ];
     }
 
-    /** The classic submit, relabeled: saving now means applying. */
+    /** The classic submit, relabeled while drafts are in play: saving then means applying. */
     protected function getSaveFormAction(): Action
     {
         $action = parent::getSaveFormAction();
 
-        return $this->draftsSupported()
+        return $this->draftWorkflowActive()
             ? $action->label('Änderungen anwenden')
             : $action;
     }
@@ -313,7 +344,7 @@ trait ManagesDrafts
                 'x-effect' => $this->draftPristineEffectJs(),
                 'x-bind:disabled' => 'draftPristine',
             ])
-            ->visible(fn (): bool => $this->draftsSupported());
+            ->visible(fn (): bool => $this->draftWorkflowActive());
     }
 
     /** The delete action, moved out of the header: icon-only, at the footer's end. */
@@ -328,22 +359,24 @@ trait ManagesDrafts
     protected function getApplyHeaderAction(): Action
     {
         return Action::make('applyHeader')
-            ->label($this->draftsSupported() ? 'Änderungen anwenden' : 'Speichern')
+            ->label($this->draftWorkflowActive() ? 'Änderungen anwenden' : 'Speichern')
             ->action('save');
     }
 
     /**
-     * "Vorschau": stash the CURRENT form state as the draft first, then open
-     * the frontend in preview mode (?preview=1) — so the preview always shows
-     * exactly what the form shows.
+     * "Vorschau": persist the CURRENT form state first ({@see saveForPreview()}
+     * — stash while the draft workflow is active, normal save otherwise), then
+     * open the frontend in preview mode (?preview=1) — so the preview always
+     * shows exactly what the form shows.
      *
      * The tab is opened synchronously inside the click gesture (otherwise
-     * popup blockers kill it) and pointed at the URL only after saveDraft()
-     * confirmed the stash; on a validation failure it closes again and the
-     * form displays the errors. With the popup blocked anyway, the current
-     * tab navigates as fallback — the stash made that lossless. The button
-     * itself only locks for the duration of the roundtrip ($el.disabled) —
-     * it must stay clickable no matter the pristine/draft state.
+     * popup blockers kill it) and pointed at the URL only after
+     * saveForPreview() confirmed persistence; on a validation failure it
+     * closes again and the form displays the errors. With the popup blocked
+     * anyway, the current tab navigates as fallback — the persisted state made
+     * that lossless. The button itself only locks for the duration of the
+     * roundtrip ($el.disabled) — it must stay clickable no matter the
+     * pristine/draft state.
      */
     protected function getPreviewAction(): Action
     {
@@ -358,15 +391,15 @@ trait ManagesDrafts
                 ."const previewWindow = window.open('about:blank', '_blank'); "
                 // The tab opens before the roundtrip (popup-blocker constraint) —
                 // show what is happening instead of a blank page.
-                ."if (previewWindow) { previewWindow.document.title = 'Vorschau'; previewWindow.document.body.innerText = 'Entwurf wird gespeichert – die Vorschau öffnet sich gleich …'; } "
-                .'$wire.saveDraft().then((saved) => { '
+                ."if (previewWindow) { previewWindow.document.title = 'Vorschau'; previewWindow.document.body.innerText = 'Änderungen werden gespeichert – die Vorschau öffnet sich gleich …'; } "
+                .'$wire.saveForPreview().then((saved) => { '
                 .'if (saved !== true) { previewWindow?.close(); return; } '
                 .'if (previewWindow) { previewWindow.location.href = '.Js::from($url).'; } '
                 .'else { window.location.href = '.Js::from($url).'; } '
                 .'}).catch(() => previewWindow?.close())'
                 .'.finally(() => { $el.disabled = false; });'
             )
-            ->visible(fn (): bool => $this->draftsSupported() && $url !== null);
+            ->visible(fn (): bool => $url !== null);
     }
 
     protected function getDiscardDraftAction(): Action
@@ -400,6 +433,25 @@ trait ManagesDrafts
     protected function draftsSupported(): bool
     {
         return Drafts::supported($this->getRecord());
+    }
+
+    /**
+     * Whether the draft workflow (stash + apply pair) applies to this record:
+     * the model supports drafts AND its applied row is live-visible — only
+     * then does a stash protect anything. Models without a publishing window
+     * (fragments) are always live wherever they are embedded. The gate reads
+     * the RECORD's applied state, not the form: preparing an unpublish as a
+     * draft on a live page is a legitimate stash.
+     */
+    protected function draftWorkflowActive(): bool
+    {
+        $record = $this->getRecord();
+
+        if (! Drafts::supported($record)) {
+            return false;
+        }
+
+        return ! method_exists($record, 'isPublished') || $record->isPublished();
     }
 
     /**

@@ -1,13 +1,16 @@
 <?php
 
 /*
- * "Als Entwurf anlegen" on the create pages (CreatesDrafts):
+ * The secondary "hold it back" create action (CreatesDrafts):
  *
- * - Runs the normal create() pipeline, but neutralizes the applied row
- *   (content: publishing window emptied → unpublished; fragment: no active
- *   blocks → renders nowhere) and stashes the FULL form state as a pending
- *   draft — the edit page then continues directly in the draft workflow.
- * - The classic "Erstellen" stays untouched (no stash).
+ * - Content ("Unveröffentlicht anlegen"): the row is created with an EMPTY
+ *   publishing window and the full entered state applied — no draft stash
+ *   (an unpublished row protects nothing; a stash would only reopen the edit
+ *   page in a pointless "Entwurf geladen" state).
+ * - Fragments ("Als Entwurf anlegen"): no publishing window exists, so the
+ *   applied row is neutralized (no active blocks → renders nowhere) and the
+ *   FULL form state is stashed — the edit page continues in the draft workflow.
+ * - The classic "Erstellen" stays untouched (no stash, window applied).
  * - The button pair renders in the footer and mirrors into the header.
  */
 
@@ -22,7 +25,7 @@ beforeEach(function () {
     $this->tenant = actingAsMarketingPanelAdmin();
 });
 
-it('creates content as draft: applied row unpublished, entered window stashed', function () {
+it('creates content unpublished: full state applied, empty window, NO stash', function () {
     // The pickers run with seconds(false) — form state dehydrates minute-precise.
     $publishFrom = now()->subHour()->format('Y-m-d H:i');
 
@@ -31,19 +34,20 @@ it('creates content as draft: applied row unpublished, entered window stashed', 
         ->fillForm([
             'title' => 'Neue Seite',
             'path' => '/neue-seite',
+            'is_published' => true,
             'publish_from' => $publishFrom,
         ])
         ->call('createAsDraft')
         ->assertHasNoFormErrors()
-        ->assertNotified('Als Entwurf angelegt');
+        ->assertNotified('Unveröffentlicht angelegt');
 
     $record = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/neue-seite')->firstOrFail();
 
     expect($record->title)->toBe('Neue Seite')
         ->and($record->publish_from)->toBeNull()
         ->and($record->status()->value)->toBe('draft')
-        ->and($record->hasDraft())->toBeTrue()
-        ->and($record->draftData()['publish_from'])->toBe($publishFrom);
+        // No stash: the applied (unpublished) row IS the working state.
+        ->and($record->hasDraft())->toBeFalse();
 });
 
 it('keeps the classic create untouched (no stash, window applied)', function () {
@@ -54,6 +58,7 @@ it('keeps the classic create untouched (no stash, window applied)', function () 
         ->fillForm([
             'title' => 'Sofort live',
             'path' => '/sofort-live',
+            'is_published' => true,
             'publish_from' => $publishFrom,
         ])
         ->call('create')
@@ -100,18 +105,23 @@ it('creates a fragment as draft: no active blocks until the draft is applied', f
         ->and($fresh->hasContent())->toBeTrue();
 });
 
-it('exposes the create/draft action pair in footer and header', function () {
+it('exposes the create action pair with per-model labels in footer and header', function () {
     $component = Livewire::test(CreateContent::class)
         ->assertOk()
         ->assertActionExists('createDraftHeader')
-        ->assertActionHasLabel('createDraftHeader', 'Als Entwurf anlegen')
+        ->assertActionHasLabel('createDraftHeader', 'Unveröffentlicht anlegen')
         ->assertActionExists('createHeader')
-        ->assertSee('Als Entwurf anlegen');
+        ->assertSee('Unveröffentlicht anlegen');
 
     $formActions = (new ReflectionMethod($component->instance(), 'getFormActions'))
         ->invoke($component->instance());
 
     expect(collect($formActions)->map(fn ($action) => $action->getName())->all())
         ->toBe(['create', 'createDraft', 'createAnother', 'cancel'])
-        ->and($formActions[1]->getLabel())->toBe('Als Entwurf anlegen');
+        ->and($formActions[1]->getLabel())->toBe('Unveröffentlicht anlegen');
+
+    // Fragments have no publishing window — they keep the stash-based label.
+    Livewire::test(CreateFragment::class)
+        ->assertOk()
+        ->assertActionHasLabel('createDraftHeader', 'Als Entwurf anlegen');
 });

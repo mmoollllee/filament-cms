@@ -5,12 +5,10 @@ namespace Mmoollllee\Cms\Filament\Resources\Contents\Pages;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\Width;
 use Mmoollllee\Cms\Contracts\Content;
-use Mmoollllee\Cms\Fields\PublishingFields;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
 use Mmoollllee\Cms\Filament\Concerns\TransfersBuilderItems;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
-use Mmoollllee\Cms\Support\Preview\Drafts;
 
 /**
  * Base edit page for every content resource (catch-all AND site-extension types).
@@ -67,24 +65,17 @@ abstract class ContentEditPage extends EditRecord
     }
 
     /**
-     * Content-specific draft fill: the virtual `status` select derives from
-     * the publishing window — feed it the DRAFT window, or it would display
-     * the applied record's status. Also seeds the raw payload editor's copy
-     * from the (live or draft) payload.
+     * Content-specific draft fill: the virtual `is_published` toggle cannot
+     * derive itself (its Boolean state cast folds "unfilled" into `false`, see
+     * PublishingFields) — seed it from the merged publishing window, which is
+     * the DRAFT window when a stash is pending. Also seeds the raw payload
+     * editor's copy from the (live or draft) payload.
      */
     protected function mergeDraftIntoFormData(array $data): array
     {
         $data = $this->mergeDraftIntoFormDataGeneric($data);
 
-        if (
-            Drafts::pending($this->getRecord())
-            && (array_key_exists('publish_from', $data) || array_key_exists('publish_until', $data))
-        ) {
-            $data['status'] = PublishingFields::statusForWindow(
-                $data['publish_from'] ?? null,
-                $data['publish_until'] ?? null,
-            );
-        }
+        $data['is_published'] = filled($data['publish_from'] ?? null);
 
         $data['raw_payload'] = is_array($data['payload'] ?? null) ? $data['payload'] : [];
 

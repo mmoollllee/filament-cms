@@ -8,6 +8,7 @@ use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\NavigationContextBuilder;
+use Mmoollllee\Cms\Support\Content\PublishingTransitions;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
@@ -158,8 +159,12 @@ class PathSuggestionResolver
      */
     protected function candidates(Tenant $tenant): array
     {
-        return Cache::rememberForever(
+        return Cache::remember(
             CacheKeys::candidates($tenant->getKey()),
+            // TTL until the next publishing transition (null = forever), so
+            // suggestions track time-driven (un)publishing. Closure — only
+            // evaluated on store.
+            fn (): ?\Carbon\CarbonInterface => PublishingTransitions::nextFor($tenant),
             // bypass(): candidates feed guest-facing 404 suggestions AND the
             // auto-created redirect rows — built during a preview request they
             // would leak DRAFT paths/titles (and persist them as redirects).

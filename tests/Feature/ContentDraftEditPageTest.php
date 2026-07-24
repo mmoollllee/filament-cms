@@ -70,7 +70,7 @@ it('does not stash (nor confirm to the preview handler) when validation fails', 
     expect($record->fresh()->hasDraft())->toBeFalse();
 });
 
-it('loads a pending draft into the form, including the draft-derived status', function () {
+it('loads a pending draft into the form, including the draft-derived toggle and badge', function () {
     $record = draftEditFixture($this->tenant);
 
     // Draft reschedules the (currently published) page into the future.
@@ -86,8 +86,10 @@ it('loads a pending draft into the form, including the draft-derived status', fu
         ->assertOk()
         ->assertFormSet([
             'title' => 'Entwurfs-Titel',
-            'status' => 'scheduled',
+            'is_published' => true,
         ])
+        // The badge derives from the DRAFT window, not the applied one.
+        ->assertSee('Geplant')
         ->assertSee('noch nicht angewendet');
 });
 
@@ -147,15 +149,16 @@ it('exposes the draft/apply/preview/delete actions with the new labels', functio
         ->and($formActions[1]->getLabel())->toBe('Entwurf speichern')
         ->and($formActions[3]->isIconButton())->toBeTrue();
 
-    // Preview stashes first, then opens the tab: the click handler chains the
-    // preview URL onto a successful $wire.saveDraft() roundtrip. The URL is
-    // embedded Js::from()-encoded (escaped slashes), so compare that form.
+    // Preview persists first, then opens the tab: the click handler chains the
+    // preview URL onto a successful $wire.saveForPreview() roundtrip (stash on
+    // live records, plain save otherwise). The URL is embedded
+    // Js::from()-encoded (escaped slashes), so compare that form.
     // The button locks only for the roundtrip itself ($el.disabled) — it must
     // never inherit the draft buttons' pristine-disabled state.
     $previewAction = $component->instance()->getAction('preview');
     $previewHandler = (string) $previewAction->getAlpineClickHandler();
 
-    expect($previewHandler)->toContain('$wire.saveDraft()')
+    expect($previewHandler)->toContain('$wire.saveForPreview()')
         ->toContain('$el.disabled = true')
         ->toContain('$el.disabled = false')
         ->toContain((string) Js::from(route('content.show', ['path' => 'draft-fixture', 'preview' => 1])))
@@ -241,6 +244,103 @@ it('hides the discard action until a draft is pending', function () {
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
         ->assertActionVisible('discardDraft');
+});
+
+it('keeps the classic save flow on an unpublished record — a stash protects nothing there', function () {
+    $record = Content::create([
+        'tenant_id' => $this->tenant->id,
+        'content_type' => 'default.page',
+        'title' => 'Unveröffentlicht',
+        'path' => '/unpublished-fixture',
+        'visibility' => ContentVisibility::Public,
+        'publish_from' => null,
+    ]);
+
+    $component = Livewire::test(EditContent::class, ['record' => $record->getKey()])
+        ->assertOk()
+        // The draft pair hides; the single header save keeps its plain label.
+        ->assertActionHidden('saveDraftHeader')
+        ->assertActionHasLabel('applyHeader', 'Speichern');
+
+    // Direct Livewire calls cannot stash either (hardened, not just hidden).
+    $component->call('saveDraft')->assertReturned(false);
+
+    expect($record->fresh()->hasDraft())->toBeFalse();
+
+    // The footer submit is the classic save, not "Änderungen anwenden".
+    $formActions = (new ReflectionMethod($component->instance(), 'getFormActions'))
+        ->invoke($component->instance());
+
+    expect($formActions[0]->getLabel())->not->toBe('Änderungen anwenden');
+});
+
+it('applies directly via saveForPreview on an unpublished record', function () {
+    $record = Content::create([
+        'tenant_id' => $this->tenant->id,
+        'content_type' => 'default.page',
+        'title' => 'Unveröffentlicht',
+        'path' => '/unpublished-preview-fixture',
+        'visibility' => ContentVisibility::Public,
+        'publish_from' => null,
+    ]);
+
+    Livewire::test(EditContent::class, ['record' => $record->getKey()])
+        ->assertOk()
+        ->fillForm(['title' => 'Direkt gespeichert'])
+        ->call('saveForPreview')
+        ->assertHasNoFormErrors()
+        ->assertReturned(true);
+
+    $fresh = $record->fresh();
+
+    // Nothing live to protect → the state applies, no stash appears.
+    expect($fresh->title)->toBe('Direkt gespeichert')
+        ->and($fresh->hasDraft())->toBeFalse();
+});
+
+it('stashes via saveForPreview on a published record', function () {
+    $record = draftEditFixture($this->tenant);
+
+    Livewire::test(EditContent::class, ['record' => $record->getKey()])
+        ->assertOk()
+        ->fillForm(['title' => 'Vorschau-Entwurf'])
+        ->call('saveForPreview')
+        ->assertHasNoFormErrors()
+        ->assertReturned(true);
+
+    $fresh = $record->fresh();
+
+    expect($fresh->title)->toBe('Live-Titel')
+        ->and($fresh->hasDraft())->toBeTrue()
+        ->and($fresh->draftData()['title'])->toBe('Vorschau-Entwurf');
+});
+
+it('still loads and clears a LEGACY stash on an unpublished record via the classic save', function () {
+    $record = Content::create([
+        'tenant_id' => $this->tenant->id,
+        'content_type' => 'default.page',
+        'title' => 'Unveröffentlicht',
+        'path' => '/legacy-stash-fixture',
+        'visibility' => ContentVisibility::Public,
+        'publish_from' => null,
+    ]);
+
+    // e.g. created by the former "Als Entwurf anlegen" or while still published.
+    $record->stashDraft(['title' => 'Alter Stash']);
+
+    Livewire::test(EditContent::class, ['record' => $record->getKey()])
+        ->assertOk()
+        // The stash still loads (and could be discarded) …
+        ->assertFormSet(['title' => 'Alter Stash'])
+        ->assertActionVisible('discardDraft')
+        // … and the plain save applies it and clears the stash.
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $fresh = $record->fresh();
+
+    expect($fresh->title)->toBe('Alter Stash')
+        ->and($fresh->hasDraft())->toBeFalse();
 });
 
 it('stashes and applies fragment drafts on the fragment edit page', function () {

@@ -510,7 +510,7 @@ class DatabaseSeeder extends Seeder
                     PHP)),
                 $this->textChild('Field kits', '<p>Composable field sets used across resources — compose, don\'t copy:</p>'.$this->code('php', <<<'PHP'
                     SeoFields::make()->without('og_image')->toArray();
-                    PublishingFields::make()->defaultVisibilityUsing(fn () => 'members')->toArray();
+                    PublishingFields::make()->without('publish_until')->toArray();
                     PageHeaderFields::make()->uploadDirectory("tenants/{$siteKey}/hero")->toArray();
                     PHP)),
                 $this->textChild('Shortcodes & merge tags', '<p>Tenant-aware <code>[tokens]</code> in rich text; the RichEditor offers them as merge tags. Project shortcodes register reset-safe:</p>'.$this->code('php', <<<'PHP'
