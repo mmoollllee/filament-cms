@@ -14,7 +14,6 @@ use Filament\Actions\EditAction;
 use Filament\Actions\ReplicateAction;
 use Filament\Forms\Components\Builder;
 use Filament\Forms\Components\Builder\Block;
-use Filament\Forms\Components\Component;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
@@ -22,6 +21,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Panel;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\FusedGroup;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
@@ -217,15 +217,27 @@ abstract class TenantScopedContentResource extends Resource
      * The "Inhalt" tab. For types with a block builder: the page header + the builder
      * (2/3) beside a sidebar (1/3) carrying the structure fields and the collapsed
      * "Meta" (SEO) section, with any full-width detail sections below. For builder-less
-     * types (e.g. a listing/category page): the detail sections become the main column
-     * beside the same structure + Meta sidebar. Shared by the dedicated resources and
-     * the catch-all so the content area looks and behaves identically.
+     * types (e.g. a listing/category page) there is no sidebar: page header, detail
+     * sections, structure fields and Meta stack full width — a 1/3 column holding
+     * little more than the collapsed Meta section would leave the page half empty
+     * next to it. Shared by the dedicated resources and the catch-all so the content
+     * area looks and behaves identically.
      */
     protected static function contentTab(?Tenant $tenant): Tab
     {
-        $hasBuilder = static::contentTabHasBuilder();
         $pageHeader = static::pageHeaderSection($tenant);
         $detailSections = static::detailSections($tenant);
+
+        if (! static::contentTabHasBuilder()) {
+            return Tab::make('Inhalt')
+                ->icon(Heroicon::OutlinedPencilSquare)
+                ->schema([
+                    ...($pageHeader !== null ? [$pageHeader] : []),
+                    ...$detailSections,
+                    ...static::stackedStructureFields($tenant),
+                    static::contentTabMetaSection(),
+                ]);
+        }
 
         $sidebar = static::contentSidebar($tenant);
 
@@ -238,38 +250,59 @@ abstract class TenantScopedContentResource extends Resource
             ? ['default' => 1, 'xl' => 2]
             : ['default' => 1, 'xl' => 3];
 
-        if ($hasBuilder) {
-            return Tab::make('Inhalt')
-                ->icon(Heroicon::OutlinedPencilSquare)
-                ->schema([
-                    ...($pageHeader !== null ? [$pageHeader] : []),
-                    Grid::make(['default' => 1, 'xl' => 3])
-                        ->schema([
-                            Section::make('Inhalts-Blöcke')
-                                ->description('Diese Blöcke bilden den Inhalt der Seite')
-                                ->contained(false)
-                                ->columnSpan($mainSpan)
-                                ->schema([static::builderField($tenant)]),
-                            $sidebar->visible($sidebarHasVisibleContent),
-                        ]),
-                    ...$detailSections,
-                ]);
-        }
-
-        // Builder-less: the page header + detail sections are the main column.
-        $main = Grid::make(1)
-            ->columnSpan($mainSpan)
-            ->schema([
-                ...($pageHeader !== null ? [$pageHeader] : []),
-                ...$detailSections,
-            ]);
-
         return Tab::make('Inhalt')
             ->icon(Heroicon::OutlinedPencilSquare)
             ->schema([
+                ...($pageHeader !== null ? [$pageHeader] : []),
                 Grid::make(['default' => 1, 'xl' => 3])
-                    ->schema([$main, $sidebar->visible($sidebarHasVisibleContent)]),
+                    ->schema([
+                        Section::make('Inhalts-Blöcke')
+                            ->description('Diese Blöcke bilden den Inhalt der Seite')
+                            ->contained(false)
+                            ->columnSpan($mainSpan)
+                            ->schema([static::builderField($tenant)]),
+                        $sidebar->visible($sidebarHasVisibleContent),
+                    ]),
+                ...$detailSections,
             ]);
+    }
+
+    /**
+     * The sidebar's structure fields ({@see sidebarFields()}) for the builder-less
+     * layout: wrapped in a two-column grid so a lone select does not stretch across
+     * the whole page. Empty when the resource declares no sidebar fields, so the
+     * Meta section follows the detail sections directly.
+     *
+     * Hidden-only sets (e.g. a derived parent_id) are returned bare: a grid around
+     * them renders an empty column pair — and its schema gap — above the Meta section.
+     *
+     * @return array<int, Component>
+     */
+    protected static function stackedStructureFields(?Tenant $tenant): array
+    {
+        $fields = static::sidebarFields($tenant);
+
+        $laidOutFields = array_filter($fields, static fn (Component $field): bool => ! $field instanceof Hidden);
+
+        if ($laidOutFields === []) {
+            return $fields;
+        }
+
+        return [
+            Grid::make(['default' => 1, 'md' => 2])->schema($fields),
+        ];
+    }
+
+    /**
+     * The "Meta" (SEO) section as the "Inhalt" tab places it — in the sidebar beside
+     * the builder, stacked below the structure fields without one. Non-routable types
+     * have no page of their own to optimize, so it hides for them; keeping that rule
+     * here means both layouts always agree on it.
+     */
+    protected static function contentTabMetaSection(): Section
+    {
+        return static::metaSection()
+            ->visible(static::formIsRoutable());
     }
 
     /**
@@ -282,11 +315,12 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
-     * The "Inhalt"-tab sidebar: the resource's structure/attribute fields (as returned
-     * by {@see sidebarFields()} — bare fields or grouped sections, the resource's
-     * choice) above the collapsed "Meta" (SEO) section. This is the single home for the
-     * Meta section across all content resources; it hides for non-routable types
-     * ({@see formIsRoutable()}), which have no page of their own to optimize.
+     * The "Inhalt"-tab sidebar next to the block builder: the resource's structure/
+     * attribute fields (as returned by {@see sidebarFields()} — bare fields or grouped
+     * sections, the resource's choice) above the collapsed "Meta" (SEO) section.
+     * Builder-less types stack the same two full width instead ({@see contentTab()}).
+     * Either way the Meta section hides for non-routable types ({@see formIsRoutable()}),
+     * which have no page of their own to optimize.
      */
     protected static function contentSidebar(?Tenant $tenant): Grid
     {
@@ -294,8 +328,7 @@ abstract class TenantScopedContentResource extends Resource
             ->columnSpan(['default' => 1, 'xl' => 1])
             ->schema([
                 ...static::sidebarFields($tenant),
-                static::metaSection()
-                    ->visible(static::formIsRoutable()),
+                static::contentTabMetaSection(),
             ]);
     }
 
@@ -481,7 +514,8 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
-     * Sidebar fields shown next to the builder (or in Einstellungen tab when no builder).
+     * Structure fields for the "Inhalt" tab: shown in the sidebar next to the block
+     * builder, or stacked full width above the Meta section for builder-less types.
      *
      * @return array<int, Component>
      */
@@ -492,13 +526,13 @@ abstract class TenantScopedContentResource extends Resource
 
     /**
      * Full-width content sections rendered in the "Inhalt" tab — for a builder type
-     * below the block builder, for a builder-less type as the tab's main column.
+     * below the block builder, for a builder-less type below the page header.
      * Default: the blueprint's structured payload fields wrapped in a section (empty
      * when the blueprint defines none).
      *
-     * The Meta section is NOT part of this anymore — it lives in the sidebar via
-     * {@see contentSidebar()}. Override to add custom content sections; do not append
-     * a Meta section (it would render twice).
+     * The Meta section is NOT part of this: {@see contentTab()} places it centrally,
+     * either in the sidebar or (builder-less) right below these sections. Override to
+     * add custom content sections; do not append a Meta section (it would render twice).
      *
      * @return array<int, Component>
      */
