@@ -189,13 +189,13 @@ class PublishingFields extends FieldKit
     }
 
     /**
-     * A section-description closure for the section hosting this kit: the given
-     * intro followed by one live sentence on what the CURRENT settings mean for
-     * visitors. Reads the form state via `Get`, so it re-renders with the
-     * (live) toggle and window fields:
+     * A section-description closure for the section hosting this kit: one live
+     * sentence on what the CURRENT settings mean for visitors, optionally
+     * preceded by an intro. Reads the form state via `Get`, so it re-renders
+     * with the (live) toggle and window fields:
      *
      *     Section::make('Sichtbarkeit')
-     *         ->description(PublishingFields::sectionDescription('Wann diese Seite …'))
+     *         ->description(PublishingFields::sectionDescription())
      *         ->schema(PublishingFields::make()->toArray())
      */
     public static function sectionDescription(?string $intro = null): Closure

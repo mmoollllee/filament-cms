@@ -193,12 +193,11 @@ abstract class TenantScopedContentResource extends Resource
             ->icon(Heroicon::OutlinedCog6Tooth)
             ->schema([
                 Section::make('Sichtbarkeit')
-                    // The header carries the live effect sentence after the intro
-                    // ("… Für Besucher sichtbar — wird am … automatisch
-                    // ausgeblendet."), so the current setting reads as one
-                    // statement above the controls instead of as a separate pill
-                    // competing with them for a grid cell.
-                    ->description(PublishingFields::sectionDescription('Status, Veröffentlichungszeitraum und Sichtbarkeit.'))
+                    // The description IS the live effect sentence ("Für Besucher
+                    // sichtbar — wird am … automatisch ausgeblendet."): it states
+                    // what the current setting does instead of restating the field
+                    // labels below it.
+                    ->description(PublishingFields::sectionDescription())
                     // Toggle + publish_from + publish_until share one row.
                     ->columns(3)
                     ->schema(static::publishingFields()),
