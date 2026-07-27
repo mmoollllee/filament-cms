@@ -9,7 +9,6 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Hidden;
 use Filament\Forms\Components\Toggle;
-use Filament\Schemas\Components\Text;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Support\Icons\Heroicon;
@@ -19,16 +18,20 @@ use Mmoollllee\Cms\Enums\ContentVisibility;
 
 /**
  * Publishing fields: a single "Veröffentlicht" toggle steering the scheduling
- * pair (`publish_from` / `publish_until`), plus a plain-language summary of
- * what the entered combination DOES ("Für Besucher sichtbar — wird am …
- * automatisch ausgeblendet."). Shared by every content type.
+ * pair (`publish_from` / `publish_until`). Shared by every content type.
  *
- * One axis, one direction: the toggle and the window fields WRITE, the summary
- * only READS ({@see ContentStatus::forWindow()}) — scheduling and expiry are
- * outcomes of the entered window, not selectable states. This replaces the
- * former four-option status select whose bidirectional select↔window coupling
- * invited accidental unpublishing; the summary explains the effect instead of
- * naming a state, so editors need not decode what "Geplant" implies.
+ * The kit deliberately holds no status display: what the entered combination
+ * DOES belongs into the hosting section's HEADER, where it reads as one
+ * sentence above the controls instead of competing with them for a grid cell.
+ * The host section wires it via {@see sectionDescription()}.
+ *
+ * One axis, one direction: the toggle and the window fields WRITE, the header
+ * sentence only READS ({@see ContentStatus::forWindow()}) — scheduling and
+ * expiry are outcomes of the entered window, not selectable states. This
+ * replaces the former four-option status select whose bidirectional
+ * select↔window coupling invited accidental unpublishing; the sentence
+ * explains the effect instead of naming a state, so editors need not decode
+ * what "Geplant" implies.
  *
  * `is_published` is virtual (dehydrated(false)); its Boolean state cast turns
  * an unfilled null into `false` BEFORE any hydration hook could derive a
@@ -109,8 +112,6 @@ class PublishingFields extends FieldKit
                         ->size('sm')
                         ->action(fn (Set $set): mixed => $set('publish_until', now()->format('Y-m-d H:i:s'))),
                 ),
-            'status' => Text::make(fn (Get $get): string => self::effectDescription($get('publish_from'), $get('publish_until'), $get('visibility')))
-                ->color(fn (Get $get): string => self::windowStatus($get('publish_from'), $get('publish_until'))->color()),
             'visibility' => Hidden::make('visibility')
                 ->default($this->defaultVisibility ?? ContentVisibility::Public->value),
         ];
@@ -188,8 +189,27 @@ class PublishingFields extends FieldKit
     }
 
     /**
+     * A section-description closure for the section hosting this kit: the given
+     * intro followed by one live sentence on what the CURRENT settings mean for
+     * visitors. Reads the form state via `Get`, so it re-renders with the
+     * (live) toggle and window fields:
+     *
+     *     Section::make('Sichtbarkeit')
+     *         ->description(PublishingFields::sectionDescription('Wann diese Seite …'))
+     *         ->schema(PublishingFields::make()->toArray())
+     */
+    public static function sectionDescription(?string $intro = null): Closure
+    {
+        return fn (Get $get): string => trim(($intro ?? '').' '.self::effectDescription(
+            $get('publish_from'),
+            $get('publish_until'),
+            $get('visibility'),
+        ));
+    }
+
+    /**
      * The derived status for an arbitrary form-state publishing window (Carbon,
-     * string or null) — colors the effect summary.
+     * string or null) — used by the header sentence.
      */
     protected static function windowStatus(mixed $publishFrom, mixed $publishUntil): ContentStatus
     {
@@ -201,7 +221,7 @@ class PublishingFields extends FieldKit
      * window means for visitors — including what will happen automatically and
      * when. Replaces a bare status pill: the effect needs no decoding.
      */
-    protected static function effectDescription(mixed $publishFrom, mixed $publishUntil, mixed $visibility = null): string
+    public static function effectDescription(mixed $publishFrom, mixed $publishUntil, mixed $visibility = null): string
     {
         $visibilityValue = $visibility instanceof ContentVisibility ? $visibility->value : $visibility;
 

@@ -95,6 +95,24 @@ it('shows "Abgelaufen" for an expired record — toggle ON, badge derived', func
         ->assertSee('Veröffentlichung endete');
 });
 
+it('carries the effect sentence in the SECTION HEADER, after the intro, and updates it live', function () {
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+
+    $component = Livewire::test(EditContent::class, ['record' => $home->getKey()])
+        ->assertOk()
+        // Intro and sentence form one description string on the section header.
+        ->assertSee('Status, Veröffentlichungszeitraum und Sichtbarkeit. Für Besucher sichtbar.');
+
+    // The description is a Get-reading closure: a live field change must move
+    // it (a mount-only evaluation would keep showing the old sentence).
+    $component
+        ->set('data.publish_until', now()->addWeek()->format('Y-m-d H:i:s'))
+        ->assertSee('automatisch ausgeblendet')
+        ->set('data.is_published', false)
+        ->assertSee('Für Besucher nicht sichtbar')
+        ->assertDontSee('automatisch ausgeblendet');
+});
+
 it('explains a bounded window on a published record: visible now, auto-hidden later', function () {
     $record = makeContent($this->tenant, '/fixture-bounded', from: now()->subWeek(), until: now()->addWeek());
 
