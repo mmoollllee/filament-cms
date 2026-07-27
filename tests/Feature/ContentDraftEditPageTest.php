@@ -89,7 +89,7 @@ it('loads a pending draft into the form, including the draft-derived toggle and 
             'is_published' => true,
         ])
         // The badge derives from the DRAFT window, not the applied one.
-        ->assertSee('Geplant')
+        ->assertSee('automatisch online')
         ->assertSee('noch nicht angewendet');
 });
 

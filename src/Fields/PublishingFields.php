@@ -19,14 +19,16 @@ use Mmoollllee\Cms\Enums\ContentVisibility;
 
 /**
  * Publishing fields: a single "Veröffentlicht" toggle steering the scheduling
- * pair (`publish_from` / `publish_until`), plus a derived read-only status
- * badge. Shared by every content type.
+ * pair (`publish_from` / `publish_until`), plus a plain-language summary of
+ * what the entered combination DOES ("Für Besucher sichtbar — wird am …
+ * automatisch ausgeblendet."). Shared by every content type.
  *
- * One axis, one direction: the toggle and the window fields WRITE, the badge
- * only READS ({@see ContentStatus::forWindow()}) — "Geplant" and "Abgelaufen"
- * are outcomes of the entered window, not selectable states. This replaces the
+ * One axis, one direction: the toggle and the window fields WRITE, the summary
+ * only READS ({@see ContentStatus::forWindow()}) — scheduling and expiry are
+ * outcomes of the entered window, not selectable states. This replaces the
  * former four-option status select whose bidirectional select↔window coupling
- * invited accidental unpublishing.
+ * invited accidental unpublishing; the summary explains the effect instead of
+ * naming a state, so editors need not decode what "Geplant" implies.
  *
  * `is_published` is virtual (dehydrated(false)); its Boolean state cast turns
  * an unfilled null into `false` BEFORE any hydration hook could derive a
@@ -107,8 +109,7 @@ class PublishingFields extends FieldKit
                         ->size('sm')
                         ->action(fn (Set $set): mixed => $set('publish_until', now()->format('Y-m-d H:i:s'))),
                 ),
-            'status' => Text::make(fn (Get $get): string => self::windowStatus($get('publish_from'), $get('publish_until'))->label())
-                ->badge()
+            'status' => Text::make(fn (Get $get): string => self::effectDescription($get('publish_from'), $get('publish_until'), $get('visibility')))
                 ->color(fn (Get $get): string => self::windowStatus($get('publish_from'), $get('publish_until'))->color()),
             'visibility' => Hidden::make('visibility')
                 ->default($this->defaultVisibility ?? ContentVisibility::Public->value),
@@ -188,16 +189,55 @@ class PublishingFields extends FieldKit
 
     /**
      * The derived status for an arbitrary form-state publishing window (Carbon,
-     * string or null) — feeds the read-only badge.
+     * string or null) — colors the effect summary.
      */
     protected static function windowStatus(mixed $publishFrom, mixed $publishUntil): ContentStatus
     {
-        $parse = fn (mixed $value): ?Carbon => match (true) {
+        return ContentStatus::forWindow(self::parseDateTime($publishFrom), self::parseDateTime($publishUntil));
+    }
+
+    /**
+     * One plain sentence describing what the CURRENT combination of toggle and
+     * window means for visitors — including what will happen automatically and
+     * when. Replaces a bare status pill: the effect needs no decoding.
+     */
+    protected static function effectDescription(mixed $publishFrom, mixed $publishUntil, mixed $visibility = null): string
+    {
+        $visibilityValue = $visibility instanceof ContentVisibility ? $visibility->value : $visibility;
+
+        // Legacy rows only — the option left the UI, but a stored "members"
+        // keeps its real effect (hidden outside the preview) and must not be
+        // explained away as publicly visible.
+        if ($visibilityValue === ContentVisibility::Members->value) {
+            return 'Für Besucher nicht sichtbar (Altbestand „Nur Eingeloggt“) — nur über die Vorschau einsehbar.';
+        }
+
+        $from = self::parseDateTime($publishFrom);
+        $until = self::parseDateTime($publishUntil);
+
+        $at = fn (CarbonInterface $moment): string => $moment->format('d.m.Y \u\m H:i \U\h\r');
+
+        return match (ContentStatus::forWindow($from, $until)) {
+            ContentStatus::Draft => 'Für Besucher nicht sichtbar — nur über die Vorschau einsehbar.',
+            ContentStatus::Scheduled => $until === null
+                ? "Für Besucher noch nicht sichtbar (nur über die Vorschau) — geht am {$at($from)} automatisch online."
+                : "Für Besucher noch nicht sichtbar (nur über die Vorschau) — geht am {$at($from)} automatisch online und wird am {$at($until)} wieder ausgeblendet.",
+            ContentStatus::Published => $until === null
+                ? 'Für Besucher sichtbar.'
+                : "Für Besucher sichtbar — wird am {$at($until)} automatisch ausgeblendet.",
+            ContentStatus::Expired => "Für Besucher nicht mehr sichtbar — die Veröffentlichung endete am {$at($until)}. Nur über die Vorschau einsehbar.",
+        };
+    }
+
+    /**
+     * Normalize a form-state datetime (Carbon, string, null/blank) to Carbon.
+     */
+    protected static function parseDateTime(mixed $value): ?Carbon
+    {
+        return match (true) {
             $value instanceof CarbonInterface => Carbon::instance($value),
             $value === null, $value === '' => null,
             default => Carbon::parse($value),
         };
-
-        return ContentStatus::forWindow($parse($publishFrom), $parse($publishUntil));
     }
 }

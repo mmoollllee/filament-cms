@@ -65,7 +65,7 @@ it('hydrates the toggle ON for an already published record and shows the status 
     Livewire::test(EditContent::class, ['record' => $home->getKey()])
         ->assertOk()
         ->assertFormSet(['is_published' => true])
-        ->assertSee('Veröffentlicht');
+        ->assertSee('Für Besucher sichtbar.');
 });
 
 it('hydrates the toggle OFF for an unpublished record', function () {
@@ -74,7 +74,7 @@ it('hydrates the toggle OFF for an unpublished record', function () {
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
         ->assertFormSet(['is_published' => false])
-        ->assertSee('Unveröffentlicht');
+        ->assertSee('Für Besucher nicht sichtbar');
 });
 
 it('shows "Geplant" for a scheduled record — toggle ON, badge derived', function () {
@@ -83,7 +83,7 @@ it('shows "Geplant" for a scheduled record — toggle ON, badge derived', functi
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
         ->assertFormSet(['is_published' => true])
-        ->assertSee('Geplant');
+        ->assertSee('automatisch online');
 });
 
 it('shows "Abgelaufen" for an expired record — toggle ON, badge derived', function () {
@@ -92,7 +92,16 @@ it('shows "Abgelaufen" for an expired record — toggle ON, badge derived', func
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
         ->assertFormSet(['is_published' => true])
-        ->assertSee('Abgelaufen');
+        ->assertSee('Veröffentlichung endete');
+});
+
+it('explains a bounded window on a published record: visible now, auto-hidden later', function () {
+    $record = makeContent($this->tenant, '/fixture-bounded', from: now()->subWeek(), until: now()->addWeek());
+
+    Livewire::test(EditContent::class, ['record' => $record->getKey()])
+        ->assertOk()
+        ->assertSee('Für Besucher sichtbar')
+        ->assertSee('automatisch ausgeblendet');
 });
 
 it('defaults the toggle to OFF on the create form', function () {
@@ -147,19 +156,22 @@ it('actually persists the cleared window when unpublishing via the toggle (dehyd
         ->and($fresh->status()->value)->toBe('draft');
 });
 
-it('round-trips a legacy members visibility unchanged through the hidden field', function () {
+it('round-trips a legacy members visibility unchanged and explains its real effect', function () {
     $record = makeContent($this->tenant, '/fixture-members', from: now()->subWeek());
     $record->forceFill(['visibility' => ContentVisibility::Members])->save();
 
     Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->assertOk()
-        // No visibility UI anymore …
-        ->assertDontSee('Nur Eingeloggt')
+        // No visibility select anymore ("Zugriff" was its label) — instead the
+        // effect summary flags the legacy state honestly: hidden, not public.
+        ->assertDontSee('Zugriff')
+        ->assertSee('Altbestand')
+        ->assertSee('Für Besucher nicht sichtbar')
         ->fillForm(['title' => 'Umbenannt'])
         ->call('save')
         ->assertHasNoFormErrors();
 
-    // … but the stored value is not silently flipped by an unrelated save.
+    // The stored value is not silently flipped by an unrelated save.
     expect($record->fresh()->visibility)->toBe(ContentVisibility::Members);
 });
 
@@ -176,7 +188,7 @@ it('shows the reset hint action only when publish_from is dirty and reverts it (
         ->assertActionDoesNotExist($resetFrom)
         // Change the field → the reset action appears.
         ->set('data.publish_from', now()->addWeek()->format('Y-m-d H:i:s'))
-        ->assertSee('Geplant')
+        ->assertSee('automatisch online')
         ->assertActionVisible($resetFrom)
         // Click the reset button (the raw mountAction the UI dispatches while it is
         // visible): the value reverts to the saved state and the toggle re-syncs.
@@ -195,7 +207,7 @@ it('reverts publish_until to its saved (empty) value via the reset hint action',
         ->assertActionDoesNotExist($resetUntil)
         // A past "bis" expires an otherwise-published page.
         ->set('data.publish_until', now()->subDay()->format('Y-m-d H:i:s'))
-        ->assertSee('Abgelaufen')
+        ->assertSee('Veröffentlichung endete')
         ->assertActionVisible($resetUntil)
         ->call('mountAction', 'reset_publish_until', [], ['schemaComponent' => 'form.publish_until'])
         // Saved value was empty → reverts to null, page is published again.
