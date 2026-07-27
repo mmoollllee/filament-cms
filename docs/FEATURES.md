@@ -49,9 +49,12 @@ frontend via `EnsureTenantIsVisible`; members-only tenants require a logged-in t
 tenant can therefore drive any number of satellite domains; the demo's second tenant
 (`localhost`) proves it with zero own branding.
 
-**Roles** — the `tenant_user` pivot carries a `TenantUserRole` (admin/editor);
-`users.is_superadmin` unlocks cross-tenant administration, user management and layout
-presets. Policies: `ContentPolicy`, `TenantPolicy`, `UserPolicy` (auto-registered).
+**Roles** — the `tenant_user` pivot carries a `TenantUserRole` (admin/editor). Both roles
+manage content *and* the tenant settings page (branding, contact, SEO); only user
+management is admin-only. `users.is_superadmin` unlocks cross-tenant administration and
+layout presets. Policies: `ContentPolicy`, `TenantPolicy`, `UserPolicy` (auto-registered) —
+override `TenantPolicy::update()` via your own `Gate::policy()` to restrict the settings
+page to admins again.
 
 **Model traits** — everything the engine expects from your models ships as traits
 (`php artisan cms:install` scaffolds models that use them):

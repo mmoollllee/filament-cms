@@ -22,9 +22,15 @@ class TenantPolicy
         return $user->isSuperadmin();
     }
 
+    /**
+     * Gates the tenant settings page (EditTenantProfilePage): every member of the
+     * tenant may edit branding, contact data and SEO defaults — Admin *and* Editor.
+     * Managing users stays admin-only ({@see UserPolicy}), and everything
+     * cross-tenant (listing, creating, deleting tenants) stays superadmin-only.
+     */
     public function update(User $user, Tenant $tenant): bool
     {
-        return $user->isSuperadmin();
+        return $user->isSuperadmin() || $tenant->hasUser($user);
     }
 
     public function delete(User $user, Tenant $tenant): bool

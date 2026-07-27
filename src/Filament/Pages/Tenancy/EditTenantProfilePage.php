@@ -20,8 +20,8 @@ use Illuminate\Support\HtmlString;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Concerns\Tenant\HasSpamQuestions;
 use Mmoollllee\Cms\Enums\SocialNetwork;
-use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Filament\Forms\MediaField;
+use Mmoollllee\Cms\Policies\TenantPolicy;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 
 /**
@@ -354,6 +354,12 @@ class EditTenantProfilePage extends EditTenantProfile
         return [];
     }
 
+    /**
+     * Gates the page AND the tenant-menu entry. The rule itself lives in
+     * {@see TenantPolicy::update()} (any tenant member,
+     * Admin or Editor) so an app can tighten or widen it by registering its own
+     * tenant policy — no page subclass needed.
+     */
     public static function canView(Model $tenant): bool
     {
         $user = auth()->user();
@@ -364,7 +370,7 @@ class EditTenantProfilePage extends EditTenantProfile
             return false;
         }
 
-        return $user->isSuperadmin() || $user->tenantRole($tenant) === TenantUserRole::Admin;
+        return $user->can('update', $tenant);
     }
 
     /**

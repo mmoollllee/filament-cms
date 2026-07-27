@@ -60,13 +60,22 @@ function makeLibraryImage(Tenant $tenant, string $sourcePath = 'fixtures/pic.png
  */
 function actingAsMarketingPanelAdmin(): Tenant
 {
+    return actingAsMarketingPanelUser('admin@example.test');
+}
+
+/**
+ * Same bootstrap for any seeded account — e.g. the tenant Editor
+ * (editor-a@example.test) — to pin role-dependent panel behaviour.
+ */
+function actingAsMarketingPanelUser(string $email): Tenant
+{
     test()->seed(DatabaseSeeder::class);
 
     Filament::setCurrentPanel(Filament::getPanel('panel'));
 
     $tenant = Tenant::where('site_key', 'marketing')->firstOrFail();
 
-    test()->actingAs(User::where('email', 'admin@example.test')->firstOrFail());
+    test()->actingAs(User::where('email', $email)->firstOrFail());
     Filament::setTenant($tenant);
     app(CurrentTenant::class)->set($tenant);
 
