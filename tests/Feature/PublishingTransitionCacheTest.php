@@ -21,6 +21,20 @@ use Mmoollllee\Cms\Support\Content\PublishingTransitions;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
 
+/*
+ * Every test here builds publishing windows from now() and then asserts against
+ * now()-derived expectations, so the wall clock must not advance mid-test: a
+ * fixture created at …:07.999 and an expectation computed at …:08.001 differ by
+ * a whole second once the timestamps are truncated. That made
+ * "the earliest future window boundary" fail roughly one full suite run in four.
+ *
+ * travel() keeps working — it moves the frozen instant forward and leaves it
+ * frozen — which is exactly the semantics these tests want.
+ */
+beforeEach(function () {
+    $this->freezeTime();
+});
+
 function transitionTenant(): Tenant
 {
     return Tenant::factory()->create([
