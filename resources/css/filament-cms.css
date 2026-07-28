@@ -19,3 +19,16 @@
 @source '../overrides/**/*.blade.php';
 @source '../blocks/**/*.blade.php';
 @source '../../src/**/*.php';
+
+/* The revisions pages (ContentRevisionsPage, i.e. mansoor/filament-versionable) render the
+   PLUGIN's own Blade views, which no path above covers — without this every layout utility
+   they use (grid-cols-1, lg:grid-cols-4, col-span-3, space-y-6, divide-*, gap-x-3, …) is
+   purged and the revision history renders as an unstyled stack. The diff table itself needs
+   no theme: its rules ship precompiled in resources/css/versionable.css as a Filament asset.
+
+   Two candidates, because @source resolves against the REAL path of this file: normally the
+   plugin sits next to this package in the app's vendor dir, but with filament-cms symlinked
+   as a path repo (package development) it sits in the package's own vendor dir instead.
+   Tailwind ignores a candidate that does not exist, so both can stay. */
+@source '../../../../mansoor/filament-versionable/resources/**/*.blade.php';
+@source '../../vendor/mansoor/filament-versionable/resources/**/*.blade.php';
