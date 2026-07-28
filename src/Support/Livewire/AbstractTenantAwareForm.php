@@ -71,6 +71,13 @@ abstract class AbstractTenantAwareForm extends Component
     /**
      * Resolve the operator recipient: an explicit per-page override, else the tenant's
      * configured contact email.
+     *
+     * SECURITY: the override is trusted verbatim, so whatever the subclass passes
+     * in MUST NOT be client-writable. Public Livewire properties are rewritable
+     * from the browser snapshot, and these forms are public — so the property
+     * holding the override needs #[Locked] (see App\Livewire\KontaktForm).
+     * Without it, an anonymous visitor redirects Mail::to() and turns the site
+     * into an open relay sending from its own verified MAIL_FROM_ADDRESS.
      */
     protected function resolveContactRecipient(?string $override): string
     {

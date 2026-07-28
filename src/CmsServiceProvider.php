@@ -9,6 +9,7 @@ use Filament\Support\Assets\Css;
 use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
@@ -35,7 +36,9 @@ use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
+use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Routing\HitRecorder;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
@@ -44,6 +47,8 @@ use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
+use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
+use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 
 /**
  * Boots the shared CMS engine.
@@ -202,6 +207,8 @@ class CmsServiceProvider extends ServiceProvider
         // Both wire the registered Content/Tenant models, which are unset until
         // the app calls Cms::use*Model(). Skip them on an unconfigured install so
         // boot() doesn't fatal before the app is even set up.
+        $this->registerMenuTenantScope();
+
         if (Cms::modelsConfigured()) {
             $this->registerCacheObservers();
             $this->registerPolicies();
@@ -230,8 +237,8 @@ class CmsServiceProvider extends ServiceProvider
         // without this, a worker would serve stale alt texts/URLs after an
         // editor changes media, and the caches would grow unbounded.
         $this->app->terminating(function (): void {
-            \Mmoollllee\Cms\Support\Media\MediaUrlResolver::flush();
-            \Mmoollllee\Cms\Support\Media\MediaFolders::flush();
+            MediaUrlResolver::flush();
+            MediaFolders::flush();
         });
 
         $this->registerShortcodes();
@@ -280,8 +287,8 @@ class CmsServiceProvider extends ServiceProvider
      */
     protected function registerMediaLibrary(): void
     {
-        Gate::policy(\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem::class, MediaItemPolicy::class);
-        Gate::policy(\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder::class, MediaFolderPolicy::class);
+        Gate::policy(MediaLibraryItem::class, MediaItemPolicy::class);
+        Gate::policy(MediaLibraryFolder::class, MediaFolderPolicy::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -312,6 +319,40 @@ class CmsServiceProvider extends ServiceProvider
         Gate::policy(Cms::contentModel(), ContentPolicy::class);
         Gate::policy(Cms::tenantModel(), TenantPolicy::class);
         Gate::policy(Cms::userModel(), UserPolicy::class);
+    }
+
+    /**
+     * Confine the menu-builder's MenuItem to the current tenant.
+     *
+     * SECURITY. `tenant_id` sits on `menus`, not on `menu_items` — an item's
+     * tenant is only implied by its `menu_id`. Filament's tenancy scope reaches
+     * Menu (it backs a resource) but never MenuItem, and the plugin has no
+     * policy, so its Livewire component passed client-supplied ids straight
+     * into unfiltered queries: reorder() mass-updates `whereIn('id', $order)`,
+     * and the edit/delete actions resolve by bare id. A tenant editor could
+     * therefore read, re-parent, rewrite and delete another tenant's menu items
+     * from their own menu page.
+     *
+     * A whereIn SUBQUERY (not whereHas) is deliberate: it survives the mass
+     * update in MenuItemService::updateOrder(), which whereHas would not.
+     *
+     * Console and queue contexts have no CurrentTenant, so the scope is inert
+     * there and seeding/imports keep working unchanged.
+     */
+    protected function registerMenuTenantScope(): void
+    {
+        MenuItem::addGlobalScope('cms_tenant', function (EloquentBuilder $query): void {
+            $tenant = app(CurrentTenant::class)->get();
+
+            if ($tenant === null) {
+                return;
+            }
+
+            $query->whereIn(
+                'menu_id',
+                Menu::query()->where('tenant_id', $tenant->getKey())->select('id'),
+            );
+        });
     }
 
     /**

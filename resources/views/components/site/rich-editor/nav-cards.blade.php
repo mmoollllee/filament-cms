@@ -14,7 +14,8 @@
 
             <{{ $cardTag }} class="nav-card"
                 @unless ($preview)
-                    href="{{ e($card['href'] ?? '#') }}"
+                    {{-- Scheme-checked: e() alone would let javascript:/data: through. --}}
+                    href="{{ \Mmoollllee\Cms\Support\Content\PayloadLink::safeUrl($card['href'] ?? null) ?? '#' }}"
                     @if (! empty($card['wire_navigate'])) wire:navigate @endif
                     @if (filled($card['rel'] ?? null)) rel="{{ e($card['rel']) }}" @endif
                 @endunless

@@ -240,6 +240,15 @@ class Shortcodes
      * Supports: attr="value" and attr='value'
      * Also handles HTML-escaped quotes (&quot;) from e() in Blade templates.
      *
+     * SECURITY: values are returned HTML-ESCAPED, because a shortcode's job is
+     * to emit HTML and handlers drop attributes straight into a tag (the [logo]
+     * handler hands `class` to blade-icons, which does not escape). The
+     * html_entity_decode() above is what makes this necessary: it is needed to
+     * parse `class=&quot;…&quot;` as written by the editor, but it also undoes
+     * TipTap's escaping and any e() a calling view already applied — so without
+     * re-escaping here, `<` and `>` survive into the attribute value and break
+     * out of the tag. Handlers that need the raw text must decode explicitly.
+     *
      * @return array<string, string>
      */
     protected static function parseAttributes(string $raw): array
@@ -254,7 +263,7 @@ class Shortcodes
         preg_match_all('/([a-z_-]+)\s*=\s*["\']([^"\']*?)["\']/i', $raw, $matches, PREG_SET_ORDER);
 
         foreach ($matches as $match) {
-            $attrs[strtolower($match[1])] = $match[2];
+            $attrs[strtolower($match[1])] = e($match[2]);
         }
 
         return $attrs;

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\Content\PayloadLink;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
@@ -54,10 +55,16 @@ class Menu extends BaseMenu
                     return [];
                 }
 
+                // SECURITY: the menu-builder plugin stores `url` as a plain
+                // TextInput with no scheme validation, so a javascript:/data:
+                // value would land in the header, footer and flyout href of
+                // every page. Scheme-check here — one place covers all menu
+                // consumers — falling back to '/' so a rejected item still
+                // renders as a link instead of silently leaving the navigation.
                 return $menu->menuItems
                     ->map(fn ($item): array => [
-                        'path' => $item->url ?? '/',
-                        'href' => $item->url ?? '/',
+                        'path' => PayloadLink::safeUrl($item->url) ?? '/',
+                        'href' => PayloadLink::safeUrl($item->url) ?? '/',
                         'label' => $item->title,
                     ])
                     ->all();

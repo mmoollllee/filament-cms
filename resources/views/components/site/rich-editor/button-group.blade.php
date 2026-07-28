@@ -17,8 +17,10 @@
                 $iconPosition = $button['icon_position'] ?? 'after';
             @endphp
 
+            {{-- e() escapes entities but never checks the scheme — safeUrl()
+                 rejects javascript:/data: and leaves a dead anchor instead. --}}
             <a class="{{ $classes }}"
-                href="{{ e($button['href'] ?? '#') }}"
+                href="{{ \Mmoollllee\Cms\Support\Content\PayloadLink::safeUrl($button['href'] ?? null) ?? '#' }}"
                 @if (! empty($button['wire_navigate'])) wire:navigate @endif
                 @if (filled($button['rel'] ?? null)) rel="{{ e($button['rel']) }}" @endif
             >@if ($iconPosition === 'before' && $iconSvg){!! $iconSvg !!}@endif{{ e($button['label'] ?? '') }}@if ($iconPosition === 'after' && $iconSvg){!! $iconSvg !!}@endif</a>

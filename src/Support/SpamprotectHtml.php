@@ -6,6 +6,19 @@ use DOMDocument;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Str;
 
+/**
+ * Rewrites editorial `mailto:`/`tel:` anchors into the spamprotect components
+ * that hide the address from scrapers.
+ *
+ * SECURITY: everything taken from the document — the link label above all —
+ * must be passed to {@see Blade::render()} as DATA, never concatenated into the
+ * template string. Blade COMPILES its first argument, so a concatenated label
+ * turns editorial text into server-side code: `e()` escapes `<>"'&` but leaves
+ * `{{ }}`, `{!! !!}` and `@php` untouched, so a label like `{{ phpversion() }}`
+ * would execute. The label reaches us from any tenant editor via the link
+ * picker or the block's HTML source tab, so that is a straight path from
+ * editorial content to RCE. Keep the template a literal.
+ */
 class SpamprotectHtml
 {
     public static function protectEmails(string $html): string
@@ -27,15 +40,15 @@ class SpamprotectHtml
                 $label = $a->textContent == $phone ? '' : $a->textContent;
 
                 // Rebuild this <a> via the Blade component from the package:
-                $blade = '<x-encrypt-phone :phone="$phone">'.e($label).'</x-encrypt-phone>';
-                $protected = Blade::render($blade, ['phone' => $phone]);
+                $blade = '<x-encrypt-phone :phone="$phone">{{ $label }}</x-encrypt-phone>';
+                $protected = Blade::render($blade, ['phone' => $phone, 'label' => $label]);
             } elseif (self::isMailto($href)) {
                 $email = substr($href, 7); // after "mailto:"
                 $label = $a->textContent == $email ? '' : $a->textContent;
 
                 // Rebuild this <a> via the Blade component from the package:
-                $blade = '<x-encrypt-email :email="$email">'.e($label).'</x-encrypt-email>';
-                $protected = Blade::render($blade, ['email' => $email]);
+                $blade = '<x-encrypt-email :email="$email">{{ $label }}</x-encrypt-email>';
+                $protected = Blade::render($blade, ['email' => $email, 'label' => $label]);
             } else {
                 continue;
             }
