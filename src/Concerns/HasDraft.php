@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Concerns;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
@@ -57,6 +58,26 @@ trait HasDraft
     public function hasDraft(): bool
     {
         return $this->draftData() !== [];
+    }
+
+    /**
+     * Records carrying an unapplied draft stash.
+     *
+     * The column-level predicate is deliberate: {@see discardDraft()} and
+     * "Änderungen anwenden" both NULL the column, so `draft IS NOT NULL` is the
+     * stash's real on/off switch and stays index-friendly. hasDraft() is the
+     * per-instance check and additionally looks inside the envelope; the two
+     * only disagree for a stash of an empty form, which the panel cannot
+     * produce.
+     */
+    public function scopeWithDraft(Builder $query): Builder
+    {
+        return $query->whereNotNull('draft');
+    }
+
+    public function scopeWithoutDraft(Builder $query): Builder
+    {
+        return $query->whereNull('draft');
     }
 
     /**

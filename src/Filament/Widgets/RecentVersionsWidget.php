@@ -10,40 +10,25 @@ use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Cms;
-use Mmoollllee\Cms\Contracts\Fragment;
-use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
-use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
-use Mmoollllee\Cms\Support\Content\ContentResourceLocator;
+use Mmoollllee\Cms\Concerns\HasVersions;
+use Mmoollllee\Cms\Filament\Widgets\Concerns\ResolvesContentResourceUrls;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\Support\Versioning\Versions;
 use Overtrue\LaravelVersionable\Version;
 
 /**
  * Dashboard table of the tenant's most recent APPLIED changes — one row per
- * recorded version across contents and fragments ({@see \Mmoollllee\Cms\Concerns\HasVersions}),
+ * recorded version across contents and fragments ({@see HasVersions}),
  * with author, record and deep links to the editing resource / its revisions
  * page. Draft stashes never appear here by design (they record no version).
  */
 class RecentVersionsWidget extends TableWidget
 {
-    protected static ?int $sort = 30;
+    use ResolvesContentResourceUrls;
+
+    protected static ?int $sort = 40;
 
     protected int|string|array $columnSpan = 'full';
-
-    /**
-     * Per-request memos: the table evaluates url()+visible() per action per
-     * row, and each resolution walks the site-extension registry / the route
-     * generator (same rationale as Drafts::supported's memo).
-     *
-     * @var array<string, ?string>
-     */
-    private array $resourceUrlMemo = [];
-
-    /** @var array<string, ?string> */
-    private array $resourceClassMemo = [];
-
-    /** @var array<string, string> */
-    private array $typeLabelMemo = [];
 
     public static function canView(): bool
     {
@@ -67,7 +52,7 @@ class RecentVersionsWidget extends TableWidget
                 TextColumn::make('versionable')
                     ->label('Inhalt')
                     ->state(fn (Version $record): string => $record->versionable?->title ?? 'Gelöschter Inhalt')
-                    ->description(fn (Version $record): ?string => $this->typeLabelFor($record)),
+                    ->description(fn (Version $record): ?string => $this->typeLabelForRecord($this->recordFor($record))),
                 TextColumn::make('user.name')
                     ->label('Von')
                     ->placeholder('—'),
@@ -76,13 +61,13 @@ class RecentVersionsWidget extends TableWidget
                 Action::make('open')
                     ->label('Bearbeiten')
                     ->icon(Heroicon::OutlinedPencilSquare)
-                    ->url(fn (Version $record): ?string => $this->resourceUrlFor($record, 'edit'))
-                    ->visible(fn (Version $record): bool => $this->resourceUrlFor($record, 'edit') !== null),
+                    ->url(fn (Version $record): ?string => $this->resourceUrlForRecord($this->recordFor($record), 'edit'))
+                    ->visible(fn (Version $record): bool => $this->resourceUrlForRecord($this->recordFor($record), 'edit') !== null),
                 Action::make('revisions')
                     ->label('Revisionen')
                     ->icon(Heroicon::OutlinedClock)
-                    ->url(fn (Version $record): ?string => $this->resourceUrlFor($record, 'revisions'))
-                    ->visible(fn (Version $record): bool => $this->resourceUrlFor($record, 'revisions') !== null),
+                    ->url(fn (Version $record): ?string => $this->resourceUrlForRecord($this->recordFor($record), 'revisions'))
+                    ->visible(fn (Version $record): bool => $this->resourceUrlForRecord($this->recordFor($record), 'revisions') !== null),
             ])
             ->emptyStateHeading('Noch keine Änderungen')
             ->emptyStateDescription('Sobald Inhalte angewendet werden, erscheint hier die Historie.');
@@ -126,78 +111,9 @@ class RecentVersionsWidget extends TableWidget
         return array_values(array_filter($models, fn (?string $model): bool => Versions::supported($model)));
     }
 
-    /** Blueprint label for contents, "Fragment" for fragments. */
-    protected function typeLabelFor(Version $version): ?string
+    /** The versioned record a row points at, or null once it was deleted. */
+    protected function recordFor(Version $version): ?Model
     {
-        $record = $version->versionable;
-
-        if ($record === null) {
-            return null;
-        }
-
-        if ($record instanceof Fragment) {
-            return FragmentResource::getModelLabel();
-        }
-
-        return $this->typeLabelMemo[(string) $record->content_type] ??= app(ContentBlueprintRegistry::class)->labelFor(
-            (string) $record->content_type,
-            app(CurrentTenant::class)->get()?->site_key,
-        );
-    }
-
-    /**
-     * URL to the managing resource's page for the version's record — the
-     * type-specific site resource wins over the catch-all
-     * (ContentResourceLocator), and inaccessible resources yield no link
-     * (mirrors the listing block's canAccess() guard: a visible button must
-     * not lead into a 403).
-     */
-    protected function resourceUrlFor(Version $version, string $page): ?string
-    {
-        $key = $version->getKey().':'.$page;
-
-        if (! array_key_exists($key, $this->resourceUrlMemo)) {
-            $this->resourceUrlMemo[$key] = $this->buildResourceUrl($version, $page);
-        }
-
-        return $this->resourceUrlMemo[$key];
-    }
-
-    protected function buildResourceUrl(Version $version, string $page): ?string
-    {
-        $record = $version->versionable;
-
-        if ($record === null) {
-            return null;
-        }
-
-        $resource = $this->resourceFor($record);
-
-        if ($resource === null || ! $resource::hasPage($page) || ! $resource::canAccess()) {
-            return null;
-        }
-
-        return $resource::getUrl($page, ['record' => $record]);
-    }
-
-    /** @return class-string|null */
-    protected function resourceFor(Model $record): ?string
-    {
-        if ($record instanceof Fragment) {
-            return FragmentResource::class;
-        }
-
-        $type = (string) $record->content_type;
-
-        // array_key_exists, not ??= — a null result (unmanaged type) must be
-        // memoized too, or every row retries the locator scan.
-        if (! array_key_exists($type, $this->resourceClassMemo)) {
-            $this->resourceClassMemo[$type] = app(ContentResourceLocator::class)->resolve(
-                $type,
-                app(CurrentTenant::class)->get(),
-            );
-        }
-
-        return $this->resourceClassMemo[$type];
+        return $version->versionable;
     }
 }

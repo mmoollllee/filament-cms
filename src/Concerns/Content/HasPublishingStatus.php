@@ -58,6 +58,36 @@ trait HasPublishingStatus
     }
 
     /**
+     * The query-side counterparts of {@see ContentStatus::forWindow()}. Together
+     * with published() they partition the table, so a dashboard can count the
+     * states without loading every row and deriving status in PHP.
+     *
+     * Keep the branch order in mind: forWindow() checks "scheduled" BEFORE
+     * "expired", so a future publish_from wins even when publish_until already
+     * passed — expired() therefore excludes future windows explicitly.
+     */
+    public function scopeUnpublished(Builder $query): Builder
+    {
+        return $query->whereNull('publish_from');
+    }
+
+    public function scopeScheduled(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('publish_from')
+            ->where('publish_from', '>', now());
+    }
+
+    public function scopeExpired(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('publish_from')
+            ->where('publish_from', '<=', now())
+            ->whereNotNull('publish_until')
+            ->where('publish_until', '<=', now());
+    }
+
+    /**
      * The tenant's content as the given user may see it on the FRONTEND.
      *
      * Superadmins and tenant members see everything (unpublished, scheduled,
