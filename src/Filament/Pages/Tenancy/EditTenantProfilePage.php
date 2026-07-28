@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Filament\Pages\Tenancy;
 
 use Filament\Facades\Filament;
 use Filament\Forms\Components\ColorPicker;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -22,7 +23,9 @@ use Mmoollllee\Cms\Concerns\Tenant\HasSpamQuestions;
 use Mmoollllee\Cms\Enums\SocialNetwork;
 use Mmoollllee\Cms\Filament\Forms\MediaField;
 use Mmoollllee\Cms\Policies\TenantPolicy;
+use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
+use Mmoollllee\Filami\Filami;
 
 /**
  * Shared tenant profile page (branding, contact, SEO/social). The concrete
@@ -64,6 +67,7 @@ class EditTenantProfilePage extends EditTenantProfile
             'footer_text',
             'social_links',
             ...($this->usesSpamQuestions() ? ['spam_questions'] : []),
+            ...(Umami::installed() ? ['umami_url', 'umami_website_id'] : []),
         ];
     }
 
@@ -299,9 +303,58 @@ class EditTenantProfilePage extends EditTenantProfile
                                             )),
                                     ]),
                             ]),
+                        ...$this->analyticsTabs(),
                     ])
                     ->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * The "Statistik" tab — rendered only when mmoollllee/filami is installed.
+     *
+     * Both fields are optional: blank means "use the configured instance"
+     * (UMAMI_URL) and "let provisioning fill this in". Filling them in by hand
+     * is what makes the integration usable without touching .env at all —
+     * a server plus a website id is everything the tracking snippet needs.
+     *
+     * @return array<int, Tab>
+     */
+    protected function analyticsTabs(): array
+    {
+        if (! Umami::installed()) {
+            return [];
+        }
+
+        return [
+            Tab::make('Statistik')
+                ->schema([
+                    Section::make('Umami')
+                        ->description('Datenschutzfreundliche Reichweitenmessung ohne Cookies. Leer lassen, wenn die zentral konfigurierte Instanz genutzt wird.')
+                        ->columns(2)
+                        ->schema([
+                            // The tracking snippet is gated by environment and
+                            // by these two fields; without this line a site
+                            // that is configured but silently not tracking
+                            // looks broken.
+                            Placeholder::make('umami_status')
+                                ->label('Status')
+                                ->content(fn (): string => Filami::inactiveReason($this->currentTenant())
+                                    ?? __('filami::status.active'))
+                                ->columnSpanFull(),
+                            TextInput::make('umami_url')
+                                ->label('Umami-Server')
+                                ->url()
+                                ->maxLength(255)
+                                ->placeholder(fn (): string => Filami::url() ?: 'https://analytics.example.com')
+                                ->helperText('Adresse der Umami-Installation, z. B. https://analytics.example.com. Leer = zentral konfigurierter Server.'),
+                            TextInput::make('umami_website_id')
+                                ->label('Website-ID')
+                                ->maxLength(255)
+                                ->placeholder('94db1cb1-74f4-4a40-ad6c-962362670409')
+                                ->helperText('Wird beim Anlegen der Seite automatisch vergeben. Manuell eintragen, um eine bestehende Umami-Website zu verwenden.'),
+                        ]),
+                ]),
+        ];
     }
 
     /**

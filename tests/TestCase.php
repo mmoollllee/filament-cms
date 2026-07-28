@@ -3,7 +3,9 @@
 namespace Mmoollllee\Cms\Tests;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Foundation\Application;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Filami\Filami;
 use Orchestra\Testbench\Concerns\WithWorkbench;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -12,7 +14,7 @@ abstract class TestCase extends Orchestra
     use WithWorkbench;
 
     /**
-     * @param  \Illuminate\Foundation\Application  $app
+     * @param  Application  $app
      */
     protected function defineEnvironment($app): void
     {
@@ -43,5 +45,11 @@ abstract class TestCase extends Orchestra
         // leak; WorkbenchServiceProvider re-registers the workbench wiring
         // (models, sites, blocks, page header) on the next app boot.
         Cms::flush();
+
+        // Same for the optional Umami integration's registry (require-dev
+        // here) — CmsServiceProvider re-runs autoProvision() on the next boot.
+        if (class_exists(Filami::class)) {
+            Filami::flush();
+        }
     }
 }

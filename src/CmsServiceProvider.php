@@ -11,6 +11,7 @@ use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
+use Mmoollllee\Cms\Enums\TenantVisibility;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -31,6 +32,7 @@ use Mmoollllee\Cms\Policies\TenantPolicy;
 use Mmoollllee\Cms\Policies\UserPolicy;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
+use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\ContactLinkShortcodes;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
@@ -47,6 +49,7 @@ use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
+use Mmoollllee\Filami\Filami;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 
@@ -222,6 +225,22 @@ class CmsServiceProvider extends ServiceProvider
                 'versionable.user_model' => Cms::userModel(),
                 'versionable.keep_versions' => (int) config('cms.versions.keep', 50),
             ]);
+        }
+
+        // Optional Umami analytics (mmoollllee/filami): every tenant gets its
+        // own Umami website, provisioned on creation and kept in sync on
+        // rename/domain change. Storage + metadata go through filami's
+        // attribute conventions (umami_website_id / name / primary_domain), so
+        // app tenant models need no trait. Inert while UMAMI_URL is unset.
+        if (Cms::modelsConfigured() && Umami::installed()) {
+            Filami::autoProvision(
+                Cms::tenantModel(),
+                syncOn: ['name', 'primary_domain'],
+                // Archived tenants are off the air; giving them a website would
+                // only add permanent zero rows to the instance. Apps override
+                // this by calling autoProvision() again from their own provider.
+                when: fn (Model $tenant): bool => $tenant->getAttribute('visibility') !== TenantVisibility::Archived->value,
+            );
         }
 
         // Optional media-library integration — wired only when the (commercial)

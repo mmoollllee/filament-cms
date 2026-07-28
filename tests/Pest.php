@@ -81,3 +81,15 @@ function actingAsMarketingPanelUser(string $email): Tenant
 
     return $tenant;
 }
+
+/**
+ * Minimal Umami credentials so the optional filami integration is live
+ * (Filami::apiConfigured()). Lives here rather than in a test file so a second
+ * file using it cannot redeclare it.
+ */
+function filamiConfigured(): void
+{
+    config()->set('filami.url', 'https://a.example.test');
+    config()->set('filami.username', 'provisioner');
+    config()->set('filami.password', 'secret');
+}

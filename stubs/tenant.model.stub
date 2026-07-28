@@ -48,6 +48,10 @@ class Tenant extends Model implements \Mmoollllee\Cms\Contracts\Tenant
         'default_og_image_path',
         'imprint_data',
         'privacy_data',
+        // Optional Umami analytics (mmoollllee/filami): per-tenant endpoint and
+        // website id, editable in the panel under "Statistik".
+        'umami_url',
+        'umami_website_id',
     ];
 
     /**

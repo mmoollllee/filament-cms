@@ -31,6 +31,10 @@ providers:
   - ProtoneMedia\LaravelFFMpeg\Support\ServiceProvider
   - yannkuesthardt\SpamProtect\SpamprotectServiceProvider
   - Mmoollllee\FilamentBuilderTitle\FilamentBuilderTitleServiceProvider
+  # Optional Umami analytics (require-dev here; consumers install it themselves).
+  # Order is not load-bearing: all providers register before any boots, and the
+  # CMS gates its wiring on Umami::installed(), which probes the registration.
+  - Mmoollllee\Filami\FilamiServiceProvider
   - Mmoollllee\Cms\CmsServiceProvider
   - Workbench\App\Providers\WorkbenchServiceProvider
   - Workbench\App\Providers\Filament\DemoPanelProvider

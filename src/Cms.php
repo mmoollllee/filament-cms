@@ -526,6 +526,7 @@ class Cms
         static::$mediaItemModel = null;
         static::$mediaDisk = null;
         static::$mediaFolderNames = null;
+        Support\Analytics\Umami::flush();
         Support\Media\MediaLibrary::flush();
         Support\Media\MediaUrlResolver::flush();
         Support\Media\MediaFolders::flush();

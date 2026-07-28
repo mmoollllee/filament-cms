@@ -186,6 +186,44 @@ Without the package, the banner and the RichEditor iframe button are simply abse
 error. See
 [`mmoollllee/filament-consent-control`](https://github.com/mmoollllee/filament-consent-control).
 
+### Optional: Umami analytics
+
+The engine ships the wiring for self-hosted [Umami](https://umami.is) via
+[`mmoollllee/filami`](https://github.com/mmoollllee/filami). Once the package is
+installed, every tenant automatically gets its own Umami website (created on tenant
+registration, kept in sync on rename/domain change), the site layout renders the
+cookie-less tracking snippet (production only by default), and the dashboard shows
+per-tenant widgets: live visitors, visitors/pageviews/visit time/bounce rate vs. the
+previous period, a visitors chart and the top pages. Everything hides itself while the
+package or credentials are missing — no error, no config in the CMS itself.
+
+```json
+"repositories": [
+    { "type": "vcs", "url": "https://github.com/mmoollllee/filami" }
+]
+```
+
+```bash
+composer require mmoollllee/filami
+php artisan vendor:publish --tag=cms-migrations   # picks up add_umami_website_id_to_tenants_table
+php artisan migrate
+php artisan filami:sync                           # backfill websites for existing tenants
+```
+
+```dotenv
+UMAMI_URL=https://a.example.com
+UMAMI_USERNAME=provisioner
+UMAMI_PASSWORD=secret
+```
+
+Env is optional for plain tracking: each tenant can name its own Umami server
+and website id under *Seiten-Einstellungen → Statistik*, which is all the
+snippet needs — handy when a customer runs their own instance. The credentials
+above stay global and gate only auto-provisioning and the dashboard widgets.
+
+Deploying the Umami instance itself (Plesk + Docker Compose): see filami's
+`docs/deploy-plesk.md`.
+
 ### Optional: Media library („Mediathek")
 
 The engine ships the complete *wiring* for
