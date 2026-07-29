@@ -652,8 +652,9 @@ show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
   would write the address back into the markup; and not `data-umami-event`, whose
   click handler would race the one decrypting the address).
 - **Outbound clicks** — any `http(s)` link to another host reports `outbound-click`
-  with the target host. Own domains beyond the one being served go in
-  `UMAMI_INTERNAL_DOMAINS`, or a hop between them counts as leaving the site.
+  with the target host. `UMAMI_INTERNAL_DOMAINS` declares further own domains as
+  internal; leaving it unset counts a hop between them, which is usually what you
+  want when the second domain is its own destination.
 - **Form funnels** — a form on `AbstractTenantAwareForm` that returns a name from
   `$analyticsName` reports `<name>-start` on first interaction (render
   `{!! $this->analyticsAttributes() !!}` on the `<form>` tag) and `<name>-submit`

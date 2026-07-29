@@ -246,11 +246,13 @@ ones an editor typed into rich text, which are obfuscated against scrapers and
 carry `data-filami-event` instead), and any link leaving the site
 (`outbound-click`, recorded with the target host).
 
-A site served from several of its own domains should name the others, or a hop
-between them counts as an outbound click:
+A site served from several of its own domains can declare the others, and a
+hop between them then counts as internal rather than outbound. Leaving it
+unset is equally valid — a second domain is often its own destination, and a
+visitor moving there is a result worth measuring:
 
 ```dotenv
-UMAMI_INTERNAL_DOMAINS=muench-tiefbau.de,jobs.muench-tiefbau.de
+UMAMI_INTERNAL_DOMAINS=example.com,shop.example.com
 ```
 
 Public forms built on `AbstractTenantAwareForm` measure their funnel by naming
