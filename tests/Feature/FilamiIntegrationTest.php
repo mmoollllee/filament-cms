@@ -17,6 +17,7 @@ use Mmoollllee\Cms\Filament\Pages\Dashboard;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\EditTenantProfilePage;
 use Mmoollllee\Cms\Filament\Widgets\ContentOverviewWidget;
 use Mmoollllee\Cms\Filament\Widgets\RecentVersionsWidget;
+use Mmoollllee\Filami\Filament\Pages\UmamiStatistics;
 use Mmoollllee\Filami\Filament\Widgets\UmamiEventsWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiStatsOverviewWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiTopPagesWidget;
@@ -75,18 +76,18 @@ it('stays inert without umami credentials', function () {
     Queue::assertNotPushed(ProvisionUmamiWebsite::class);
 });
 
-it('places the umami widgets between the content overview and the changelog', function () {
-    // Array order is render order for a page-level getWidgets() override —
-    // Filament sorts only panel-registered widgets.
+it('keeps analytics off the dashboard and on its own page', function () {
+    // Reach numbers answer a different question than "what should I work on",
+    // and four of them pushed the changelog below the fold.
     $widgets = (new Dashboard)->getWidgets();
 
-    expect(array_search(UmamiStatsOverviewWidget::class, $widgets, true))
-        ->toBeGreaterThan(array_search(ContentOverviewWidget::class, $widgets, true))
-        ->and(array_search(UmamiTopPagesWidget::class, $widgets, true))
+    expect($widgets)->not->toContain(UmamiStatsOverviewWidget::class)
+        ->not->toContain(UmamiVisitorsChartWidget::class)
+        ->not->toContain(UmamiTopPagesWidget::class)
+        ->not->toContain(UmamiEventsWidget::class)
+        ->and(array_search(ContentOverviewWidget::class, $widgets, true))
         ->toBeLessThan(array_search(RecentVersionsWidget::class, $widgets, true))
-        ->and(array_search(UmamiEventsWidget::class, $widgets, true))
-        ->toBeLessThan(array_search(RecentVersionsWidget::class, $widgets, true))
-        ->and($widgets)->toContain(UmamiVisitorsChartWidget::class);
+        ->and(UmamiStatistics::class)->toBeIn(panelPages());
 });
 
 it('renders the tracking snippet in the site layout for a linked tenant', function () {

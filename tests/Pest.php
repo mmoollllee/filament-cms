@@ -121,3 +121,22 @@ function tenantFormHost(): object
         }
     };
 }
+
+/**
+ * The panel pages BasePanelProvider registers. Protected there, because a
+ * panel's page list is configuration rather than API.
+ *
+ * @return array<int, class-string>
+ */
+function panelPages(): array
+{
+    $provider = new class(app()) extends \Mmoollllee\Cms\Filament\Providers\BasePanelProvider
+    {
+        public function pages(): array
+        {
+            return $this->panelPages();
+        }
+    };
+
+    return $provider->pages();
+}

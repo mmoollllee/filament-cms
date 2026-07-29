@@ -35,6 +35,7 @@ use Mmoollllee\Cms\Filament\Auth\TenantAwareLoginResponse;
 use Mmoollllee\Cms\Filament\Pages\Auth\EditProfile;
 use Mmoollllee\Cms\Filament\Pages\Auth\Login;
 use Mmoollllee\Cms\Filament\Pages\Dashboard;
+use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\EditTenantProfilePage;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\RegisterTenantPage;
 use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
@@ -309,7 +310,10 @@ abstract class BasePanelProvider extends FilamentPanelProvider
     }
 
     /**
-     * Panel pages. Defaults to the shared dashboard.
+     * Panel pages. The shared dashboard, plus the analytics page when
+     * mmoollllee/filami is installed — it hides itself from the navigation
+     * while Umami is unconfigured, so an app without credentials sees no
+     * dead menu entry.
      *
      * @return array<int, class-string>
      */
@@ -317,6 +321,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
     {
         return [
             Dashboard::class,
+            ...(Umami::installed() ? [\Mmoollllee\Filami\Filament\Pages\UmamiStatistics::class] : []),
         ];
     }
 

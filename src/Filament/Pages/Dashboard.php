@@ -7,11 +7,6 @@ use Mmoollllee\Cms\Filament\Widgets\ContentOverviewWidget;
 use Mmoollllee\Cms\Filament\Widgets\PendingContentWidget;
 use Mmoollllee\Cms\Filament\Widgets\RecentVersionsWidget;
 use Mmoollllee\Cms\Filament\Widgets\TenantOverviewWidget;
-use Mmoollllee\Cms\Support\Analytics\Umami;
-use Mmoollllee\Filami\Filament\Widgets\UmamiEventsWidget;
-use Mmoollllee\Filami\Filament\Widgets\UmamiStatsOverviewWidget;
-use Mmoollllee\Filami\Filament\Widgets\UmamiTopPagesWidget;
-use Mmoollllee\Filami\Filament\Widgets\UmamiVisitorsChartWidget;
 
 class Dashboard extends BaseDashboard
 {
@@ -19,15 +14,19 @@ class Dashboard extends BaseDashboard
 
     /**
      * Ordered by how much the editor needs it: who am I editing, what is
-     * waiting on me, what exists, how is it doing (optional Umami analytics),
-     * what changed. The pending widget hides itself when there is nothing to
-     * do, the analytics widgets while filami is missing or unconfigured.
+     * waiting on me, what exists, what changed. The pending widget hides
+     * itself when there is nothing to do.
+     *
+     * Analytics is deliberately NOT here: reach numbers answer a different
+     * question than "what should I work on", and four widgets pushed the
+     * changelog below the fold. They live on their own page
+     * ({@see \Mmoollllee\Filami\Filament\Pages\UmamiStatistics}, registered
+     * in BasePanelProvider).
      *
      * Array order IS render order here: Filament sorts by $sort only for
      * panel-registered widgets, whereas a page-level getWidgets() override is
      * mapped as-is (Page::getWidgetsSchemaComponents() only filters by
-     * canView()). The analytics widgets must therefore be spliced into place
-     * rather than appended.
+     * canView()).
      */
     public function getWidgets(): array
     {
@@ -35,12 +34,6 @@ class Dashboard extends BaseDashboard
             TenantOverviewWidget::class,
             PendingContentWidget::class,
             ContentOverviewWidget::class,
-            ...(Umami::installed() ? [
-                UmamiStatsOverviewWidget::class,
-                UmamiVisitorsChartWidget::class,
-                UmamiTopPagesWidget::class,
-                UmamiEventsWidget::class,
-            ] : []),
             RecentVersionsWidget::class,
         ];
     }

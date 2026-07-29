@@ -192,11 +192,12 @@ The engine ships the wiring for self-hosted [Umami](https://umami.is) via
 [`mmoollllee/filami`](https://github.com/mmoollllee/filami). Once the package is
 installed, every tenant automatically gets its own Umami website (created on tenant
 registration, kept in sync on rename/domain change), the site layout renders the
-cookie-less tracking snippet (production only by default), and the dashboard shows
-per-tenant widgets: live visitors, visitors/pageviews/visit time/bounce rate vs. the
-previous period, a visitors chart, the top pages and the recorded events. All four
-share one reporting-window select. Everything hides itself while the package or
-credentials are missing — no error, no config in the CMS itself.
+cookie-less tracking snippet (production only by default), and a "Statistiken" page
+joins the panel with per-tenant widgets: live visitors, visitors/pageviews/visit
+time/bounce rate vs. the previous period, a visitors chart, the top pages and the
+recorded events, all sharing one reporting-window select. The page and every widget
+hide themselves while the package or credentials are missing — no error, no config
+in the CMS itself, and the dashboard stays about the editorial work.
 
 ```json
 "repositories": [

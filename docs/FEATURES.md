@@ -660,7 +660,7 @@ show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
   `{!! $this->analyticsAttributes() !!}` on the `<form>` tag) and `<name>-submit`
   from `trackConversion()`. Call the latter as the last line of `submit()`: bots,
   validation failures and mailer errors must not count as conversions.
-- **Read back** in the dashboard's events widget, which breaks an event down by the
+- **Read back** on the panel's "Statistiken" page, in its events widget, which breaks an event down by the
   properties passed to `trackConversion()`. Those are stored next to the pageview —
   pass categories, never anything identifying the sender.
 

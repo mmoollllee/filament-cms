@@ -18,7 +18,7 @@
     },
     "require-dev": {
         "mmoollllee/filament-media-library-extensions": "^0.1",
-        "mmoollllee/filami": "^0.3",
+        "mmoollllee/filami": "^0.4",
         "mockery/mockery": "^1.6",
         "orchestra/testbench": "^10.0",
         "pestphp/pest": "^4.4",
@@ -28,7 +28,7 @@
     },
     "suggest": {
         "mmoollllee/filament-media-library-extensions": "Upload-Button, Inline-/Dropzone-Uploads, Auto-Selektion und erweiterte Vorschau für den MediaPicker (^0.2, MIT — VCS-Repo github.com/mmoollllee/filament-media-library-extensions). Das CMS nutzt es automatisch, sobald installiert.",
-        "mmoollllee/filami": "Umami analytics: auto-provisions one Umami website per tenant, renders the cookie-less tracking snippet (optionally consent-gated, with session replay and heatmaps) in the site layout and adds dashboard widgets (^0.3, MIT — VCS repo github.com/mmoollllee/filami). The CMS wires it automatically once installed.",
+        "mmoollllee/filami": "Umami analytics: auto-provisions one Umami website per tenant, renders the cookie-less tracking snippet (optionally consent-gated, with session replay and heatmaps) in the site layout and adds a statistics page (^0.4, MIT — VCS repo github.com/mmoollllee/filami). The CMS wires it automatically once installed.",
         "ralphjsmit/laravel-filament-media-library": "Zentrale Mediathek pro Tenant mit WordPress-artigem Media-Picker (^4.1, kommerziell — braucht Lizenz + satis.ralphjsmit.com-Repository). Das CMS verdrahtet sie automatisch, sobald installiert.",
         "spatie/laravel-medialibrary": "Erforderlich zusammen mit ralphjsmit/laravel-filament-media-library (^11.0)."
     },
