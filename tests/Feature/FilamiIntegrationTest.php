@@ -17,6 +17,7 @@ use Mmoollllee\Cms\Filament\Pages\Dashboard;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\EditTenantProfilePage;
 use Mmoollllee\Cms\Filament\Widgets\ContentOverviewWidget;
 use Mmoollllee\Cms\Filament\Widgets\RecentVersionsWidget;
+use Mmoollllee\Filami\Filament\Widgets\UmamiEventsWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiStatsOverviewWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiTopPagesWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiVisitorsChartWidget;
@@ -83,6 +84,8 @@ it('places the umami widgets between the content overview and the changelog', fu
         ->toBeGreaterThan(array_search(ContentOverviewWidget::class, $widgets, true))
         ->and(array_search(UmamiTopPagesWidget::class, $widgets, true))
         ->toBeLessThan(array_search(RecentVersionsWidget::class, $widgets, true))
+        ->and(array_search(UmamiEventsWidget::class, $widgets, true))
+        ->toBeLessThan(array_search(RecentVersionsWidget::class, $widgets, true))
         ->and($widgets)->toContain(UmamiVisitorsChartWidget::class);
 });
 
@@ -107,7 +110,25 @@ it('keeps the site layout clean without umami config', function () {
 
     $html = Blade::render('<x-site.layout :tenant="$tenant">content</x-site.layout>', ['tenant' => $tenant]);
 
-    expect($html)->not->toContain('data-website-id');
+    expect($html)->not->toContain('data-website-id')
+        // The event plumbing follows the tracker; neither may appear alone.
+        ->not->toContain('window.filami');
+});
+
+it('ships the event plumbing alongside the tracking snippet', function () {
+    filamiConfigured();
+    config()->set('filami.tracking.environments', ['*']);
+
+    $tenant = Tenant::factory()->create([
+        'primary_domain' => 'acme-analytics.test',
+        'umami_website_id' => 'umami-uuid-9',
+    ]);
+
+    $html = Blade::render('<x-site.layout :tenant="$tenant">content</x-site.layout>', ['tenant' => $tenant]);
+
+    // One marker, matching the negative test above: whether the component
+    // rendered is the CMS's business, what its script contains is filami's.
+    expect($html)->toContain('window.filami');
 });
 
 it('tracks a tenant configured entirely from the panel, without env', function () {
@@ -126,18 +147,35 @@ it('tracks a tenant configured entirely from the panel, without env', function (
         ->toContain('data-website-id="panel-uuid"');
 });
 
+it('adds the session recorder when a tenant enables replay', function () {
+    config()->set('filami.tracking.environments', ['*']);
+
+    $tenant = Tenant::factory()->create([
+        'umami_url' => 'https://stats.example.test',
+        'umami_website_id' => 'panel-uuid',
+        'umami_replay' => true,
+    ]);
+
+    $html = Blade::render('<x-site.layout :tenant="$tenant">content</x-site.layout>', ['tenant' => $tenant]);
+
+    expect($html)
+        ->toContain('src="https://stats.example.test/script.js"')
+        ->toContain('src="https://stats.example.test/recorder.js"');
+});
+
 it('offers the analytics fields on the tenant profile page', function () {
     $tenant = actingAsMarketingPanelAdmin();
 
     $fields = (new ReflectionMethod(EditTenantProfilePage::class, 'tenantFields'))
         ->invoke(app(EditTenantProfilePage::class));
 
-    expect($fields)->toContain('umami_url')->toContain('umami_website_id');
+    expect($fields)->toContain('umami_url')->toContain('umami_website_id')->toContain('umami_replay');
 
     Livewire::test(EditTenantProfilePage::class)
         ->assertOk()
         ->assertFormFieldExists('umami_url')
-        ->assertFormFieldExists('umami_website_id');
+        ->assertFormFieldExists('umami_website_id')
+        ->assertFormFieldExists('umami_replay');
 });
 
 it('persists a manually entered server and website id', function () {
@@ -155,4 +193,18 @@ it('persists a manually entered server and website id', function () {
 
     expect($tenant->umami_url)->toBe('https://stats.example.test')
         ->and($tenant->umami_website_id)->toBe('hand-typed');
+});
+
+it('persists the session recording toggle', function () {
+    // A field that renders but is not fillable passes every form assertion
+    // while silently discarding the value — which is exactly what happened in
+    // the consumer apps before their models were updated.
+    actingAsMarketingPanelAdmin();
+
+    Livewire::test(EditTenantProfilePage::class)
+        ->fillForm(['umami_replay' => true])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect(Tenant::where('site_key', 'marketing')->firstOrFail()->umami_replay)->toBeTrue();
 });

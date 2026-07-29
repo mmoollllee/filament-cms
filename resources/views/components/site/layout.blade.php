@@ -41,14 +41,10 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
     @spamprotectKey
 
-    {{-- Optional Umami analytics: renders only when mmoollllee/filami is loaded
-         AND configured (UMAMI_URL, provisioned website id, allowed environment).
-         Umami is cookie-less, so the snippet needs no consent gate. Same
-         x-dynamic-component reasoning as the consent block below: a static tag
-         would already fail at Blade compile time in installs without the package. --}}
-    @if (\Mmoollllee\Cms\Support\Analytics\Umami::installed())
-        <x-dynamic-component :component="'filami::tracking'" :for="$tenant" />
-    @endif
+    {{-- Optional Umami analytics, tracker + custom events. Cookie-less by
+         default, so no consent gate; UMAMI_CONSENT_CATEGORY adds one, and
+         session recording is gated separately. --}}
+    <x-site.analytics-head :tenant="$tenant" />
 </head>
 <body class="site min-h-screen antialiased text-white" style="{{ $siteBrandingStyle }}">
     {{ $slot }}

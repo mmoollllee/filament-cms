@@ -9,6 +9,7 @@ use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Pages\Tenancy\EditTenantProfile;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Section;
@@ -67,7 +68,7 @@ class EditTenantProfilePage extends EditTenantProfile
             'footer_text',
             'social_links',
             ...($this->usesSpamQuestions() ? ['spam_questions'] : []),
-            ...(Umami::installed() ? ['umami_url', 'umami_website_id'] : []),
+            ...(Umami::installed() ? ['umami_url', 'umami_website_id', 'umami_replay'] : []),
         ];
     }
 
@@ -352,6 +353,10 @@ class EditTenantProfilePage extends EditTenantProfile
                                 ->maxLength(255)
                                 ->placeholder('94db1cb1-74f4-4a40-ad6c-962362670409')
                                 ->helperText('Wird beim Anlegen der Seite automatisch vergeben. Manuell eintragen, um eine bestehende Umami-Website zu verwenden.'),
+                            Toggle::make('umami_replay')
+                                ->label('Sitzungsaufzeichnung & Heatmaps')
+                                ->helperText('Lädt Umamis Recorder-Skript zusätzlich. Muss in Umami für diese Website ebenfalls aktiviert sein. Achtung: Aufzeichnungen sind deutlich weniger anonym als reine Seitenaufrufe — Datenschutzerklärung prüfen.')
+                                ->columnSpanFull(),
                         ]),
                 ]),
         ];

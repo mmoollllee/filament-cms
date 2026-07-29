@@ -8,6 +8,7 @@ use Mmoollllee\Cms\Filament\Widgets\PendingContentWidget;
 use Mmoollllee\Cms\Filament\Widgets\RecentVersionsWidget;
 use Mmoollllee\Cms\Filament\Widgets\TenantOverviewWidget;
 use Mmoollllee\Cms\Support\Analytics\Umami;
+use Mmoollllee\Filami\Filament\Widgets\UmamiEventsWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiStatsOverviewWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiTopPagesWidget;
 use Mmoollllee\Filami\Filament\Widgets\UmamiVisitorsChartWidget;
@@ -38,6 +39,7 @@ class Dashboard extends BaseDashboard
                 UmamiStatsOverviewWidget::class,
                 UmamiVisitorsChartWidget::class,
                 UmamiTopPagesWidget::class,
+                UmamiEventsWidget::class,
             ] : []),
             RecentVersionsWidget::class,
         ];

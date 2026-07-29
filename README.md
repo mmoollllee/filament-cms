@@ -194,8 +194,9 @@ installed, every tenant automatically gets its own Umami website (created on ten
 registration, kept in sync on rename/domain change), the site layout renders the
 cookie-less tracking snippet (production only by default), and the dashboard shows
 per-tenant widgets: live visitors, visitors/pageviews/visit time/bounce rate vs. the
-previous period, a visitors chart and the top pages. Everything hides itself while the
-package or credentials are missing — no error, no config in the CMS itself.
+previous period, a visitors chart, the top pages and the recorded events. All four
+share one reporting-window select. Everything hides itself while the package or
+credentials are missing — no error, no config in the CMS itself.
 
 ```json
 "repositories": [
@@ -205,10 +206,23 @@ package or credentials are missing — no error, no config in the CMS itself.
 
 ```bash
 composer require mmoollllee/filami
-php artisan vendor:publish --tag=cms-migrations   # picks up add_umami_website_id_to_tenants_table
+php artisan vendor:publish --tag=cms-migrations   # three add_umami_* migrations
 php artisan migrate
 php artisan filami:sync                           # backfill websites for existing tenants
 ```
+
+⚠️ `vendor:publish` copies the **whole** migration directory and does not
+reliably recognise files your app already ran under a different timestamp —
+check `git status database/migrations` afterwards and delete anything
+unexpected. Add `umami_url`, `umami_website_id` and `umami_replay` to your
+tenant model's `$fillable` (plus `'umami_replay' => 'bool'` in `casts()`), or
+the panel form discards them without an error.
+
+Session replay and heatmaps load a second script and are gated behind a
+consent category, which the CMS does **not** declare for you — see the consent
+section above. Declare it in your `config/consent-control.php` and bump that
+file's `version`, otherwise the recorder waits for a category your banner
+never offers and stays inert forever.
 
 ```dotenv
 UMAMI_URL=https://a.example.com
@@ -223,6 +237,58 @@ above stay global and gate only auto-provisioning and the dashboard widgets.
 
 Deploying the Umami instance itself (Plesk + Docker Compose): see filami's
 `docs/deploy-plesk.md`.
+
+#### Events: phone/mail clicks and form conversions
+
+The layout also ships `<x-filami::events />`, so clicks are counted wherever
+they appear, with nothing to wire up: `tel:` and `mailto:` links (including the
+ones an editor typed into rich text, which are obfuscated against scrapers and
+carry `data-filami-event` instead), and any link leaving the site
+(`outbound-click`, recorded with the target host).
+
+A site served from several of its own domains should name the others, or a hop
+between them counts as an outbound click:
+
+```dotenv
+UMAMI_INTERNAL_DOMAINS=muench-tiefbau.de,jobs.muench-tiefbau.de
+```
+
+Public forms built on `AbstractTenantAwareForm` measure their funnel by naming
+themselves:
+
+```php
+protected ?string $analyticsName = 'contact-form';
+
+public function submit(): void
+{
+    // … validate, send …
+
+    // Last line of submit(): only a submission that produced mail is a
+    // conversion. A form that fails validation or trips the honeypot is not.
+    $this->trackConversion(['type' => 'general']);
+}
+```
+
+Render the attributes on the `<form>` tag and the other half follows — a
+`contact-form-start` the first time a visitor touches any field, so the
+`contact-form-submit` count reads as a completion rate:
+
+```blade
+<form wire:submit="submit" {!! $this->analyticsAttributes() !!}>
+```
+
+Both are no-ops when the form is unnamed or filami is absent, so the same
+template works in either case.
+
+⚠️ Event properties are stored next to the pageview in Umami. Pass categories
+(which variant, which product), **never** anything about the sender — no name,
+address, phone or message text. The events widget breaks an event down by these
+properties, so whatever goes in is what an editor reads back out.
+
+Editorial `mailto:`/`tel:` links are obfuscated against scrapers, so filami
+cannot recognise them by their href. `SpamprotectHtml` labels them with
+`data-filami-event` instead — deliberately not Umami's own `data-umami-event`,
+whose click handler would fight the one that decrypts the address.
 
 ### Optional: Media library („Mediathek")
 

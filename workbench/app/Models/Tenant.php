@@ -64,6 +64,7 @@ class Tenant extends Model implements \Mmoollllee\Cms\Contracts\Tenant
         // website id, editable in the panel under "Statistik".
         'umami_url',
         'umami_website_id',
+        'umami_replay',
     ];
 
     /**
@@ -76,6 +77,7 @@ class Tenant extends Model implements \Mmoollllee\Cms\Contracts\Tenant
             'social_links' => 'array',
             'imprint_data' => 'array',
             'privacy_data' => 'array',
+            'umami_replay' => 'bool',
         ];
     }
 }

@@ -644,6 +644,25 @@ show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
   forms `use WithSpamQuiz` to render + validate a random question
   (`AbstractTenantAwareForm` is the tenant-aware Livewire form base to build on).
 
+## Analytics events (optional, with `mmoollllee/filami`)
+
+- **Phone/mail clicks** counted everywhere — plain `tel:`/`mailto:` anchors via the
+  delegated listener in `<x-filami::events />`, obfuscated ones via the
+  `data-filami-event` attribute `SpamprotectHtml` puts on them (name only: event data
+  would write the address back into the markup; and not `data-umami-event`, whose
+  click handler would race the one decrypting the address).
+- **Outbound clicks** — any `http(s)` link to another host reports `outbound-click`
+  with the target host. Own domains beyond the one being served go in
+  `UMAMI_INTERNAL_DOMAINS`, or a hop between them counts as leaving the site.
+- **Form funnels** — a form on `AbstractTenantAwareForm` that returns a name from
+  `$analyticsName` reports `<name>-start` on first interaction (render
+  `{!! $this->analyticsAttributes() !!}` on the `<form>` tag) and `<name>-submit`
+  from `trackConversion()`. Call the latter as the last line of `submit()`: bots,
+  validation failures and mailer errors must not count as conversions.
+- **Read back** in the dashboard's events widget, which breaks an event down by the
+  properties passed to `trackConversion()`. Those are stored next to the pageview —
+  pass categories, never anything identifying the sender.
+
 ## Console commands
 
 ```bash

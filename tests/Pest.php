@@ -93,3 +93,31 @@ function filamiConfigured(): void
     config()->set('filami.username', 'provisioner');
     config()->set('filami.password', 'secret');
 }
+
+/**
+ * A concrete, UNNAMED host exposing AbstractTenantAwareForm's protected
+ * scaffolding for assertion. Lives here rather than in a test file so a second
+ * file using it cannot redeclare it — Pest loads every test into one process.
+ */
+function tenantFormHost(): object
+{
+    return new class extends \Mmoollllee\Cms\Support\Livewire\AbstractTenantAwareForm
+    {
+        public function submit(): void {}
+
+        public function tripped(): bool
+        {
+            return $this->trippedHoneypot();
+        }
+
+        public function key(string $prefix): string
+        {
+            return $this->rateLimitKey($prefix);
+        }
+
+        public function recipient(?string $override): string
+        {
+            return $this->resolveContactRecipient($override);
+        }
+    };
+}

@@ -1,37 +1,11 @@
 <?php
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Mmoollllee\Cms\Support\Livewire\AbstractTenantAwareForm;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Tenant;
 
 uses(RefreshDatabase::class);
 
-/**
- * A concrete host exposing the base's protected scaffolding for assertion.
- */
-function tenantFormHost(): object
-{
-    return new class extends AbstractTenantAwareForm
-    {
-        public function submit(): void {}
-
-        public function tripped(): bool
-        {
-            return $this->trippedHoneypot();
-        }
-
-        public function key(string $prefix): string
-        {
-            return $this->rateLimitKey($prefix);
-        }
-
-        public function recipient(?string $override): string
-        {
-            return $this->resolveContactRecipient($override);
-        }
-    };
-}
 
 it('passes an empty honeypot and trips on a filled one', function () {
     $host = tenantFormHost();

@@ -32,3 +32,11 @@
    Tailwind ignores a candidate that does not exist, so both can stay. */
 @source '../../../../mansoor/filament-versionable/resources/**/*.blade.php';
 @source '../../vendor/mansoor/filament-versionable/resources/**/*.blade.php';
+
+/* Same story for the optional Umami widgets (mmoollllee/filami): their share bars and
+   breakdown modal are built from utilities (h-1.5, w-16, bg-primary-500, tabular-nums,
+   inset-y-0) that appear nowhere else, so without this the bar column renders as a
+   zero-size element and the modal's numbers lose their tabular alignment. Same two
+   candidates as above — vendor dir of the app, or of this package when symlinked. */
+@source '../../../../mmoollllee/filami/resources/views/**/*.blade.php';
+@source '../../vendor/mmoollllee/filami/resources/views/**/*.blade.php';
