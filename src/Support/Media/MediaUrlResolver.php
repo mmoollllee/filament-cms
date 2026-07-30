@@ -5,6 +5,7 @@ namespace Mmoollllee\Cms\Support\Media;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Mmoollllee\Cms\Cms;
+use RalphJSmit\Filament\Explore\Data\FileData;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -12,7 +13,8 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  * Resolves stored media references to URLs and metadata.
  *
  * A reference is whatever a form field left in the data: a media-library item
- * id (int/numeric string — the MediaPicker state), a legacy storage path
+ * id (int/numeric string — the saved MediaPicker state), a MediaPicker key hash
+ * (its UNSAVED state, see {@see itemIdFromPickerKey()}), a legacy storage path
  * (pre-media-library uploads), an absolute URL, or the FileUpload array-state
  * quirk. Numeric refs resolve through the Spatie Media API — never hand-built
  * disk URLs — so app-level UrlGenerator swaps (private-disk serve routes à la
@@ -23,11 +25,17 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  */
 final class MediaUrlResolver
 {
+    /** Prefix of the FileData key the media-library picker uses for items. */
+    private const PICKER_ITEM_KEY_PREFIX = 'media-library-item:';
+
     /** @var array<int, MediaLibraryItem|null> */
     private static array $items = [];
 
     /** @var array<int, Media|null> getItem() re-filters the media relation per call — memoized. */
     private static array $media = [];
+
+    /** @var array<string, int|null> Picker key hash → item id; null marks "not a hash". */
+    private static array $pickerKeys = [];
 
     public static function url(mixed $ref, ?string $conversion = null): ?string
     {
@@ -56,6 +64,26 @@ final class MediaUrlResolver
         }
 
         return $media->getUrl();
+    }
+
+    /**
+     * URL of one specific conversion, or null when that conversion does not
+     * exist — no original as a consolation prize.
+     *
+     * {@see url()} deliberately falls back to the original so an image still shows
+     * while its conversions sit in the queue. Callers that need the DERIVATIVE
+     * specifically cannot use that: a video's `thumb` serving as a still is the
+     * motivating case, where the fallback would hand the video file itself to an
+     * `<img src>`. Legacy paths and URLs have no conversions at all and are null
+     * here too, since media() only resolves item ids.
+     */
+    public static function conversionUrl(mixed $ref, string $conversion): ?string
+    {
+        $media = static::media($ref);
+
+        return $media?->hasGeneratedConversion($conversion)
+            ? $media->getUrl($conversion)
+            : null;
     }
 
     /**
@@ -223,11 +251,13 @@ final class MediaUrlResolver
     {
         self::$items = [];
         self::$media = [];
+        self::$pickerKeys = [];
     }
 
     /**
      * Normalize a stored ref: FileUpload array-state → first element,
-     * blank → null, numeric → int, everything else → trimmed string.
+     * blank → null, numeric → int, MediaPicker key hash → item id,
+     * everything else → the string as stored.
      */
     public static function normalize(mixed $ref): int|string|null
     {
@@ -251,7 +281,56 @@ final class MediaUrlResolver
             return (int) $ref;
         }
 
-        return $ref;
+        return static::itemIdFromPickerKey($ref) ?? $ref;
+    }
+
+    /**
+     * The item id a MediaPicker key hash stands for, or null when the string is
+     * not one (legacy path, URL, anything else).
+     *
+     * Filament renders builder block previews from the RAW form state —
+     * `Builder::renderPreview($item->getRawState())` — and a MediaPicker does not
+     * hold the item id there. It holds the picker's FileData key, encrypted:
+     * `base64(AES-256-CBC("media-library-item:<id>"))` with a fixed IV, which only
+     * collapses back to the id when the form is saved. Every ref shape reaching
+     * this class goes through normalize(), so resolving the hash here fixes the
+     * previews of all blocks at once — without it the hash falls through to the
+     * legacy-path branch and each preview renders `/storage/<hash>`.
+     *
+     * Cheap rejects come first: the hash is base64 over a binary ciphertext and so
+     * never contains a dot, whereas legacy paths always carry a file extension and
+     * URLs a host. Note that `/` and `+` ARE part of the base64 alphabet, so only
+     * the dot and an explicit scheme/root prefix may be used to rule a string out.
+     *
+     * The cipher is deterministic (fixed IV), which makes hash → id memoizable for
+     * the request; negative results are cached too, so a non-hash string is only
+     * ever decrypted once.
+     */
+    private static function itemIdFromPickerKey(string $ref): ?int
+    {
+        // installed(), not enabled(): the gate is only about FileData being
+        // autoloadable. An install that opted out via Cms::disableMediaLibrary()
+        // has no picker and therefore no hashes to decode, and should one turn up
+        // anyway, decoding it to an id that item() then refuses still beats
+        // handing the ciphertext to the legacy-path branch as a 404 URL.
+        if (! MediaLibrary::installed()) {
+            return null;
+        }
+
+        if (Str::contains($ref, '.') || Str::startsWith($ref, ['http://', 'https://', '/'])) {
+            return null;
+        }
+
+        if (! array_key_exists($ref, self::$pickerKeys)) {
+            // Tolerates non-base64 and undecryptable input by returning it unchanged.
+            $key = FileData::ensureDecryptedKeyHash($ref);
+
+            self::$pickerKeys[$ref] = Str::startsWith($key, self::PICKER_ITEM_KEY_PREFIX)
+                ? (int) Str::after($key, self::PICKER_ITEM_KEY_PREFIX)
+                : null;
+        }
+
+        return self::$pickerKeys[$ref];
     }
 
     /**
