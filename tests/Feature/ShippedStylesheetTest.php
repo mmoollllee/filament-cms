@@ -67,4 +67,9 @@ it('caps preview media height through an overridable custom property', function 
         ->and($css)->toContain('.fi-fo-builder-item-preview video')
         ->and($css)->toContain('max-height: var(--cms-preview-media-max-height)')
         ->and($css)->toContain('--cms-preview-media-max-height:');
+
+    // The default scales with the editor's screen, and stays bounded at both ends:
+    // the floor must not drop under the media block's own min-h-40 (10rem) baseline,
+    // or the container ends up taller than the image it holds.
+    expect($css)->toContain('--cms-preview-media-max-height: clamp(12rem, 45dvh, 32rem)');
 });

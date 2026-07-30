@@ -403,11 +403,18 @@ CSS. The package covers what it can reach; the rest is on the app theme.
 
 **Media height** is capped by `builder.css` (a registered Filament asset, so it applies
 with or without a vite theme). Without a cap the preview container has no height of its
-own and a full-width image is as tall as its aspect ratio makes it. Tune per app:
+own and a full-width image is as tall as its aspect ratio makes it.
+
+The default is `clamp(12rem, 45dvh, 32rem)` — viewport-relative, because how much of the
+page stays visible below a block depends on the editor's screen, not on ems. Override per
+app, or scope it to a single block type:
 
 ```css
 .fi-fo-builder-item-preview { --cms-preview-media-max-height: 32rem; }
 ```
+
+Keep any replacement at or above **10rem**: the media block's preview carries a
+`min-h-40` baseline, and a lower cap leaves the container taller than the image inside it.
 
 **Layout-preset classes are invisible to Tailwind.** They live in
 `layout_presets.classes`, so no source scan can find them — they need an

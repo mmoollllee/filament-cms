@@ -73,17 +73,29 @@
    The rule targets the MEDIA ELEMENT, not .fi-fo-builder-item-preview itself.
    Layout presets render their max-height and min-height utilities onto the
    preview's own container (specificity 0,1,0); a container rule here (0,2,0)
-   would silently
-   beat all of them, including the xl:max-h-none escape hatches. Capping the child
-   leaves that override path intact.
+   would silently beat all of them, including the xl:max-h-none escape hatches.
+   Capping the child leaves that override path intact.
 
    Deliberately NOT wrapped in :where(): a utility class landing on the media
    element should not be able to lift the cap by stylesheet order. Tune it per app
    through the custom property instead — which also reaches a single block type:
 
-     .fi-fo-builder-item-preview { --cms-preview-media-max-height: 32rem; } */
+     .fi-fo-builder-item-preview { --cms-preview-media-max-height: 32rem; }
+
+   The default is viewport-relative, because "how much of the page do I still see
+   below this block" is a question about the editor's SCREEN, not about ems. A
+   fixed value is wrong at both ends: generous on a large monitor, and on a laptop
+   it leaves nothing but the one block. The bounds matter as much as the middle:
+
+   * floor 12rem — keeps a preview legible on a short viewport, and stays above
+     the media block's own min-h-40 (10rem) baseline. A cap BELOW that baseline
+     would leave the container taller than the image it holds, i.e. a gap.
+   * ceiling 32rem — past this a single block eats the screen again, which is the
+     whole thing this cap exists to prevent.
+   * dvh, not vh — the panel is used on tablets, where a collapsing browser
+     toolbar makes vh overshoot the space actually available. */
 .fi-fo-builder-item-preview {
-    --cms-preview-media-max-height: 24rem;
+    --cms-preview-media-max-height: clamp(12rem, 45dvh, 32rem);
 }
 
 .fi-fo-builder-item-preview img,
