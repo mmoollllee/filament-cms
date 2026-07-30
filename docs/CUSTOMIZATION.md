@@ -152,6 +152,20 @@ install that has not adopted them yet. Details:
 [FEATURES.md → Drafts & preview](FEATURES.md#drafts--preview) and
 [Versioning & restore](FEATURES.md#versioning--restore).
 
+`ConvertsUploadedVideos` hooks `saved()` and walks the model's media blocks, so **saving
+a content reads the `public` disk** — `VideoConversionHelper` calls `exists()`/`size()` on
+every media path. Two consequences for consuming apps:
+
+- In tests, fake the disk (`Storage::fake('public')`). Without it the fixtures land in
+  the app's real `storage/app/public`, beside production media, and stay there.
+- Non-MP4 containers (`.mov`, `.avi`, `.wmv`) always convert; an MP4 only gets
+  re-encoded above `cms.video.recompress_threshold` (default 10 MB). Lower that key in
+  a test to exercise the size branch with a few bytes instead of a real oversized file:
+
+  ```php
+  config(['cms.video.recompress_threshold' => 100]);
+  ```
+
 What the tenant/user traits cover in detail:
 
 - **`InheritsBranding`** — the full branding cascade: every `resolved*()` method

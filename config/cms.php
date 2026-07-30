@@ -73,4 +73,19 @@ return [
         'keep' => (int) env('CMS_VERSIONS_KEEP', 50),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Video conversion (ConvertsUploadedVideos)
+    |--------------------------------------------------------------------------
+    | recompress_threshold  size in bytes above which an upload that is ALREADY
+    |        MP4 gets re-encoded anyway. Non-MP4 containers (.mov/.avi/.wmv) are
+    |        converted regardless of size, so this value only governs the "large
+    |        MP4" case. Raise it for sites whose hero videos are legitimately big;
+    |        lower it in tests, so the size branch can be exercised with a tiny
+    |        fixture instead of a multi-megabyte one.
+    */
+    'video' => [
+        'recompress_threshold' => (int) env('CMS_VIDEO_RECOMPRESS_THRESHOLD', 10 * 1024 * 1024),
+    ],
+
 ];

@@ -14,9 +14,9 @@ class VideoConversionHelper
     private const CONVERT_EXTENSIONS = ['.mov', '.avi', '.wmv'];
 
     /**
-     * Threshold in bytes above which an existing .mp4 is re-compressed.
+     * Fallback for {@see recompressThreshold()} when the config key is absent.
      */
-    private const RECOMPRESS_THRESHOLD = 10 * 1024 * 1024; // 10 MB
+    public const DEFAULT_RECOMPRESS_THRESHOLD = 10 * 1024 * 1024; // 10 MB
 
     /**
      * Determine whether a media block's video needs conversion.
@@ -48,10 +48,25 @@ class VideoConversionHelper
 
         // Large MP4 files get re-compressed
         if ($lower->endsWith('.mp4') && Storage::disk($disk)->exists($path)) {
-            return Storage::disk($disk)->size($path) > self::RECOMPRESS_THRESHOLD;
+            return Storage::disk($disk)->size($path) > static::recompressThreshold();
         }
 
         return false;
+    }
+
+    /**
+     * Size in bytes above which an already-MP4 upload is re-encoded anyway.
+     *
+     * Configurable because it is a policy value, not a constant of the format: a
+     * site built around large hero videos wants a different cut-off than a
+     * brochure site. It also makes the size branch of {@see needsConversion()}
+     * testable — while this was a private const, the only way to reach that branch
+     * was to fabricate a file above 10 MB, which every consuming app then did in
+     * its own test suite, at the cost of that much heap.
+     */
+    public static function recompressThreshold(): int
+    {
+        return (int) config('cms.video.recompress_threshold', self::DEFAULT_RECOMPRESS_THRESHOLD);
     }
 
     /**
