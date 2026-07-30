@@ -63,6 +63,34 @@
     font-weight: 600;
 }
 
+/* Cap media inside a block preview, so a page stays scannable in the builder.
+   Nothing else bounds it: the preview container has no height of its own, so a
+   full-width <img> is as tall as its aspect ratio makes it — a portrait photo or
+   a 9:16 clip produces a preview several screens high and pushes every following
+   block out of view. object-fit (the preview templates set object-cover) turns
+   the cap into a crop rather than a squash.
+
+   The rule targets the MEDIA ELEMENT, not .fi-fo-builder-item-preview itself.
+   Layout presets render their max-height and min-height utilities onto the
+   preview's own container (specificity 0,1,0); a container rule here (0,2,0)
+   would silently
+   beat all of them, including the xl:max-h-none escape hatches. Capping the child
+   leaves that override path intact.
+
+   Deliberately NOT wrapped in :where(): a utility class landing on the media
+   element should not be able to lift the cap by stylesheet order. Tune it per app
+   through the custom property instead — which also reaches a single block type:
+
+     .fi-fo-builder-item-preview { --cms-preview-media-max-height: 32rem; } */
+.fi-fo-builder-item-preview {
+    --cms-preview-media-max-height: 24rem;
+}
+
+.fi-fo-builder-item-preview img,
+.fi-fo-builder-item-preview video {
+    max-height: var(--cms-preview-media-max-height);
+}
+
 /* The preview card is a click target (click = edit inline). Filament core sets
    `.fi-fo-builder-item-preview:not(.fi-interactive) { pointer-events: none }`
    (specificity 0,2,0) for its edit-overlay pattern — this selector must WIN
