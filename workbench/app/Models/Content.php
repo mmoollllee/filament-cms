@@ -13,12 +13,12 @@ use Mmoollllee\Cms\Concerns\Content\AssignsCurrentTenant;
 use Mmoollllee\Cms\Concerns\Content\ConvertsUploadedVideos;
 use Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug;
 use Mmoollllee\Cms\Concerns\Content\HasPublishingStatus;
+use Mmoollllee\Cms\Concerns\Content\ProvidesMenuPanel;
 use Mmoollllee\Cms\Concerns\Content\ResolvesLayoutPresets;
 use Mmoollllee\Cms\Concerns\HasDraft;
 use Mmoollllee\Cms\Concerns\HasVersions;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Support\AssetUrlResolver;
-use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\Database\Factories\ContentFactory;
 
 class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPanelable
@@ -34,6 +34,7 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use HasFactory;
 
     use HasPublishingStatus;
+    use ProvidesMenuPanel;
     use ResolvesLayoutPresets;
 
     protected static function newFactory(): ContentFactory
@@ -182,32 +183,4 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
         return null;
     }
 
-    public function getMenuPanelName(): string
-    {
-        return 'Inhalte';
-    }
-
-    public function getMenuPanelTitleColumn(): string
-    {
-        return 'title';
-    }
-
-    public function getMenuPanelUrlUsing(): callable
-    {
-        return fn (self $content): string => $content->resolvedPath() ?? '/';
-    }
-
-    public function getMenuPanelModifyQueryUsing(): callable
-    {
-        return function (Builder $query): Builder {
-            $tenant = app(CurrentTenant::class)->get();
-
-            return $query
-                ->when($tenant !== null, fn (Builder $q): Builder => $q->where('tenant_id', $tenant->getKey()))
-                ->whereIn('content_type', ['default.section', 'default.page'])
-                ->whereNotNull('path')
-                ->orderBy('sort')
-                ->orderBy('title');
-        };
-    }
 }

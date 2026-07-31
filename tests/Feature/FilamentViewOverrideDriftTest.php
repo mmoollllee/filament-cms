@@ -26,7 +26,7 @@
 
 use Illuminate\Support\Facades\File;
 
-const FILAMENT_VIEW_BASELINE = 'v5.7.1';
+const FILAMENT_VIEW_BASELINE = 'v5.7.5';
 
 dataset('embedded render methods', [
     'Builder::toEmbeddedHtml' => [
@@ -34,10 +34,13 @@ dataset('embedded render methods', [
         'toEmbeddedHtml',
         'f8a7c1351bd303499c8ec8ae90bf0fa7ee2dcd1a365f46595d3eb7aa02b82e88',
     ],
+    // v5.7.5 simplified two conditional class entries ($class => filled($class)
+    // → $class) in the INLINE picker HTML — a no-op the override never sees: it
+    // renders through the published Blade view below (unchanged since v5.7.1).
     'Builder::generateBlockPickerHtml' => [
         \Filament\Forms\Components\Builder::class,
         'generateBlockPickerHtml',
-        'bfa8d87ac26089574f5f38775b5f60fead54f376fb0614910df93b730e5aad5e',
+        '823392cabb4d8f1a1851d9ea204c5b44d7fa4b161d66f32dc02ef883c1d42a5b',
     ],
     'Field::wrapEmbeddedHtml' => [
         \Filament\Forms\Components\Field::class,

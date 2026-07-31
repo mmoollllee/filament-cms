@@ -99,7 +99,7 @@ use them instead of copying code; improvements reach every site via `composer up
 
 ```php
 use Mmoollllee\Cms\Concerns\Content\{AssignsCurrentTenant, ConvertsUploadedVideos,
-    GeneratesPathAndSlug, HasPublishingStatus, ResolvesLayoutPresets};
+    GeneratesPathAndSlug, HasPublishingStatus, ProvidesMenuPanel, ResolvesLayoutPresets};
 use Mmoollllee\Cms\Concerns\{HasDraft, HasVersions};
 
 class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPanelable
@@ -110,6 +110,7 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use HasDraft;                 // "Entwurf speichern" stash + Vorschau overlay
     use HasPublishingStatus;      // status(), resolved_status, scopePublished/VisibleTo/OfType
     use HasVersions;              // snapshot per applied change + Revisionen/restore
+    use ProvidesMenuPanel;        // MenuPanelable: "Inhalte" source of the menu builder
     use ResolvesLayoutPresets;    // resolvedLayoutPreset() for the frontend
 
     // yours: casts, relations (tenant/parent/children), payload accessors, …

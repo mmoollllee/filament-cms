@@ -476,6 +476,7 @@ class DatabaseSeeder extends Seeder
                         use HasDraft;                // "Entwurf speichern" + Vorschau overlay
                         use HasPublishingStatus;     // status() + visibleTo()/ofType() scopes
                         use HasVersions;             // Snapshot-Historie + Revisionen/Restore
+                        use ProvidesMenuPanel;       // MenuPanelable: Quelle des Menü-Builders
                         use ResolvesLayoutPresets;   // resolvedLayoutPreset()
                     }
 
