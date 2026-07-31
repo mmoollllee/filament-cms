@@ -60,6 +60,20 @@ it('never offers another tenant content', function () {
     expect(contentMenuPanelItems())->toBe([]);
 });
 
+it('never offers a project content type by default', function () {
+    // Project types (machines, job ads, articles) are opted in per app via
+    // menuPanelContentTypes() — the picker is unpaginated, so a type with many
+    // records would bury the pages a navigation is actually built from.
+    Content::factory()->create([
+        'tenant_id' => $this->tenant->id,
+        'content_type' => 'marketing.machine',
+        'title' => 'Maschine',
+        'path' => '/maschinen/bagger',
+    ]);
+
+    expect(contentMenuPanelItems())->toBe([]);
+});
+
 it('never offers a non-routable content', function () {
     // marketing.note is non-routable: no path, so there is no URL to link to.
     Content::factory()->create([

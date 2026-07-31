@@ -111,6 +111,8 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use HasPublishingStatus;      // status(), resolved_status, scopePublished/VisibleTo/OfType
     use HasVersions;              // snapshot per applied change + Revisionen/restore
     use ProvidesMenuPanel;        // MenuPanelable: "Inhalte" source of the menu builder
+                                  // (pages + sections; add project types via
+                                  // menuPanelContentTypes())
     use ResolvesLayoutPresets;    // resolvedLayoutPreset() for the frontend
 
     // yours: casts, relations (tenant/parent/children), payload accessors, …
