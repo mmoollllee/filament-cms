@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Http\Controllers\Frontend;
 
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
@@ -55,17 +56,22 @@ class SitemapController
 
     protected function generateSitemapXml(Tenant $tenant): string
     {
+        $sections = collect($this->contentResolver->sections($tenant));
+        $standalone = collect($this->standaloneContent($tenant));
+
         $urls = collect();
 
-        // Homepage
+        // Homepage. It has no content row of its own, so it inherits the freshest edit
+        // anywhere on the site — that is what actually changes what "/" shows.
         $urls->push([
             'loc' => url('/'),
+            'lastmod' => $this->latestChangeAcross($sections->concat($standalone)),
             'priority' => '1.0',
             'changefreq' => 'weekly',
         ]);
 
         // Onepager sections
-        foreach ($this->contentResolver->sections($tenant) as $section) {
+        foreach ($sections as $section) {
             $path = $section->resolvedPath();
 
             if ($path === null || $path === '/') {
@@ -74,6 +80,7 @@ class SitemapController
 
             $urls->push([
                 'loc' => url($path),
+                'lastmod' => $this->lastModifiedFor($section),
                 'priority' => '0.8',
                 'changefreq' => 'weekly',
             ]);
@@ -82,7 +89,7 @@ class SitemapController
         // Every other routable content type the tenant's site registered (pages,
         // articles, …). The type set comes from the blueprints, so the engine ships
         // no content taxonomy of its own; onepager sections are already emitted above.
-        foreach ($this->standaloneContent($tenant) as $page) {
+        foreach ($standalone as $page) {
             $path = $page->resolvedPath();
 
             if ($path === null || $path === '/') {
@@ -91,6 +98,7 @@ class SitemapController
 
             $urls->push([
                 'loc' => url($path),
+                'lastmod' => $this->lastModifiedFor($page),
                 'priority' => $this->standalonePriority($page),
                 'changefreq' => $this->standaloneChangefreq($page),
             ]);
@@ -102,6 +110,12 @@ class SitemapController
         foreach ($urls as $url) {
             $xml .= '  <url>'."\n";
             $xml .= '    <loc>'.htmlspecialchars($url['loc'], ENT_XML1).'</loc>'."\n";
+
+            // Optional per the sitemap spec: omitting beats emitting a guess.
+            if (($url['lastmod'] ?? null) !== null) {
+                $xml .= '    <lastmod>'.$url['lastmod'].'</lastmod>'."\n";
+            }
+
             $xml .= '    <changefreq>'.$url['changefreq'].'</changefreq>'."\n";
             $xml .= '    <priority>'.$url['priority'].'</priority>'."\n";
             $xml .= '  </url>'."\n";
@@ -151,5 +165,34 @@ class SitemapController
     protected function standaloneChangefreq(Content $content): string
     {
         return 'weekly';
+    }
+
+    /**
+     * W3C-datetime `<lastmod>` for a content URL.
+     *
+     * Crawlers use it to decide what is worth re-fetching; without it every URL looks
+     * equally stale and an edit is picked up on the crawler's own schedule. Override in
+     * the app when a content type tracks its editorial date somewhere other than
+     * `updated_at` (a published_at column, a payload field, …). Returning null omits the
+     * element, which the spec allows.
+     */
+    protected function lastModifiedFor(Content $content): ?string
+    {
+        return $content->updated_at?->toAtomString();
+    }
+
+    /**
+     * The freshest {@see self::lastModifiedFor()} across a set of content rows, used for
+     * URLs that aggregate content instead of having a row of their own.
+     *
+     * @param  Collection<int, Content>  $contents
+     */
+    protected function latestChangeAcross(Collection $contents): ?string
+    {
+        return $contents
+            ->map(fn (Content $content): ?string => $this->lastModifiedFor($content))
+            ->filter()
+            ->sortDesc()
+            ->first();
     }
 }
