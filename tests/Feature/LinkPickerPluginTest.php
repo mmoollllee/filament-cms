@@ -9,6 +9,12 @@
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\RichEditor\EditorCommand;
 use Mmoollllee\Cms\Filament\RichEditor\LinkPickerPlugin;
+use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
+
+function linkPickerTipTapEditor(): Tiptap\Editor
+{
+    return tipTapEditorWithPlugins([LinkPickerPlugin::make()]);
+}
 
 function linkPickerActionClosure(): Closure
 {
@@ -49,6 +55,69 @@ it('applies the link via setLink editor commands', function () {
             'class' => 'btn',
             'wire:navigate' => true,
         ]);
+});
+
+it('registers exactly one link mark in the editor', function () {
+    // tiptap-php opens a tag for EVERY registered mark of a name, so a second
+    // `link` mark (the picker's, next to the stock one Filament resolves from
+    // the container) rendered NESTED anchors. Nested <a> is invalid HTML: the
+    // next parse keeps only the inner tag, so class/title/wire:navigate were
+    // dropped the moment the editor state went back to the server.
+    $marks = array_values(array_filter(
+        linkPickerTipTapEditor()->schema->marks,
+        fn ($mark): bool => $mark::$name === 'link',
+    ));
+
+    expect($marks)->toHaveCount(1)
+        ->and($marks[0])->toBeInstanceOf(LinkPicker::class);
+});
+
+it('keeps the picker attributes through the editor save/hydrate roundtrip', function () {
+    $editor = linkPickerTipTapEditor();
+
+    // What the editor sends after setLink(), i.e. the state the RichEditor cast
+    // turns into the stored HTML.
+    $document = [
+        'type' => 'doc',
+        'content' => [[
+            'type' => 'paragraph',
+            'content' => [[
+                'type' => 'text',
+                'text' => 'Kontakt',
+                'marks' => [[
+                    'type' => 'link',
+                    'attrs' => [
+                        'href' => '/kontakt',
+                        'class' => 'btn btn-primary',
+                        'title' => 'Zum Kontakt',
+                        'rel' => null,
+                        'target' => null,
+                        'wire:navigate' => true,
+                    ],
+                ]],
+            ]],
+        ]],
+    ];
+
+    $html = $editor->setContent($document)->getHTML();
+
+    expect(substr_count($html, '<a '))->toBe(1)
+        ->and($html)->toContain('href="/kontakt"')
+        ->and($html)->toContain('class="btn btn-primary"')
+        ->and($html)->toContain('title="Zum Kontakt"')
+        ->and($html)->toContain('wire:navigate');
+
+    // …and back: re-opening the record must refill the editor with the same
+    // attributes (this is where the nested anchor used to eat them).
+    $attributes = (array) linkPickerTipTapEditor()
+        ->setContent($html)
+        ->getDocument()['content'][0]['content'][0]['marks'][0]['attrs'];
+
+    expect($attributes)->toMatchArray([
+        'href' => '/kontakt',
+        'class' => 'btn btn-primary',
+        'title' => 'Zum Kontakt',
+    ])->and($attributes['wire:navigate'])->toBeTruthy();
 });
 
 it('declares title and wire:navigate on both sides of the link mark', function () {

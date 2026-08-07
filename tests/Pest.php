@@ -55,6 +55,20 @@ function makeLibraryImage(Tenant $tenant, string $sourcePath = 'fixtures/pic.png
 }
 
 /**
+ * The TipTap editor the RichEditor round-trips its state through: exactly what
+ * RichEditor::getTipTapEditor() builds (Filament's renderer plus the given
+ * plugins), but without a schema container to mount the component in.
+ *
+ * @param  array<\Filament\Forms\Components\RichEditor\Plugins\Contracts\RichContentPlugin>  $plugins
+ */
+function tipTapEditorWithPlugins(array $plugins): \Tiptap\Editor
+{
+    return \Filament\Forms\Components\RichEditor\RichContentRenderer::make()
+        ->plugins($plugins)
+        ->getEditor();
+}
+
+/**
  * Shared panel-test bootstrap: seeds the demo, selects the panel, signs in the
  * seeded superadmin and primes the marketing tenant. Returns that tenant.
  */
@@ -71,6 +85,17 @@ function actingAsMarketingPanelUser(string $email): Tenant
 {
     test()->seed(DatabaseSeeder::class);
 
+    return switchToMarketingPanelUser($email);
+}
+
+/**
+ * Switch the acting account WITHOUT re-seeding — for tests that need a second
+ * role after the bootstrap already ran. The seeder is not idempotent (bare
+ * create()/factory() calls), so calling actingAsMarketingPanelUser() a second
+ * time inside a test doubles the whole demo dataset.
+ */
+function switchToMarketingPanelUser(string $email): Tenant
+{
     Filament::setCurrentPanel(Filament::getPanel('panel'));
 
     $tenant = Tenant::where('site_key', 'marketing')->firstOrFail();

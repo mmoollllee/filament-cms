@@ -26,7 +26,9 @@ use Tiptap\Core\Extension;
  * plus a collapsed "Erweitert" section (title/tooltip, CSS classes, rel).
  * Applies the mark via the editor's
  * setLink/unsetLink commands (like Filament's own LinkAction); the server-side
- * {@see LinkPicker} TipTap mark renders the extra attributes on output.
+ * {@see LinkPicker} TipTap mark — bound over `Tiptap\Marks\Link` in the service
+ * provider, see getTipTapPhpExtensions() — renders the extra attributes on
+ * output.
  *
  * Client side, the `link-attributes` TipTap extension (getTipTapJsExtensions())
  * declares title + wire:navigate on the built-in link mark so both attributes
@@ -40,13 +42,18 @@ class LinkPickerPlugin implements RichContentPlugin
     }
 
     /**
+     * None — the picker's {@see LinkPicker} mark is not ADDED to the editor, it
+     * REPLACES the stock one via the `Tiptap\Marks\Link` container binding in
+     * {@see \Mmoollllee\Cms\CmsServiceProvider::boot()}. Returning it here as
+     * well would register a second mark named `link`, and tiptap-php renders an
+     * `<a>` per matching mark: the anchors nest and the outer attributes
+     * (class, title, wire:navigate) are lost on the next parse.
+     *
      * @return array<Extension>
      */
     public function getTipTapPhpExtensions(): array
     {
-        return [
-            app(LinkPicker::class),
-        ];
+        return [];
     }
 
     /**

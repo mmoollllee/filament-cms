@@ -19,18 +19,15 @@ class HtmlDiv extends Node
 
     public static $priority = 40;
 
+    /**
+     * `class` gets tiptap-php's default handling — read the DOM attribute on
+     * parse, render it back unless it is null — so only the default needs
+     * spelling out.
+     */
     public function addAttributes(): array
     {
         return [
-            'class' => [
-                'default' => null,
-                'parseHTML' => fn (\DOMElement $DOMNode): ?string => $DOMNode->getAttribute('class') ?: null,
-                'renderHTML' => function ($attributes): array {
-                    $attributes = (array) $attributes;
-
-                    return array_filter(['class' => $attributes['class'] ?? null]);
-                },
-            ],
+            'class' => ['default' => null],
         ];
     }
 

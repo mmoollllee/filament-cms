@@ -6,13 +6,15 @@ use Filament\Actions\Action;
 use Filament\Forms\Components\RichEditor\Plugins\Contracts\RichContentPlugin;
 use Filament\Forms\Components\RichEditor\RichEditorTool;
 use Filament\Support\Facades\FilamentAsset;
+use Mmoollllee\Cms\Tiptap\Marks\HtmlButton;
 use Mmoollllee\Cms\Tiptap\Marks\HtmlSpan;
 use Mmoollllee\Cms\Tiptap\Nodes\HtmlDiv;
 use Tiptap\Core\Extension;
 
 /**
- * RichEditor plugin that preserves arbitrary <div> and <span> elements
- * with class attributes through TipTap's HTML→JSON→HTML roundtrip.
+ * RichEditor plugin that preserves arbitrary <div> and <span> elements with
+ * class attributes — plus <button> elements — through TipTap's HTML→JSON→HTML
+ * roundtrip.
  *
  * Registers both PHP (server-side rendering) and JS (client-side editor)
  * TipTap extensions so that custom HTML from seeders or raw editing
@@ -29,6 +31,7 @@ class HtmlPreservePlugin implements RichContentPlugin
     public function getTipTapPhpExtensions(): array
     {
         return [
+            app(HtmlButton::class),
             app(HtmlDiv::class),
             app(HtmlSpan::class),
         ];
@@ -38,6 +41,7 @@ class HtmlPreservePlugin implements RichContentPlugin
     public function getTipTapJsExtensions(): array
     {
         return [
+            FilamentAsset::getScriptSrc('tiptap-html-button', 'mmoollllee/filament-cms'),
             FilamentAsset::getScriptSrc('tiptap-html-div', 'mmoollllee/filament-cms'),
             FilamentAsset::getScriptSrc('tiptap-html-span', 'mmoollllee/filament-cms'),
         ];

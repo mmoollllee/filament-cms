@@ -98,6 +98,7 @@ owns its models, columns and relations.
 use them instead of copying code; improvements reach every site via `composer update`:
 
 ```php
+use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Mmoollllee\Cms\Concerns\Content\{AssignsCurrentTenant, ConvertsUploadedVideos,
     GeneratesPathAndSlug, HasPublishingStatus, ProvidesMenuPanel, ResolvesLayoutPresets};
 use Mmoollllee\Cms\Concerns\{HasDraft, HasVersions};
@@ -108,6 +109,7 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use ConvertsUploadedVideos;   // dispatches the video re-encode job on save
     use GeneratesPathAndSlug;     // path/slug generation incl. non-routable types
     use HasDraft;                 // "Entwurf speichern" stash + Vorschau overlay
+    use HasLocks;                 // editorial locking — one editor per record at a time
     use HasPublishingStatus;      // status(), resolved_status, scopePublished/VisibleTo/OfType
     use HasVersions;              // snapshot per applied change + Revisionen/restore
     use ProvidesMenuPanel;        // MenuPanelable: "Inhalte" source of the menu builder
@@ -139,20 +141,22 @@ class User extends Authenticatable implements FilamentUser, HasDefaultTenant, Ha
     use BelongsToTenants;         // tenants()/roles + host-aware Filament tenancy methods
 }
 
-// The Fragment model takes the same two opt-in workflow traits:
+// The Fragment model takes the same opt-in workflow traits:
 class Fragment extends Model implements \Mmoollllee\Cms\Contracts\Fragment
 {
     use HasDraft;
+    use HasLocks;
     use HasVersions;
     use ResolvesFragmentWithCascade;   // resolveFragment() + branding cascade
 }
 ```
 
-`HasDraft` and `HasVersions` are **opt-in and independent**: they need the `draft`
-column / the `versions` table (both in the published migrations), and every UI element
-they drive hides on models that don't use them — so a package upgrade never breaks an
-install that has not adopted them yet. Details:
-[FEATURES.md → Drafts & preview](FEATURES.md#drafts--preview) and
+`HasDraft`, `HasLocks` and `HasVersions` are **opt-in and independent**: they need the
+`draft` column / the `resource_locks` + `versions` tables (all in the published
+migrations), and every UI element they drive hides on models that don't use them — so a
+package upgrade never breaks an install that has not adopted them yet. Details:
+[FEATURES.md → Drafts & preview](FEATURES.md#drafts--preview),
+[Editorial locking](FEATURES.md#editorial-locking) and
 [Versioning & restore](FEATURES.md#versioning--restore).
 
 `ConvertsUploadedVideos` hooks `saved()` and walks the model's media blocks, so **saving
@@ -295,6 +299,10 @@ Shortcodes::useMergeTags(['company_name' => 'Firmenname', /* … */]);
 Shortcodes::extendDefaultsUsing(function (): void {
     Shortcodes::register('my_tag', fn (array $attrs): string => '<span>…</span>');
     Shortcodes::registerMergeTagValue('my_tag', fn () => '…');
+
+    // A PACKAGE adds its tag to whatever list the app uses (label + value in one
+    // call) — merged on top of useMergeTags(), so it survives an app's own list.
+    Shortcodes::registerMergeTag('my_package_tag', 'Paket-Tag', fn () => new HtmlString('…'));
 });
 ```
 
@@ -408,6 +416,22 @@ post-login redirect), tenant branding (name/logo/primary color), the menu-builde
 (locations from `Cms::menuLocations()`), the tenant middleware incl. persistent
 `ResolveTenantFromHost`, and the local-env login prefill (`cms.dev_login`, env-backed).
 
+The topbar **"Öffnen"** button (rendered before the global search) points at the frontend
+page of the record currently open. Content models get this from `GeneratesPathAndSlug`;
+any other model joins in by implementing the contract:
+
+```php
+class Event extends Model implements \Mmoollllee\Cms\Contracts\HasFrontendUrl
+{
+    public function getFrontendUrl(): ?string
+    {
+        return \Mmoollllee\Cms\Support\Content\FrontendUrl::forPath("/events/{$this->slug}");
+    }
+}
+```
+
+Returning `null` (no public page) makes the button fall back to the homepage.
+
 > Tenant access in panel code: `Filament::getTenant()` is the panel-URL tenant,
 > `app(CurrentTenant::class)->get()` the host-resolved one. In the panel they coincide
 > (domain-keyed tenancy) — prefer `Filament::getTenant()` in resources/pages and
@@ -465,6 +489,64 @@ Two things a safelist cannot fix:
 ---
 
 ## 10. Frontend views & JS
+
+### CSS & HTML standard (every consumer follows this)
+
+The panel is where editors judge how a page will look — builder previews and the
+RichEditor are styled by the **app's own frontend CSS**. That only works if site and
+panel agree on where the brand comes from. The contract:
+
+**1. One token file per app** — `resources/css/site/_design-tokens.css`, a Tailwind
+`@theme` block. It is the *only* place a brand value is written down, and it is the
+build-time default the utilities (`bg-primary`, `rounded-card`, …) are generated from:
+
+```css
+@theme {
+    --color-primary: #0075a7;      /* the brand, once */
+    --color-surface: var(--color-primary);
+    --color-muted-text: var(--color-secondary);
+}
+```
+
+**2. The engine owns the tokens at runtime.** `Support\Branding\SiteTokens` derives the
+palette from the tenant's `primary_color` and writes the same set twice — onto the
+frontend `<body>` and into the panel `<head>`. A color change in the CMS therefore needs
+no rebuild, and previews follow the SELECTED tenant instead of a build-time constant:
+
+```blade
+{{-- <x-site.layout> does this for you; an app with its own shell must add it --}}
+<body class="site …" style="{{ \Mmoollllee\Cms\Support\Branding\SiteTokens::inlineStyle($tenant) }}">
+```
+
+**3. The panel theme imports the same site CSS as the frontend bundle** — tokens,
+components and the safelist — so previews render like the website:
+
+```css
+/* resources/css/filament/theme.css */
+@import '../site/_design-tokens.css';
+@import '../site/buttons.css';   /* … the same list app.css imports */
+@import '../site/_dynamic-classes.css';
+```
+
+**4. Database classes go in the safelist.** Layout-preset classes live in
+`layout_presets.classes`, where Tailwind cannot scan them: list them in
+`site/_dynamic-classes.css`, imported by BOTH bundles.
+
+**5. No brand values outside the token file.** A second `--color-primary` in another
+stylesheet, or a hardcoded hex in a component rule, is exactly how a panel ends up
+showing another project's colors.
+
+**6. Style the shared component classes, not an app-specific wrapper.** The site body
+carries `site`; blocks and rich text emit `.btn`, `.card`, `.prose`, the layout-preset
+classes. Rules must hang off *those*. CSS scoped behind a project wrapper
+(`.myproject .btn { … }`) never applies inside the panel, which has no such wrapper —
+the previews then fall back to whatever the shared component CSS says.
+
+Checklist for a new (or migrated) project: token file with the real brand · panel theme
+imports the same site CSS · shell emits `SiteTokens::inlineStyle()` · DB classes
+safelisted · no brand value declared twice · no wrapper-scoped component rules.
+
+### Views
 
 The package ships brand-agnostic fallbacks (standalone + onepager shells, content/page,
 branded 404/500, header partials, `<x-site.*>` components). Resolution order: app views

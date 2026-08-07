@@ -51,6 +51,7 @@ use Mmoollllee\Cms\Models\LayoutPreset;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
+use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
@@ -686,11 +687,15 @@ abstract class TenantScopedContentResource extends Resource
                     Action::make('open')
                         ->label('Öffnen')
                         ->icon(Heroicon::OutlinedArrowTopRightOnSquare)
-                        ->url(fn (Content $record): ?string => filled($record->resolvedPath())
-                            ? route('content.show', ['path' => ltrim($record->resolvedPath(), '/')])
-                            : null)
+                        // Own path only — a row action links the record itself, never
+                        // the parent page a non-routable type is embedded in (that is
+                        // the topbar button's fallback, not this one's). Visibility is
+                        // keyed on the URL, not on the path: without a `content.show`
+                        // route there is nothing to link, and an href-less action would
+                        // just sit in the menu doing nothing.
+                        ->url(fn (Content $record): ?string => FrontendUrl::forPath($record->resolvedPath()))
                         ->openUrlInNewTab()
-                        ->visible(fn (Content $record): bool => filled($record->resolvedPath())),
+                        ->visible(fn (Content $record): bool => filled(FrontendUrl::forPath($record->resolvedPath()))),
                     EditAction::make(),
                     ReplicateAction::make()
                         ->label('Duplizieren')
@@ -1312,10 +1317,11 @@ abstract class TenantScopedContentResource extends Resource
                 ? $blueprint->isRoutable()
                 : fn (?Content $record): bool => filled($record?->resolvedPath()));
 
+        // One resolvedPath() per call: it clones the record and re-runs the
+        // PathGenerator, which walks the ancestor chain with a query per level —
+        // and the slug input evaluates this closure several times per render.
         $urlVisitLinkRoute = $config['urlVisitLinkRoute']
-            ?? fn (?Content $record): ?string => filled($record?->resolvedPath())
-                ? route('content.show', ['path' => ltrim($record->resolvedPath(), '/')])
-                : null;
+            ?? fn (?Content $record): ?string => FrontendUrl::forPath($record?->resolvedPath());
 
         return static::getTitleWithSlugInput(
             tenant: $tenant,

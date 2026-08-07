@@ -5,6 +5,7 @@ namespace Mmoollllee\Cms\Filament\Resources\Contents\Pages;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\Width;
 use Mmoollllee\Cms\Contracts\Content;
+use Mmoollllee\Cms\Filament\Concerns\LocksRecords;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
 use Mmoollllee\Cms\Filament\Concerns\TransfersBuilderItems;
@@ -30,6 +31,7 @@ use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
  */
 abstract class ContentEditPage extends EditRecord
 {
+    use LocksRecords;
     use ManagesDrafts {
         mergeDraftIntoFormData as protected mergeDraftIntoFormDataGeneric;
     }
@@ -91,8 +93,8 @@ abstract class ContentEditPage extends EditRecord
         /** @var Content $record */
         $record = $this->getRecord();
 
-        return $record->resolvedPath()
-            ?? $record->parent?->resolvedPath()
-            ?? '/';
+        // Same path the topbar "Öffnen" button targets ({@see FrontendLinkResolver}),
+        // so preview and public link never point at different pages.
+        return $record->frontendPath() ?? '/';
     }
 }

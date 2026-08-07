@@ -7,6 +7,7 @@ use Illuminate\Support\Str;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
+use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
@@ -22,6 +23,10 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  * resolvedPath() delegates to {@see PathGenerator} so routability is the single source of
  * truth: the normalized stored path for routable types, null for non-routable ones —
  * never a stale leftover path on a non-routable record.
+ *
+ * On top of that it supplies the frontend link every "open this record in the frontend"
+ * affordance uses ({@see frontendPath()} / {@see getFrontendUrl()}): "Vorschau", the
+ * table's "Öffnen" action and the topbar button.
  *
  * The host model needs `title`, `slug`, `path`, `content_type` columns and a `tenant`
  * relation (a {@see Content}).
@@ -95,6 +100,28 @@ trait GeneratesPathAndSlug
         static::ensureTenantLoaded($content);
 
         return app(PathGenerator::class)->generate($content);
+    }
+
+    /**
+     * The frontend path this record is reachable at: its own URL path, or — for
+     * non-routable types (sections, embedded types) — the parent page that renders
+     * it. Null when neither has a path.
+     *
+     * Shared by the "Vorschau" action ({@see \Mmoollllee\Cms\Filament\Resources\Contents\Pages\ContentEditPage})
+     * and the topbar "Öffnen" button, so both open the same page for a record.
+     */
+    public function frontendPath(): ?string
+    {
+        return $this->resolvedPath() ?? $this->parent?->resolvedPath();
+    }
+
+    /**
+     * Absolute public URL of {@see frontendPath()} — null for records without a
+     * frontend page (and for apps without a `content.show` route).
+     */
+    public function getFrontendUrl(): ?string
+    {
+        return FrontendUrl::forPath($this->frontendPath());
     }
 
     /**

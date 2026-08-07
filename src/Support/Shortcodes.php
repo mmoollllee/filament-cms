@@ -23,6 +23,7 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  *       Shortcodes::registerMergeTagValue('my_tag', fn () => '…');
  *   });
  *   // RichEditor labels: Shortcodes::useMergeTags([key => label, …])
+ *   // Packages ADD a tag to that list: Shortcodes::registerMergeTag(key, label, value)
  */
 class Shortcodes
 {
@@ -59,6 +60,9 @@ class Shortcodes
 
     /** @var array<string, string>|null Project-replaced merge-tag label list. */
     protected static ?array $mergeTags = null;
+
+    /** @var array<string, string> Package-contributed merge-tag labels, merged on top of the list. */
+    protected static array $extraMergeTags = [];
 
     protected static bool $booted = false;
 
@@ -110,24 +114,58 @@ class Shortcodes
     }
 
     /**
+     * Register an ADDITIONAL merge tag (picker label + value) — for packages
+     * that contribute a tag to whatever list the app runs with, e.g.
+     * filament-consent-control's cookie-settings button.
+     *
+     * Unlike {@see useMergeTags()}, which replaces the default label list, these
+     * survive that replacement: an app curating its own labels must not have to
+     * know about every installed package. Call it from inside an
+     * {@see extendDefaultsUsing()} callback so it survives {@see reset()} too.
+     *
+     * @param  Closure(): (string|HtmlString)|null  $value  omit when the tag is only a label
+     */
+    public static function registerMergeTag(string $key, string $label, ?Closure $value = null): void
+    {
+        static::$extraMergeTags[$key] = $label;
+
+        if ($value !== null) {
+            static::registerMergeTagValue($key, $value);
+        }
+    }
+
+    /**
      * Register a project extension callback. Runs on every boot (survives reset()),
-     * so projects can add their own shortcodes + merge-tag values.
+     * so projects and packages can add their own shortcodes + merge-tag values.
      *
      * @param  Closure(): void  $callback
      */
     public static function extendDefaultsUsing(Closure $callback): void
     {
         static::$extensions[] = $callback;
+
+        // Registered after something already triggered the boot (a package
+        // provider booting late, a shortcode rendered during boot): apply it
+        // now — the boot only runs the list once, so it would otherwise be
+        // silently missing until the next reset().
+        if (static::$booted) {
+            $callback();
+        }
     }
 
     /**
-     * Reset registered handlers/values (useful for testing). Keeps the project
-     * extension callbacks so the next boot re-registers them.
+     * Reset registered handlers/values AND a replaced label list (useful for
+     * testing — a test that calls useMergeTags() would otherwise leak its list
+     * into every later test in the process). Keeps the project extension
+     * callbacks so the next boot re-registers them; an app's useMergeTags()
+     * call sits in a provider boot and is re-applied with the next app boot.
      */
     public static function reset(): void
     {
         static::$handlers = [];
         static::$mergeTagValues = [];
+        static::$extraMergeTags = [];
+        static::$mergeTags = null;
         static::$booted = false;
     }
 
@@ -159,11 +197,20 @@ class Shortcodes
     /**
      * Merge tag definitions for the RichEditor UI (key → label).
      *
+     * Boots first: package tags registered via {@see registerMergeTag()} inside
+     * an {@see extendDefaultsUsing()} callback would otherwise be missing from
+     * the picker, since nothing else on the editor path triggers the boot.
+     *
      * @return array<string, string>
      */
     public static function mergeTags(): array
     {
-        return static::$mergeTags ?? static::DEFAULT_MERGE_TAGS;
+        static::boot();
+
+        return [
+            ...static::$mergeTags ?? static::DEFAULT_MERGE_TAGS,
+            ...static::$extraMergeTags,
+        ];
     }
 
     /**

@@ -36,10 +36,14 @@ use Mmoollllee\Cms\Filament\Pages\Auth\EditProfile;
 use Mmoollllee\Cms\Filament\Pages\Auth\Login;
 use Mmoollllee\Cms\Filament\Pages\Dashboard;
 use Mmoollllee\Cms\Support\Analytics\Umami;
+use Mmoollllee\Cms\Support\Branding\SiteTokens;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\EditTenantProfilePage;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\RegisterTenantPage;
 use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
+use Mmoollllee\Cms\Filament\Locking\ResourceLockPlugin;
 use Mmoollllee\Cms\Filament\Resources\LayoutPresets\LayoutPresetResource;
+use Mmoollllee\Cms\Filament\Resources\Locks\LockResource;
+use Mmoollllee\Cms\Filament\Resources\Menus\MenuResource;
 use Mmoollllee\Cms\Filament\Resources\NotFoundLogs\NotFoundLogResource;
 use Mmoollllee\Cms\Filament\Resources\Redirects\RedirectResource;
 use Mmoollllee\Cms\Filament\Resources\Users\UserResource;
@@ -130,8 +134,10 @@ abstract class BasePanelProvider extends FilamentPanelProvider
             ->persistentMiddleware([
                 ResolveTenantFromHost::class,
             ])
+            ->plugin($this->resourceLockPlugin())
             ->plugin(
                 FilamentMenuBuilderPlugin::make()
+                    ->usingResource(MenuResource::class)
                     ->usingMenuModel(Menu::class)
                     ->navigationGroup('Inhalt')
                     ->navigationLabel('Navigation')
@@ -156,6 +162,45 @@ abstract class BasePanelProvider extends FilamentPanelProvider
         }
 
         return $this->configurePanel($panel);
+    }
+
+    /**
+     * Editorial locking: opening a record claims it, everyone else gets the
+     * blocking modal ({@see \Mmoollllee\Cms\Filament\Concerns\LocksRecords}).
+     *
+     * Polling is switched ON deliberately — it is the presence heartbeat, and
+     * without it a lock is never refreshed after the page load, so a long edit
+     * would silently expire mid-session. It runs WITHOUT `pollingVisible()`:
+     * that modifier pauses `wire:poll` while the polling element is outside the
+     * VIEWPORT, and the plugin renders its observer as a zero-height div at the
+     * top of the page — scrolling into the block builder would stop the
+     * heartbeat mid-edit. Livewire throttles polling in a backgrounded tab on
+     * its own, which is the behaviour actually wanted here.
+     *
+     * The timeout is deliberately NOT set here: the model trait reads
+     * `filament-resource-lock.lock_timeout` and never consults the plugin, so a
+     * value set on the plugin alone would be dead configuration. It is bridged
+     * into that config key by {@see \Mmoollllee\Cms\CmsServiceProvider}, which
+     * the plugin's own getter falls back to — one owner, and the manager page
+     * and `clear-expired` agree with the model on what expired means.
+     *
+     * The lock manager lists locks across ALL tenants (it cannot do otherwise —
+     * `resource_locks` has no tenant), so it stays out of the navigation and
+     * behind the superadmin gate.
+     */
+    protected function resourceLockPlugin(): ResourceLockPlugin
+    {
+        return ResourceLockPlugin::make()
+            ->userModel(Cms::userModel())
+            ->resourceClass(LockResource::class)
+            ->usesPollingToDetectPresence()
+            ->presencePollingInterval(30)
+            ->displayResourceLockOwner()
+            ->limitedAccessToResourceLockManager()
+            ->gate('cms.manage-locks')
+            ->registerNavigation(false)
+            ->unlockerLimitedAccess()
+            ->unlockerGate('cms.take-over-lock');
     }
 
     /**
@@ -246,6 +291,12 @@ abstract class BasePanelProvider extends FilamentPanelProvider
 
             $component
                 ->plugins($plugins)
+                // The editing surface IS rich text, so it carries the class the
+                // frontend and the block previews put around rendered content
+                // (`<div class="richtext">`). That is the hook an app's site CSS
+                // styles content with — without it, typography rules stop at the
+                // preview and the editor shows Filament's defaults instead.
+                ->extraInputAttributes(['class' => 'richtext'], merge: true)
                 ->customBlocks([
                     ButtonGroupBlock::class,
                     NavigationCardGroupBlock::class,
@@ -344,6 +395,16 @@ abstract class BasePanelProvider extends FilamentPanelProvider
         return $this->currentPanelTenant()?->resolvedMainLogoUrl();
     }
 
+    /**
+     * Two palettes, one tenant color:
+     *
+     * - `--primary-*` re-skins Filament's own chrome (buttons, links, focus).
+     * - the site design tokens ({@see SiteTokens}) re-skin what the panel shows
+     *   OF the website: the RichEditor content and the builder previews, which
+     *   are styled by the app's frontend CSS. Without them those areas fall back
+     *   to the constant baked into the app's `@theme` block at build time — one
+     *   fixed brand for every tenant, and wrong for all but one of them.
+     */
     protected function panelPrimaryColorStyles(): string
     {
         $tenant = $this->currentPanelTenant();
@@ -356,7 +417,9 @@ abstract class BasePanelProvider extends FilamentPanelProvider
             ->map(fn (string $color, int $shade): string => "--primary-{$shade}: {$color};")
             ->implode(' ');
 
-        return "<style>:root { {$colorVariables} }</style>";
+        // STYLES_AFTER puts this behind the theme stylesheet, so the runtime
+        // tokens win over the build-time ones at equal specificity.
+        return "<style>:root { {$colorVariables} } ".SiteTokens::cssBlock($tenant).'</style>';
     }
 
     protected function currentPanelTenant(): ?TenantContract

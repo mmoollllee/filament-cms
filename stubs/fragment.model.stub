@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Mmoollllee\Cms\Concerns\Fragment\ResolvesFragmentWithCascade;
@@ -11,6 +12,7 @@ use Mmoollllee\Cms\Concerns\HasVersions;
 class Fragment extends Model implements \Mmoollllee\Cms\Contracts\Fragment
 {
     use HasDraft;                 // "Entwurf speichern" stash + Vorschau overlay
+    use HasLocks;                 // editorial locking — one editor per record at a time
     use HasVersions;              // snapshot versioning + Revisionen/restore
     use ResolvesFragmentWithCascade;
 

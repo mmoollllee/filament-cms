@@ -665,7 +665,7 @@ class DatabaseSeeder extends Seeder
             'meta' => ['seo_description' => 'Why filament-cms ships TipTap extensions and how to add your own.'],
             'payload' => ['hero' => ['subtitle' => 'The rich editor stores TipTap JSON, not HTML — extensions teach it which markup to keep and how to render it.']],
             'blocks' => [$this->section([
-                $this->textChild('What they are & why they exist', '<p>Filament\'s RichEditor is <a href="https://tiptap.dev">TipTap</a>. It parses HTML into a JSON document and <strong>drops everything it has no extension for</strong> — a plain <code>&lt;div class="grid"&gt;</code> would silently disappear on the next edit. An extension therefore always has two halves:</p><ul><li><strong>JS</strong> (editor): parse + keep the markup while editing,</li><li><strong>PHP</strong> (server): render the stored JSON node back to HTML on the website.</li></ul><p>The package ships three: <code>HtmlDiv</code> (node) and <code>HtmlSpan</code> (mark) preserve class-carrying div/span markup — that\'s what makes the blocks\' <strong>HTML source tab</strong> round-trip-safe — and <code>link-attributes</code> teaches the built-in link mark the picker\'s extra attributes (title, wire:navigate). All are wired via the default panel plugins.</p>'.$this->code('php', <<<'PHP'
+                $this->textChild('What they are & why they exist', '<p>Filament\'s RichEditor is <a href="https://tiptap.dev">TipTap</a>. It parses HTML into a JSON document and <strong>drops everything it has no extension for</strong> — a plain <code>&lt;div class="grid"&gt;</code> would silently disappear on the next edit. An extension therefore always has two halves:</p><ul><li><strong>JS</strong> (editor): parse + keep the markup while editing,</li><li><strong>PHP</strong> (server): render the stored JSON node back to HTML on the website.</li></ul><p>The package ships four: <code>HtmlDiv</code> (node), <code>HtmlSpan</code> and <code>HtmlButton</code> (marks) preserve class-carrying div/span markup and editorial buttons — that\'s what makes the blocks\' <strong>HTML source tab</strong> round-trip-safe — and <code>link-attributes</code> teaches the built-in link mark the picker\'s extra attributes (title, wire:navigate). All are wired via the default panel plugins.</p>'.$this->code('php', <<<'PHP'
                     // The PHP half (rendering stored JSON → HTML), src/Tiptap/Nodes/HtmlDiv.php:
                     class HtmlDiv extends \Tiptap\Core\Node
                     {
@@ -705,12 +705,13 @@ class DatabaseSeeder extends Seeder
                     {
                         public function getTipTapPhpExtensions(): array
                         {
-                            return [app(HtmlDiv::class), app(HtmlSpan::class)];
+                            return [app(HtmlButton::class), app(HtmlDiv::class), app(HtmlSpan::class)];
                         }
 
                         public function getTipTapJsExtensions(): array
                         {
                             return [
+                                FilamentAsset::getScriptSrc('tiptap-html-button', 'mmoollllee/filament-cms'),
                                 FilamentAsset::getScriptSrc('tiptap-html-div', 'mmoollllee/filament-cms'),
                                 FilamentAsset::getScriptSrc('tiptap-html-span', 'mmoollllee/filament-cms'),
                             ];

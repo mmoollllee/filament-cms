@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Datlechin\FilamentMenuBuilder\Contracts\MenuPanelable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,6 +26,7 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use ConvertsUploadedVideos;   // dispatches the video re-encode job on save
     use GeneratesPathAndSlug;     // path/slug generation incl. non-routable types
     use HasDraft;                 // "Entwurf speichern" stash + Vorschau overlay
+    use HasLocks;                 // editorial locking — one editor per record at a time
     use HasVersions;              // snapshot versioning + Revisionen/restore
     use HasPublishingStatus;      // status(), resolved_status, scopePublished/VisibleTo/OfType
     use ProvidesMenuPanel;        // "Inhalte" source for the menu builder (MenuPanelable)

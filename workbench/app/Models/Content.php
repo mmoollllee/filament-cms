@@ -2,6 +2,7 @@
 
 namespace Workbench\App\Models;
 
+use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Datlechin\FilamentMenuBuilder\Contracts\MenuPanelable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -28,6 +29,7 @@ class Content extends Model implements \Mmoollllee\Cms\Contracts\Content, MenuPa
     use GeneratesPathAndSlug;
 
     use HasDraft;
+    use HasLocks;
     use HasVersions;
 
     /** @use HasFactory<ContentFactory> */

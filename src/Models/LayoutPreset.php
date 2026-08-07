@@ -2,6 +2,7 @@
 
 namespace Mmoollllee\Cms\Models;
 
+use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +22,8 @@ class LayoutPreset extends Model
 {
     /** @use HasFactory<LayoutPresetFactory> */
     use HasFactory;
+
+    use HasLocks;
 
     protected $fillable = [
         'tenant_id',

@@ -75,6 +75,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Editorial locking (HasLocks)
+    |--------------------------------------------------------------------------
+    | timeout  seconds a lock survives without a presence heartbeat. Sized
+    |          against the panel's 30s heartbeat (BasePanelProvider's
+    |          presencePollingInterval), NOT against how long someone
+    |          edits — a live tab keeps refreshing. Too low and a slow network
+    |          hands the record away mid-edit; too high and a crashed tab blocks
+    |          it for that long (take-over is the escape hatch).
+    */
+    'locking' => [
+        'timeout' => (int) env('CMS_LOCK_TIMEOUT', 180),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Video conversion (ConvertsUploadedVideos)
     |--------------------------------------------------------------------------
     | recompress_threshold  size in bytes above which an upload that is ALREADY

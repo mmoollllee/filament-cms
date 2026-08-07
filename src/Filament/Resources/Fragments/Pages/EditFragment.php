@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Filament\Resources\Fragments\Pages;
 
 use Filament\Resources\Pages\EditRecord;
+use Mmoollllee\Cms\Filament\Concerns\LocksRecords;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
 use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
@@ -14,6 +15,7 @@ use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
  */
 class EditFragment extends EditRecord
 {
+    use LocksRecords;
     use ManagesDrafts;
     use PastesBuilderBlocks;
 

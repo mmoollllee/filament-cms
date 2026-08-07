@@ -14,16 +14,11 @@ export default Node.create({
     priority: 200,
     defining: true,
 
+    // TipTap's default attribute handling already reads the DOM attribute on
+    // parse and renders it back unless it is empty.
     addAttributes() {
         return {
-            class: {
-                default: null,
-                parseHTML: (element) => element.getAttribute('class') || null,
-                renderHTML: (attributes) => {
-                    if (!attributes.class) return {}
-                    return { class: attributes.class }
-                },
-            },
+            class: { default: null },
         }
     },
 

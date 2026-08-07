@@ -26,6 +26,9 @@ providers:
   # Content versioning (config merge + revisions UI views/translations).
   - Overtrue\LaravelVersionable\ServiceProvider
   - Mansoor\FilamentVersionable\FilamentVersionableServiceProvider
+  # Editorial locking — registers the presence-observer Livewire component plus
+  # the modal view/translations the blocking notice renders from.
+  - Blendbyte\FilamentResourceLock\ResourceLockServiceProvider
   - Blendbyte\FilamentTitleWithSlug\FilamentTitleWithSlugServiceProvider
   - DefStudio\SearchableInput\SearchableInputServiceProvider
   - ProtoneMedia\LaravelFFMpeg\Support\ServiceProvider

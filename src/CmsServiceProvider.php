@@ -11,6 +11,9 @@ use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
+use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Contracts\User;
+use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Enums\TenantVisibility;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
@@ -33,6 +36,7 @@ use Mmoollllee\Cms\Policies\UserPolicy;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Analytics\Umami;
+use Mmoollllee\Cms\Support\Locking\Locks;
 use Mmoollllee\Cms\Support\ContactLinkShortcodes;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
@@ -48,8 +52,10 @@ use Mmoollllee\Cms\Support\Routing\PathSuggestionResolver;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
 use Mmoollllee\Filami\Filami;
+use Tiptap\Marks\Link;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 
@@ -190,11 +196,27 @@ class CmsServiceProvider extends ServiceProvider
         // fails loudly when they drift, with re-vendoring instructions.
         $this->app['view']->prependNamespace('filament-forms', __DIR__.'/../resources/overrides/filament-forms');
 
+        // The link mark the RichEditor renders with — the picker's, carrying its
+        // extra attributes (class, title, wire:navigate).
+        //
+        // It REPLACES the stock mark instead of being registered alongside it:
+        // tiptap-php's DOMSerializer opens a tag for EVERY registered mark named
+        // `link`, so a second one nests the anchors (`<a class=…><a href=…>`).
+        // Nested <a> is invalid HTML — the next parse keeps only the inner tag,
+        // and every attribute the outer one carried is silently dropped on save.
+        //
+        // Filament's RichContentRenderer resolves Tiptap\Marks\Link from the
+        // container, which awcodes/richer-editor already rebinds to its own
+        // subclass — hence boot(): a register()-time bind would lose the race
+        // when that provider happens to register last.
+        $this->app->bind(Link::class, LinkPicker::class);
+
         // Client-side TipTap extensions (the JS halves of the package's PHP TipTap
         // extensions), loaded on demand by the RichEditor via HtmlPreservePlugin /
         // LinkPickerPlugin. Pre-built into resources/dist (`npm run build`);
         // `php artisan filament:assets` publishes them to the app's public dir.
         FilamentAsset::register([
+            Js::make('tiptap-html-button', __DIR__.'/../resources/dist/tiptap-extensions/html-button.js')->loadedOnRequest(),
             Js::make('tiptap-html-div', __DIR__.'/../resources/dist/tiptap-extensions/html-div.js')->loadedOnRequest(),
             Js::make('tiptap-html-span', __DIR__.'/../resources/dist/tiptap-extensions/html-span.js')->loadedOnRequest(),
             Js::make('tiptap-link-attributes', __DIR__.'/../resources/dist/tiptap-extensions/link-attributes.js')->loadedOnRequest(),
@@ -226,6 +248,14 @@ class CmsServiceProvider extends ServiceProvider
                 'versionable.keep_versions' => (int) config('cms.versions.keep', 50),
             ]);
         }
+
+        // Editorial locking reads its timeout from the vendor config, NOT from
+        // the plugin: HasLocks::getLockTimeout() consults
+        // `filament-resource-lock.lock_timeout` directly, so a value set only
+        // on the panel plugin would be dead and every expiry check would fall
+        // back to the vendor default of 600s. Bridged here so the model, the
+        // lock manager and `clear-expired` all agree.
+        config(['filament-resource-lock.lock_timeout' => Locks::timeout()]);
 
         // Optional Umami analytics (mmoollllee/filami): every tenant gets its
         // own Umami website, provisioned on creation and kept in sync on
@@ -338,6 +368,35 @@ class CmsServiceProvider extends ServiceProvider
         Gate::policy(Cms::contentModel(), ContentPolicy::class);
         Gate::policy(Cms::tenantModel(), TenantPolicy::class);
         Gate::policy(Cms::userModel(), UserPolicy::class);
+
+        $this->registerLockingGates();
+    }
+
+    /**
+     * Authorization for editorial locking (blendbyte/filament-resource-lock,
+     * wired in {@see \Mmoollllee\Cms\Filament\Providers\BasePanelProvider}).
+     *
+     * - `cms.take-over-lock` decides who may seize a record another editor is
+     *   holding ("übernehmen" in the blocking modal): tenant admins, since an
+     *   editor stuck behind a colleague's forgotten tab needs someone able to
+     *   resolve it before the timeout.
+     * - `cms.manage-locks` guards the plugin's lock manager, which lists locks
+     *   ACROSS tenants (its model has no tenant scope) — superadmins only.
+     */
+    protected function registerLockingGates(): void
+    {
+        Gate::define('cms.take-over-lock', function (User $user): bool {
+            if ($user->isSuperadmin()) {
+                return true;
+            }
+
+            $tenant = app(CurrentTenant::class)->get();
+
+            return $tenant instanceof Tenant
+                && $user->tenantRole($tenant) === TenantUserRole::Admin;
+        });
+
+        Gate::define('cms.manage-locks', fn (User $user): bool => $user->isSuperadmin());
     }
 
     /**

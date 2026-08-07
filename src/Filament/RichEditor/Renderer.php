@@ -14,6 +14,7 @@ use Filament\Forms\Components\RichEditor\TipTapExtensions\MergeTagExtension;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\RawHtmlMergeTagExtension;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\RenderedCustomBlockExtension;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\SmallExtension;
+use Mmoollllee\Cms\Tiptap\Marks\HtmlButton;
 use Mmoollllee\Cms\Tiptap\Marks\HtmlSpan;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Mmoollllee\Cms\Tiptap\Nodes\HtmlDiv;
@@ -91,6 +92,7 @@ class Renderer extends RichContentRenderer
                     'defaultAlignment' => 'start',
                 ],
             ]),
+            app(HtmlButton::class),
             app(HtmlDiv::class),
             app(HtmlSpan::class),
             app(Underline::class),

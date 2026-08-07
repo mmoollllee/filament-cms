@@ -14,7 +14,8 @@
         "pbmedia/laravel-ffmpeg": "^8.9",
         "ueberdosis/tiptap-php": "^2.1",
         "yannkuesthardt/laravel-spamprotect": "^2.0|^3.0",
-        "mansoor/filament-versionable": "^5.1"
+        "mansoor/filament-versionable": "^5.1",
+        "blendbyte/filament-resource-lock": "^2.2"
     },
     "require-dev": {
         "mmoollllee/filament-media-library-extensions": "^0.2",

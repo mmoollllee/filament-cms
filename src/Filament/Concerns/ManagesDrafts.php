@@ -8,11 +8,11 @@ use Filament\Notifications\Notification;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Js;
 use Livewire\Attributes\Locked;
 use Mansoor\FilamentVersionable\Page\RevisionsAction;
 use Mmoollllee\Cms\Concerns\HasDraft;
+use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Versioning\Versions;
@@ -56,6 +56,11 @@ use Mmoollllee\Cms\Support\Versioning\Versions;
  */
 trait ManagesDrafts
 {
+    // The draft stash writes the `draft` column directly, outside the save
+    // pipeline — so the write guards have to be enforced here too, or the one
+    // slot two editors (or two tabs of one) share would stay last-write-wins.
+    use GuardsRecordWrites;
+
     /**
      * Hash of the form data at its last pristine moment (fill, stash, apply).
      * The client compares it against the live form data (same formula as
@@ -93,6 +98,10 @@ trait ManagesDrafts
         }
 
         $this->authorizeAccess();
+
+        if (! $this->assertSafeToWrite()) {
+            return false;
+        }
 
         $this->callHook('beforeValidate');
 
@@ -136,8 +145,15 @@ trait ManagesDrafts
      */
     public function saveForPreview(): bool
     {
+        // Only the save() branch needs the guard here — the draft branch runs
+        // it inside saveDraft(). save() returns void, so a refused write would
+        // otherwise still report success and open the preview tab.
         if ($this->draftWorkflowActive()) {
             return $this->saveDraft();
+        }
+
+        if (! $this->assertSafeToWrite()) {
+            return false;
         }
 
         $this->save();
@@ -214,12 +230,18 @@ trait ManagesDrafts
      * refill and saveFormComponentOnly(). Stamp the draft hash here,
      * UNCONDITIONALLY: the parent is a no-op unless the panel enables
      * unsavedChangesAlerts(), but the draft buttons work in every panel.
+     *
+     * The record fingerprint rides along for the same reason: those are exactly
+     * the moments where the form matches the stored row again, so the
+     * stale-form guard must forget the drift it just wrote itself.
      */
     protected function rememberData(): void
     {
         parent::rememberData();
 
         $this->draftSavedDataHash = md5((string) str(json_encode($this->data, JSON_UNESCAPED_UNICODE))->replace('\\', ''));
+
+        $this->stampRecordFingerprint();
     }
 
     public function getSubheading(): string|Htmlable|null
@@ -413,6 +435,14 @@ trait ManagesDrafts
             ->modalDescription('Der gespeicherte Entwurf wird gelöscht. Die zuletzt angewendete Fassung bleibt unverändert.')
             ->visible(fn (): bool => Drafts::pending($this->getRecord()))
             ->action(function (): void {
+                // Discarding is the DESTRUCTIVE half of the shared draft slot —
+                // it deletes a stash that leaves no version behind. It needs the
+                // same guards as writing one, or a second tab (or a second
+                // editor past the modal) destroys work nobody can recover.
+                if (! $this->assertSafeToWrite()) {
+                    return;
+                }
+
                 $this->getRecord()->discardDraft();
 
                 // Reload the applied values into the form and reset dirty tracking.
@@ -479,19 +509,8 @@ trait ManagesDrafts
 
     protected function previewUrl(): ?string
     {
-        if (! Route::has('content.show')) {
-            return null;
-        }
-
-        $path = ltrim($this->previewPath(), '/');
-
-        $parameters = [PreviewMode::QUERY_PARAM => 1];
-
-        // No array_filter here: it would also drop the legitimate path '0'.
-        if ($path !== '') {
-            $parameters['path'] = $path;
-        }
-
-        return route('content.show', $parameters);
+        // Same URL builder as the "Öffnen" affordances ({@see FrontendUrl}), so
+        // preview and public link can never diverge on how a path becomes a URL.
+        return FrontendUrl::forPath($this->previewPath(), [PreviewMode::QUERY_PARAM => 1]);
     }
 }

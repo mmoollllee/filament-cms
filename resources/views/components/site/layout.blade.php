@@ -12,15 +12,9 @@
     $pageTitle = \Mmoollllee\Cms\Support\Seo\SeoHead::title($content ?? null, $tenant);
     $pageDescription = data_get($content ?? null, 'meta.seo_description')
         ?: $tenant->resolvedDefaultSeoDescription();
-    $primaryColor = $tenant->resolvedPrimaryColor();
-    $siteBrandingStyle = implode(' ', [
-        "--color-primary: {$primaryColor};",
-        "--color-surface: color-mix(in oklab, {$primaryColor} 78%, black 22%);",
-        "--color-muted-text: color-mix(in oklab, {$primaryColor} 52%, white 48%);",
-        "--color-on-light: color-mix(in oklab, {$primaryColor} 82%, black 18%);",
-        "--background-image-gradient-primary: radial-gradient(circle at 50% 50%, color-mix(in oklab, {$primaryColor} 68%, white 32%) 0%, color-mix(in oklab, {$primaryColor} 82%, black 18%) 331%);",
-        "--background-image-gradient-bright: radial-gradient(circle at 50% 50%, color-mix(in oklab, white 92%, {$primaryColor} 8%) 0%, color-mix(in oklab, white 78%, {$primaryColor} 22%) 211%);",
-    ]);
+    // The tenant's design tokens — the same set the panel injects, so builder
+    // previews and the live site cannot drift apart (see SiteTokens).
+    $siteBrandingStyle = \Mmoollllee\Cms\Support\Branding\SiteTokens::inlineStyle($tenant);
 @endphp
 <!DOCTYPE html>
 <html lang="{{ $tenant->default_locale }}">

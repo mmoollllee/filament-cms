@@ -214,7 +214,7 @@ it('maintains the pristine hash that disables "Entwurf speichern" client-side', 
     }
 });
 
-it('keeps a NEWER draft when an older tab applies its stale form state', function () {
+it('refuses the apply outright when a NEWER draft was stashed meanwhile', function () {
     $record = draftEditFixture($this->tenant);
     $record->stashDraft(['title' => 'Alter Entwurf']);
 
@@ -227,12 +227,15 @@ it('keeps a NEWER draft when an older tab applies its stale form state', functio
     $this->travel(2)->seconds();
     $record->fresh()->stashDraft(['title' => 'Neuerer Entwurf']);
 
-    $component->call('save')->assertHasNoFormErrors();
+    // The stash is part of the record fingerprint, so the stale-form guard
+    // (GuardsRecordWrites) stops this apply before it runs — the older
+    // "keep the newer stash but apply anyway" fallback in handleAppliedDraft()
+    // stays as defence in depth for write paths that skip the guard.
+    $component->call('save')->assertNotified('Nicht gespeichert');
 
     $fresh = $record->fresh();
 
-    // The stale apply went through, but the newer stash survived.
-    expect($fresh->title)->toBe('Alter Entwurf')
+    expect($fresh->title)->toBe('Live-Titel')
         ->and($fresh->hasDraft())->toBeTrue()
         ->and($fresh->draftData()['title'])->toBe('Neuerer Entwurf');
 });

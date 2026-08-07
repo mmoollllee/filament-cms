@@ -49,6 +49,15 @@ frontend via `EnsureTenantIsVisible`; members-only tenants require a logged-in t
 tenant can therefore drive any number of satellite domains; the demo's second tenant
 (`localhost`) proves it with zero own branding.
 
+**Design tokens** — `Support\Branding\SiteTokens` turns the tenant's `primary_color` into
+the site palette (`--color-primary`, `--color-surface`, `--color-muted-text`,
+`--color-on-light`, two gradients) and writes it in both places that render the site:
+onto the frontend `<body>` and into the Filament panel's `<head>`. So a color change is
+live without a rebuild, and RichEditor / builder previews show the tenant currently
+selected in the panel rather than the value compiled into the app's stylesheet. The app's
+own `@theme` block stays the build-time default. See the
+[CSS & HTML standard](CUSTOMIZATION.md#css--html-standard-every-consumer-follows-this).
+
 **Roles** — the `tenant_user` pivot carries a `TenantUserRole` (admin/editor). Both roles
 manage content *and* the tenant settings page (branding, contact, SEO); only user
 management is admin-only. `users.is_superadmin` unlocks cross-tenant administration and
@@ -261,6 +270,72 @@ upgrade before adopting. Retention defaults to 50 versions per record
 actually frees storage, and hard-deleting a record removes its history. Deep links in
 the widget honor resource `canAccess()`.
 
+## Editorial locking
+
+**One editor per record** — opening an edit page claims the record for that user; anyone
+else opening it gets a blocking modal ("wird gerade bearbeitet", with the holder's name)
+and can only go back or — with the right role — take it over. Built on
+`blendbyte/filament-resource-lock`: the engine uses its model layer, modal, presence
+observer and lock manager, but drives them from its own page concern
+(`LocksRecords`), because the vendor's page trait collides with the draft workflow's
+form footer and assumes every model carries the lock trait.
+
+**Which records** — everything with an edit page: contents, fragments, redirects, layout
+presets and menus. On menus the lock is held on the menu itself while its items are
+written by the builder's own panels — the modal covers the page before a second editor
+reaches them.
+
+**Presence heartbeat** — the panel polls every 30s, and locks time out after 180s
+(`CMS_LOCK_TIMEOUT`, bridged into the vendor config — the lock model reads it from there,
+not from the plugin). That pairing is deliberate: without polling a lock is never
+refreshed after page load, so a long edit would silently expire. Livewire throttles the
+poll on its own while the tab is backgrounded, so a forgotten tab ages out instead of
+holding a record hostage; `pollingVisible()` is deliberately NOT used, because it keys on
+the polling element being in the *viewport* and the observer sits at the top of the page —
+scrolling into the builder would stop the heartbeat mid-edit. Closing the tab releases
+the lock immediately when the browser still manages to fire the request; the timeout is
+the real safety net.
+
+**Writes are guarded, not just the UI** — a client that dismisses the modal still cannot
+write: both "Änderungen anwenden" (`save()`) and "Entwurf speichern" refuse with a
+notification and re-raise the modal. Guarding the draft path matters because `draft` is
+a **single slot per record** — two editors share it, so an unguarded stash would
+overwrite the holder's work without leaving a version behind.
+
+**Take-over** — the modal's "übernehmen" button is gated by `cms.take-over-lock`
+(tenant admins + superadmins), checked server-side too, since the event can be
+dispatched by hand. The lock manager is genuinely cross-tenant (`resource_locks` has no
+tenant column), so it is hidden from the navigation and gated by `cms.manage-locks`
+(superadmins only) — and it opts out of tenancy **per class**, by redeclaring
+`$isScopedToTenant`, never via `Resource::scopeToTenant(false)`: that static lives on the
+`Resource` base class, so calling the setter on a subclass switches tenant scoping off for
+every resource in the panel. The vendor's audit-log resource is not registered at all
+(ungated by default, and its table is not part of the engine's schema).
+
+**App wiring** — `use HasLocks;` on Content + Fragment (the `cms:install` stubs already
+carry it), copy the `create_resource_locks_table` migration, done. Models without the
+trait keep the unlocked flow, so upgrading before adopting is safe. Expired rows are
+cleaned up lazily on the next visit and hourly by
+`filament-resource-lock:clear-expired` — that one needs a running scheduler.
+
+**The same user in two tabs** — a lock is held per USER, so a second tab of the same
+person refreshes it instead of being blocked. That case (and any write from outside the
+panel — imports, console commands, a shared account elsewhere) is covered by a second,
+independent guard: `GuardsRecordWrites` fingerprints the record when the form is filled
+and compares it against the stored row before every write. On drift the write is refused
+with *"Der Inhalt wurde zwischenzeitlich anderswo bearbeitet. Bitte die Seite neu laden,
+um keine Änderungen zu überschreiben."*
+
+The fingerprint hashes the raw stored attributes, not `updated_at`: second precision
+would let two writes inside one second compare equal, and bookkeeping-only writes would
+compare unequal — reordering the content tree touches `sort` on rows an editor may have
+open elsewhere, and blocking their save over a drag is noise, not safety. `sort`, the
+timestamps and the tenancy/authorship columns are therefore excluded (override
+`fingerprintIgnoredAttributes()` for app-specific machine-written columns); the `draft`
+stash is deliberately **included**, since it is one shared slot per record. The guard
+needs no lock package and no trait on the model — pages carrying `ManagesDrafts` or
+`LocksRecords` have it automatically.
+
 ## Block builder
 
 The customer-facing page composer, built on Filament's Builder field with a shared
@@ -405,15 +480,18 @@ use Mmoollllee\Cms\Fields\LinkFields;
 through `<x-site.rich-editor.*>` views you can override per app.
 
 **HTML preservation** — `HtmlPreservePlugin` + the package's TipTap extensions keep
-class-carrying `<div>`/`<span>` markup intact through TipTap's HTML→JSON→HTML roundtrip;
-without it, TipTap strips unknown markup. This powers the blocks' **HTML source tab**
-(`BaseBuilderBlock::richEditorWithSource()`): Editor and raw-HTML tabs, two-way synced.
+class-carrying `<div>`/`<span>` markup — and `<button>` elements — intact through TipTap's
+HTML→JSON→HTML roundtrip; without it, TipTap strips unknown markup. This powers the blocks'
+**HTML source tab** (`BaseBuilderBlock::richEditorWithSource()`): Editor and raw-HTML tabs,
+two-way synced. Buttons keep only `class` and `type` (default `button`), so editorial markup
+like the consent banner's `<button type="button" class="consent-control--open">` survives
+while inline handlers do not.
 
 **TipTap extensions** — custom editor markup is always a pair: a PHP extension
 (`Mmoollllee\Cms\Tiptap\*`, server-side rendering) and a JS extension
 (`resources/js/tiptap-extensions/*.js`, editor-side), pre-built via esbuild
 (`npm run build`) and published by `php artisan filament:assets`. Shipped:
-`HtmlDiv`/`HtmlSpan` (markup preservation) and `link-attributes` (adds
+`HtmlButton`/`HtmlDiv`/`HtmlSpan` (markup preservation) and `link-attributes` (adds
 title + wire:navigate to the link mark so the picker's fields survive re-editing).
 The demo's "TipTap extensions" HowTo walks through adding your own.
 
@@ -434,6 +512,18 @@ Editors insert them via the RichEditor's **merge-tag picker** (labels:
 Shortcodes::extendDefaultsUsing(function (): void {
     Shortcodes::register('opening_hours', fn (array $attrs): string => '…');
     Shortcodes::registerMergeTagValue('opening_hours', fn () => '…');
+});
+```
+
+Packages **add** a tag to whichever list the app runs with — `registerMergeTag()` is merged
+on top of `useMergeTags()`, so an app curating its own labels does not have to know about
+every installed package. `mmoollllee/filament-consent-control` uses it for the cookie-settings
+button (`[consent_settings]`, picker label "Cookie-Einstellungen (Button)"), registering
+itself when it is installed:
+
+```php
+Shortcodes::extendDefaultsUsing(function (): void {
+    Shortcodes::registerMergeTag('consent_settings', 'Cookie-Einstellungen (Button)', fn () => new HtmlString('…'));
 });
 ```
 
@@ -553,6 +643,11 @@ is on the roadmap, see `docs/KONZEPT-MEDIATHEK.md` P4).
   "… (Kopie)" + a fresh collision-free path/slug, copy starts as a draft, redirects
   straight into editing the copy.
 - **Open** — every routable row links to its live URL in a new tab.
+- **Topbar "Öffnen"** — the button beside the global search targets the frontend page of
+  the record currently open in the panel (its own URL, the parent page for non-routable
+  types) and falls back to the site's homepage everywhere else. It resolves from the
+  current route (`FrontendLinkResolver`), so any panel resource whose model implements
+  `Contracts\HasFrontendUrl` — site extensions included — gets it without wiring.
 - **Parent-scoped listings** — child-type resources accept `?parent=` (heading
   "Services: Websites", create keeps the parent) and edit pages get generated
   "… verwalten" header actions for child types (blueprint `allowedParentTypes()`).
@@ -686,6 +781,7 @@ model (it never touches existing app code).
 | `blendbyte/filament-title-with-slug` | title + slug/path input with URL preview |
 | `datlechin/filament-menu-builder` | drag-and-drop menus (tenant-scoped by the package) |
 | `defstudio/filament-searchable-input` | the internal-path autocomplete inputs |
+| `blendbyte/filament-resource-lock` | the locks, blocking modal and presence heartbeat behind `HasLocks` |
 | `mansoor/filament-versionable` | the revisions page (side-by-side diff, restore) |
 | `overtrue/laravel-versionable` | the snapshot storage behind `HasVersions` |
 | `awcodes/richer-editor` | RichEditor source-code / id / embed plugins |

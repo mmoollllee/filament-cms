@@ -2,6 +2,7 @@
 
 namespace Mmoollllee\Cms\Models;
 
+use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Datlechin\FilamentMenuBuilder\Models\Menu as BaseMenu;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
@@ -18,6 +19,8 @@ use Mmoollllee\Cms\Support\Preview\PreviewMode;
  */
 class Menu extends BaseMenu
 {
+    use HasLocks;
+
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Cms::tenantModel());

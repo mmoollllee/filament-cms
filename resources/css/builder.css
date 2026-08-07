@@ -500,3 +500,29 @@
 .dark .cms-link-bubble-btn:last-child {
     color: var(--danger-400);
 }
+
+/* ── Editorial buttons in the editor ───────────────────────────────────────
+   <button> markup kept by tiptap-extensions/html-button.js (e.g. the consent
+   banner's .consent-control--open). A real button inside contenteditable
+   grabs the click and focuses itself, so the caret never reaches the label:
+   let clicks fall through to the text instead, and show the element as the
+   markup it is rather than as a native control.
+
+   Scoped to text blocks, NOT to .tiptap as a whole: Filament renders its own
+   <button>s inside the editor content root — the custom block's edit/delete
+   icons and the details toggle — and those must stay clickable. The mark is
+   inline, so editorial buttons only ever sit inside a text block. */
+
+.fi-fo-rich-editor .tiptap :is(p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote) button {
+    pointer-events: none;
+    border: 1px dashed var(--gray-300);
+    border-radius: 0.375rem;
+    background: none;
+    padding: 0.125rem 0.5rem;
+    font: inherit;
+    color: inherit;
+}
+
+.dark .fi-fo-rich-editor .tiptap :is(p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote) button {
+    border-color: var(--gray-600);
+}
