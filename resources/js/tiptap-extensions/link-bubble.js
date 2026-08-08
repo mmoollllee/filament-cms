@@ -1,4 +1,4 @@
-import { Extension, getMarkRange } from '@tiptap/core'
+import { Extension, getMarkRange } from '../tiptap-core.js'
 
 /**
  * WordPress-style link bubble: when the caret/selection lands inside an

@@ -678,9 +678,9 @@ class DatabaseSeeder extends Seeder
                         // + parseHTML() / addAttributes() for the class attribute
                     }
                     PHP)),
-                $this->textChild('The JS half', '<p>The editor-side extension lives in <code>resources/js/tiptap-extensions/</code> and uses <code>@tiptap/core</code>:</p>'.$this->code('php', <<<'PHP'
+                $this->textChild('The JS half', '<p>The editor-side extension lives in <code>resources/js/tiptap-extensions/</code>. It takes TipTap from <code>../tiptap-core.js</code>, which hands out the copy Filament\'s own editor runs on — importing <code>@tiptap/core</code> instead would bundle a second ~156 KB runtime into the file:</p>'.$this->code('php', <<<'PHP'
                     // resources/js/tiptap-extensions/html-span.js
-                    import { Mark, mergeAttributes } from '@tiptap/core'
+                    import { Mark, mergeAttributes } from '../tiptap-core.js'
 
                     export default Mark.create({
                         name: 'htmlSpan',

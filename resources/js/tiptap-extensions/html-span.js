@@ -1,4 +1,4 @@
-import { Mark, mergeAttributes } from '@tiptap/core'
+import { Mark, mergeAttributes } from '../tiptap-core.js'
 
 export default Mark.create({
     name: 'htmlSpan',

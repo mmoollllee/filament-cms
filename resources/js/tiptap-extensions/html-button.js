@@ -1,4 +1,4 @@
-import { Mark, mergeAttributes } from '@tiptap/core'
+import { Mark, mergeAttributes } from '../tiptap-core.js'
 
 /**
  * Keeps <button> elements alive in the editor — the consent banner's

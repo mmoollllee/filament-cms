@@ -341,7 +341,8 @@ package `LinkPickerPlugin` (internal-path autocomplete modal), `HtmlPreservePlug
 **Adding a TipTap extension** (preserve/render more custom markup): implement the PHP
 side (`Tiptap\Core\{Node,Mark}` subclass — see `src/Tiptap/`), the JS side
 (`resources/js/tiptap-extensions/*.js` built with `npm run build`, registered via
-`FilamentAsset` + `loadedOnRequest()`), and expose both through a `RichContentPlugin`.
+`FilamentAsset` + `loadedOnRequest()`, importing TipTap from `../tiptap-core.js`
+rather than `@tiptap/core`), and expose both through a `RichContentPlugin`.
 The demo's "TipTap extensions" HowTo shows a complete walk-through.
 
 `Support\Content\RichText::render($content)` renders stored rich text (renderer +

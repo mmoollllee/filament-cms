@@ -490,7 +490,10 @@ while inline handlers do not.
 **TipTap extensions** — custom editor markup is always a pair: a PHP extension
 (`Mmoollllee\Cms\Tiptap\*`, server-side rendering) and a JS extension
 (`resources/js/tiptap-extensions/*.js`, editor-side), pre-built via esbuild
-(`npm run build`) and published by `php artisan filament:assets`. Shipped:
+(`npm run build`) and published by `php artisan filament:assets`. The JS half
+imports TipTap from `resources/js/tiptap-core.js`, which hands out the runtime
+Filament already loaded (`window.FilamentRichEditor.tiptap.core`) — so each built
+file stays under a kilobyte instead of carrying its own copy. Shipped:
 `HtmlButton`/`HtmlDiv`/`HtmlSpan` (markup preservation), `link-attributes` (adds
 title + wire:navigate to the link mark so the picker's fields survive re-editing),
 `link-bubble` (the link picker's edit/unlink bubble) and `rich-text-surface`

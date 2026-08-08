@@ -16,6 +16,9 @@ const shared = {
 // Every .js file in resources/js/tiptap-extensions/ is an extension entry —
 // drop a new file in and re-run `npm run build`; register the dist file as a
 // Filament asset in CmsServiceProvider (see the TipTap HowTo in the demo).
+// Import TipTap from `../tiptap-core.js`, never from `@tiptap/core`: the latter
+// is not installed, so bundling a second copy of the runtime fails the build
+// instead of quietly adding ~156 KB to the entry.
 const entries = readdirSync('./resources/js/tiptap-extensions').filter((file) => file.endsWith('.js'))
 
 for (const entry of entries) {

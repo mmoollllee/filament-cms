@@ -1,4 +1,4 @@
-import { Extension } from '@tiptap/core'
+import { Extension } from '../tiptap-core.js'
 
 /**
  * Marks the editing surface as rich-text content.

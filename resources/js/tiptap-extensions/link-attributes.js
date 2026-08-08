@@ -1,4 +1,4 @@
-import { Extension } from '@tiptap/core'
+import { Extension } from '../tiptap-core.js'
 
 /**
  * Declares the LinkPicker's extra attributes (title, wire:navigate) on the
