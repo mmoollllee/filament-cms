@@ -55,16 +55,17 @@ it('renders the button on the frontend', function () {
         ->toContain('Cookie-Einstellungen ändern');
 });
 
-it('ships the editor half of every preserved element', function () {
+it('ships every editor-side TipTap extension', function () {
     // Asset ids are matched by string between the plugin and the service
     // provider's FilamentAsset::register() — a mismatch throws only at request
     // time, while the server-side roundtrip tests above stay green.
     expect(app(HtmlPreservePlugin::class)->getTipTapJsExtensions())
-        ->toHaveCount(3)
+        ->toHaveCount(4)
         ->and(implode(' ', app(HtmlPreservePlugin::class)->getTipTapJsExtensions()))
         ->toContain('html-button')
         ->toContain('html-div')
-        ->toContain('html-span');
+        ->toContain('html-span')
+        ->toContain('rich-text-surface');
 });
 
 it('still preserves the div and span markup the plugin was built for', function () {

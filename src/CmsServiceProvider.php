@@ -221,6 +221,7 @@ class CmsServiceProvider extends ServiceProvider
             Js::make('tiptap-html-span', __DIR__.'/../resources/dist/tiptap-extensions/html-span.js')->loadedOnRequest(),
             Js::make('tiptap-link-attributes', __DIR__.'/../resources/dist/tiptap-extensions/link-attributes.js')->loadedOnRequest(),
             Js::make('tiptap-link-bubble', __DIR__.'/../resources/dist/tiptap-extensions/link-bubble.js')->loadedOnRequest(),
+            Js::make('tiptap-rich-text-surface', __DIR__.'/../resources/dist/tiptap-extensions/rich-text-surface.js')->loadedOnRequest(),
             // Precompiled builder UX styles (inactive pill, preview interaction, inline
             // editing) — plain CSS, so every panel works without a custom vite theme.
             Css::make('filament-cms-builder', __DIR__.'/../resources/css/builder.css'),

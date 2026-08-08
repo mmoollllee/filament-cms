@@ -9,6 +9,7 @@
 
 use Filament\Forms\Components\RichEditor;
 use Illuminate\Support\Facades\Blade;
+use Mmoollllee\Cms\Filament\RichEditor\HtmlPreservePlugin;
 use Mmoollllee\Cms\Support\Branding\SiteTokens;
 use Mmoollllee\Cms\Support\Content\RichText;
 use Workbench\App\Models\Tenant;
@@ -87,12 +88,13 @@ it('leaves rendered content markup untouched', function () {
 
 it('marks the editor surface as rich-text content', function () {
     // The app's site CSS styles content through `.richtext`; the block previews
-    // already carry it, so the editing surface has to as well or typography
-    // stops at the preview.
+    // already carry it, so the editing surface has to as well or typography stops
+    // at the preview. The JS extension puts it on the ProseMirror element —
+    // extraInputAttributes() would put it on the panels container instead.
     actingAsMarketingPanelAdmin();
 
-    expect(RichEditor::make('content')->getExtraInputAttributes())
-        ->toHaveKey('class')
-        ->and(RichEditor::make('content')->getExtraInputAttributes()['class'])
-        ->toContain('richtext');
+    expect(implode(' ', app(HtmlPreservePlugin::class)->getTipTapJsExtensions()))
+        ->toContain('rich-text-surface')
+        ->and(RichEditor::make('content')->getExtraInputAttributes())
+        ->not->toHaveKey('class');
 });

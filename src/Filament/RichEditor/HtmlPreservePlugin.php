@@ -19,6 +19,11 @@ use Tiptap\Core\Extension;
  * Registers both PHP (server-side rendering) and JS (client-side editor)
  * TipTap extensions so that custom HTML from seeders or raw editing
  * survives without being stripped.
+ *
+ * Plugins are Filament's only hook for loading TipTap JS, so this one — the
+ * plugin every panel RichEditor gets — also carries the package's editor-only
+ * extension: `rich-text-surface` marks the editing surface as rich-text
+ * content (that JS file explains which element and why).
  */
 class HtmlPreservePlugin implements RichContentPlugin
 {
@@ -44,6 +49,8 @@ class HtmlPreservePlugin implements RichContentPlugin
             FilamentAsset::getScriptSrc('tiptap-html-button', 'mmoollllee/filament-cms'),
             FilamentAsset::getScriptSrc('tiptap-html-div', 'mmoollllee/filament-cms'),
             FilamentAsset::getScriptSrc('tiptap-html-span', 'mmoollllee/filament-cms'),
+            // Editor-only, no PHP half: marks the surface `.richtext`.
+            FilamentAsset::getScriptSrc('tiptap-rich-text-surface', 'mmoollllee/filament-cms'),
         ];
     }
 

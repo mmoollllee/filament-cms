@@ -491,8 +491,11 @@ while inline handlers do not.
 (`Mmoollllee\Cms\Tiptap\*`, server-side rendering) and a JS extension
 (`resources/js/tiptap-extensions/*.js`, editor-side), pre-built via esbuild
 (`npm run build`) and published by `php artisan filament:assets`. Shipped:
-`HtmlButton`/`HtmlDiv`/`HtmlSpan` (markup preservation) and `link-attributes` (adds
-title + wire:navigate to the link mark so the picker's fields survive re-editing).
+`HtmlButton`/`HtmlDiv`/`HtmlSpan` (markup preservation), `link-attributes` (adds
+title + wire:navigate to the link mark so the picker's fields survive re-editing),
+`link-bubble` (the link picker's edit/unlink bubble) and `rich-text-surface`
+(editor-only, no PHP half: puts `.richtext` on the ProseMirror element so the app's
+content typography reaches the editing surface, not just the previews).
 The demo's "TipTap extensions" HowTo walks through adding your own.
 
 **Rendering** — `RichText::render($content)` renders stored rich text (TipTap JSON *or*

@@ -277,7 +277,10 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                 LinkPickerPlugin::make(),
                 EmbedPlugin::make(),
                 // Keeps class-carrying <div>/<span> HTML intact through TipTap's
-                // HTML→JSON→HTML roundtrip (the blocks' HTML tab depends on it).
+                // HTML→JSON→HTML roundtrip (the blocks' HTML tab depends on it), and
+                // marks the editing surface `.richtext` from JS — never re-add that
+                // class with extraInputAttributes(): it lands on the container that
+                // also holds the side panels, and rearranges the editor UI.
                 HtmlPreservePlugin::make(),
             ];
 
@@ -291,12 +294,6 @@ abstract class BasePanelProvider extends FilamentPanelProvider
 
             $component
                 ->plugins($plugins)
-                // The editing surface IS rich text, so it carries the class the
-                // frontend and the block previews put around rendered content
-                // (`<div class="richtext">`). That is the hook an app's site CSS
-                // styles content with — without it, typography rules stop at the
-                // preview and the editor shows Filament's defaults instead.
-                ->extraInputAttributes(['class' => 'richtext'], merge: true)
                 ->customBlocks([
                     ButtonGroupBlock::class,
                     NavigationCardGroupBlock::class,

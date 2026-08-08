@@ -536,11 +536,33 @@ components and the safelist — so previews render like the website:
 stylesheet, or a hardcoded hex in a component rule, is exactly how a panel ends up
 showing another project's colors.
 
-**6. Style the shared component classes, not an app-specific wrapper.** The site body
-carries `site`; blocks and rich text emit `.btn`, `.card`, `.prose`, the layout-preset
-classes. Rules must hang off *those*. CSS scoped behind a project wrapper
-(`.myproject .btn { … }`) never applies inside the panel, which has no such wrapper —
-the previews then fall back to whatever the shared component CSS says.
+**6. Style the shared component classes, not an app-specific wrapper.** Blocks and rich
+text emit `.btn`, `.card`, `.richtext`, the layout-preset classes. Rules must hang off
+*those*. CSS scoped behind a project wrapper (`.myproject .btn { … }`) never applies
+inside the panel, which has no such wrapper — the previews then fall back to whatever the
+shared component CSS says. Element-level typography still needs a scope, or it would
+restyle the whole admin UI: use `:is(<your shell class>, .richtext) h2`, which covers the
+site and every rich-text surface (the RichEditor content carries `richtext`, so do the
+block previews).
+
+**Two traps this cost us a production frontend to learn:**
+
+- **Never match shared class names with a substring selector.** `[class*="btn-"]` looks
+  convenient for button variants — it also matches Filament's own `fi-btn-color-primary`
+  and `fi-btn-size-md`, so the moment the brand layer reaches the panel, *every* admin
+  button turns into a site button. List the variants, or rely on the base class the markup
+  always carries (`btn btn-primary`).
+- **Do not adopt a wrapper class the app does not already carry.** The package shell
+  (`<x-site.layout>`) emits `site` and its own CSS is written for it — but an app running
+  its own shell has its own class, and renaming that body class to `site` to "follow the
+  convention" silently activates every `.site …` rule in the app's shared layer, including
+  ones written for a different markup: `.site img, .site figure { max-height: 100%;
+  object-fit: contain }` resizes or collapses images. The shell class belongs to whoever
+  wrote the shell; only the component classes are shared.
+
+**7. Verify with geometry, not just colours.** When you re-scope a stylesheet, diff the
+*computed* styles of both states — and include `width/height/max-height/object-fit` plus
+`getBoundingClientRect()`. A colour-only comparison passes while images silently collapse.
 
 Checklist for a new (or migrated) project: token file with the real brand · panel theme
 imports the same site CSS · shell emits `SiteTokens::inlineStyle()` · DB classes
