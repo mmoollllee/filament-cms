@@ -40,7 +40,16 @@
          session recording is gated separately. --}}
     <x-site.analytics-head :tenant="$tenant" />
 </head>
-<body class="site min-h-screen antialiased text-white" style="{{ $siteBrandingStyle }}">
+{{-- data-site: the hook a site-specific CSS rule scopes itself with. It sits on
+     <body> rather than on the page shell because the floating header and its
+     flyout render outside that shell — and every tenant of an install is served
+     by the same CSS bundle, so a rule written for one site reaches all of them
+     unless it says which site it belongs to. --}}
+<body
+    class="site min-h-screen antialiased text-white"
+    data-site="{{ $tenant->site_key }}"
+    style="{{ $siteBrandingStyle }}"
+>
     {{ $slot }}
 
     @include('cms::partials.preview-badge')

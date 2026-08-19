@@ -42,6 +42,18 @@ Route::middleware(ResolveTenantFromHost::class)->group(function () {
 
 **Tenant visibility** — `TenantVisibility` (Public / Members / Archived) gates the whole
 frontend via `EnsureTenantIsVisible`; members-only tenants require a logged-in tenant user.
+A site can therefore be finished under a staging domain with the customer and go public by
+flipping one field.
+
+**Moving a tenant to another domain** — the tenant settings page carries the
+`primary_domain` field, superadmins only: host resolution answers with the first tenant
+matching the request host, so this is the field that decides *which site serves a domain*,
+a strictly bigger power than editing one's own site (`canManageDomain()` to widen or
+narrow). A pasted address-bar value is reduced to the bare host, the forever-cached lookup
+lets go of the old domain, and the panel — itself domain-scoped — redirects to the new one
+instead of stranding the editor on a URL that no longer resolves. Installs with
+`mmoollllee/filami` re-point the tenant's Umami website in the same save
+(`syncOn: ['name', 'primary_domain']`).
 
 **Branding inheritance** — a tenant with empty `brand_name`, `brand_claim`,
 `primary_color`, SEO defaults, contact fields or social links inherits them from the
@@ -541,6 +553,22 @@ Shortcodes::extendDefaultsUsing(function (): void {
 
 ```php
 Menu::linksForLocation('header', $tenant); // [['path' => '/features', 'label' => 'Features', …], …]
+```
+
+Each entry carries the item's own presentation metadata — `target`, `rel`, `classes`,
+`icon` — alongside `path`/`href`/`label`, so a theme styles an entry from what the editor
+set instead of inferring it. (Inferring is the trap: "the host differs, so it must be the
+cross-site call to action" quietly claims every external link the site adds later.)
+
+`icon` is a free-text field in the menu builder, so render it with `<x-site.menu-icon>`,
+which drops an unresolvable name instead of throwing `SvgNotFound` on every page holding
+the menu:
+
+```blade
+<a href="{{ $item['href'] }}" class="flyout-btn {{ $item['classes'] }}" target="{{ $item['target'] }}">
+    <x-site.menu-icon :name="$item['icon']" class="size-4" />
+    <span>{{ $item['label'] }}</span>
+</a>
 ```
 
 Cache invalidation covers menu, item and location changes (`ContentCacheObserver`).

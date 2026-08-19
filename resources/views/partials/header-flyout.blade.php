@@ -1,3 +1,9 @@
+{{-- Brand-neutral fallback. Menu entries are rendered from their own
+     presentation metadata (target/rel/classes/icon, see
+     Menu::linksForLocation) so an editor's choices take effect without the
+     consuming app having to fork this view. Icons go through
+     <x-site.menu-icon>, which renders nothing for a name no icon set knows —
+     this package ships no icon set of its own. --}}
 <div
     class="flyout h-screen transition-all"
     x-show="menuOpen"
@@ -7,12 +13,31 @@
         <div class="flyout-heading sr-only">{{ __('cms::frontend.main_menu') }}</div>
         <div class="flyout-list flex flex-col items-center gap-4 text-center">
             @foreach ($sectionLinks as $item)
+                @php
+                    $target = $item['target'] ?? '_self';
+
+                    // noopener is merged in, never replaced: `rel` is a free-text
+                    // field an editor can fill with anything, and a link leaving
+                    // the site in a new tab must not hand over window.opener.
+                    $rel = collect(preg_split('/\s+/', (string) ($item['rel'] ?? ''), -1, PREG_SPLIT_NO_EMPTY))
+                        ->push('noopener')
+                        ->unique()
+                        ->implode(' ');
+                @endphp
+
                 <a
                     href="{{ $item['href'] }}"
-                    class="flyout-btn"
+                    class="{{ trim('flyout-btn '.($item['classes'] ?? '')) }}"
+                    @if ($target !== '_self')
+                        target="{{ $target }}"
+                        rel="{{ $rel }}"
+                    @endif
                     x-bind:class="{ 'is-active': currentNavigationRootPath() === {{ \Illuminate\Support\Js::from($item['path']) }} }"
                     x-bind:aria-current="currentNavigationRootPath() === {{ \Illuminate\Support\Js::from($item['path']) }} ? 'page' : 'false'"
                 >
+                    @if (filled($item['icon'] ?? null))
+                        <x-site.menu-icon :name="$item['icon']" class="size-4" />
+                    @endif
                     {{ $item['label'] }}
                 </a>
             @endforeach
@@ -33,7 +58,7 @@
                         rel="noreferrer"
                     >
                         @if (filled($socialLink['icon']))
-                            <x-dynamic-component :component="'icon-'.$socialLink['icon']" class="size-4" />
+                            <x-site.menu-icon :name="'icon-'.$socialLink['icon']" class="size-4" />
                         @endif
                         <span>{{ $socialLink['label'] }}</span>
                     </a>

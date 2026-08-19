@@ -9,16 +9,6 @@ use Workbench\App\Models\Tenant;
  * Menu model events — still busts that cache. The testbench's array cache persists
  * within a single test, so a stale read here means the invalidation is missing.
  */
-
-function makeHeaderMenu(Tenant $tenant): Menu
-{
-    $menu = Menu::create(['name' => 'Header', 'tenant_id' => $tenant->id, 'is_visible' => true]);
-    $menu->locations()->create(['location' => 'header', 'tenant_id' => $tenant->id]);
-    $menu->menuItems()->create(['title' => 'Start', 'url' => '/', 'order' => 0]);
-
-    return $menu;
-}
-
 it('reflects an added menu item without a stale cache', function () {
     $tenant = Tenant::factory()->create();
     $menu = makeHeaderMenu($tenant);

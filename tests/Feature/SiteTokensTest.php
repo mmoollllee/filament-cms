@@ -67,7 +67,25 @@ it('writes the tokens onto the frontend body', function () {
 
     $html = Blade::render('<x-site.layout :tenant="$tenant">content</x-site.layout>', ['tenant' => $tenant]);
 
-    expect($html)->toContain('<body class="site min-h-screen antialiased text-white" style="--color-primary: #0075a7;');
+    // Matched against the body TAG rather than one exact attribute string: what
+    // this test is about is that the tokens reach the frontend body, not the
+    // order or line-wrapping of the attributes around them.
+    expect($html)->toMatch('/<body\b[^>]*\bstyle="--color-primary: #0075a7;/')
+        // `site` stays pinned: every custom property in site/base.css hangs off
+        // `.site`, so losing the class leaves the whole frontend unstyled while
+        // the token assertion above would still pass.
+        ->toMatch('/<body\b[^>]*\bclass="[^"]*\bsite\b/');
+});
+
+it('marks the frontend body with the tenant site key', function () {
+    $tenant = Tenant::factory()->create(['site_key' => 'acme']);
+
+    $html = Blade::render('<x-site.layout :tenant="$tenant">content</x-site.layout>', ['tenant' => $tenant]);
+
+    // The hook a site-specific CSS rule scopes itself with. On <body>, because
+    // the floating header and its flyout render outside the page shell and every
+    // tenant of an install is served by the same bundle.
+    expect($html)->toMatch('/<body\b[^>]*\bdata-site="acme"/');
 });
 
 it('writes the same tokens into the panel head', function () {

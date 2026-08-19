@@ -16,16 +16,20 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\HtmlString;
+use Illuminate\Validation\Rules\Unique;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Concerns\Tenant\HasSpamQuestions;
 use Mmoollllee\Cms\Enums\SocialNetwork;
 use Mmoollllee\Cms\Filament\Forms\MediaField;
+use Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost;
 use Mmoollllee\Cms\Policies\TenantPolicy;
 use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
+use Mmoollllee\Cms\Support\Tenancy\TenantDomain;
 use Mmoollllee\Filami\Filami;
 
 /**
@@ -48,6 +52,11 @@ class EditTenantProfilePage extends EditTenantProfile
     {
         return [
             'name',
+            // Listed only for users who may change it. handleRecordUpdate()
+            // intersects the submitted data with this list, so the omission IS
+            // the server-side guard — a crafted request cannot write a column
+            // that never reaches the intersection.
+            ...($this->canManageDomain() ? ['primary_domain'] : []),
             'brand_name',
             'brand_claim',
             'logo_path',
@@ -80,6 +89,37 @@ class EditTenantProfilePage extends EditTenantProfile
     protected function usesSpamQuestions(): bool
     {
         return in_array(HasSpamQuestions::class, class_uses_recursive(Cms::tenantModel()), true);
+    }
+
+    /**
+     * Who may repoint a tenant at another domain.
+     *
+     * Superadmins only, and deliberately not part of the tenant policy: host
+     * resolution answers with the first tenant whose primary_domain equals the
+     * request host, so this one field decides which site serves a domain. In
+     * the hands of a tenant admin it is a way to take over a sibling tenant's
+     * traffic — a strictly bigger power than editing one's own site.
+     *
+     * Override in an app subclass to widen or narrow it.
+     */
+    protected function canManageDomain(): bool
+    {
+        // Filament::auth(), not auth(): a panel may run its own guard, and
+        // reading the default one there hides the field from real superadmins.
+        $user = Filament::auth()->user();
+        $userClass = Cms::userModel();
+
+        return $user instanceof $userClass && $user->isSuperadmin();
+    }
+
+    /**
+     * Reduce an entered domain to the bare host {@see ResolveTenantFromHost}
+     * compares against. Thin wrapper over the shared rule so an app subclass
+     * (and the tests) still have a hook here.
+     */
+    public static function normalizeDomain(?string $value): ?string
+    {
+        return TenantDomain::normalize($value);
     }
 
     public static function getLabel(): string
@@ -189,6 +229,36 @@ class EditTenantProfilePage extends EditTenantProfile
                                             ->placeholder(fn (): string => $this->resolvedPrimaryColorPlaceholder())
                                             ->helperText(fn (Get $get): HtmlString => $this->primaryColorHelperText(
                                                 configuredValue: $get('primary_color'),
+                                            )),
+                                    ]),
+                                Section::make('Domain')
+                                    ->description('Unter welcher Adresse diese Seite ausgeliefert wird.')
+                                    ->visible(fn (): bool => $this->canManageDomain())
+                                    ->schema([
+                                        TextInput::make('primary_domain')
+                                            ->label('Domain')
+                                            ->rules(TenantDomain::rules())
+                                            // Normalized on blur rather than only on save, so the
+                                            // value the uniqueness rule checks is the value that
+                                            // will be stored — and the editor sees the shortening
+                                            // happen instead of discovering it afterwards. Falls
+                                            // back to the raw input when nothing host-shaped is
+                                            // left, so a paste this cannot read is reported by
+                                            // validation instead of being wiped from the field.
+                                            ->live(onBlur: true)
+                                            ->afterStateUpdated(fn (?string $state, Set $set): mixed => $set(
+                                                'primary_domain',
+                                                static::normalizeDomain($state) ?? $state,
+                                            ))
+                                            ->unique(
+                                                table: fn (): string => (new (Cms::tenantModel()))->getTable(),
+                                                column: 'primary_domain',
+                                                modifyRuleUsing: fn (Unique $rule): Unique => $rule->ignore($this->tenant),
+                                            )
+                                            ->helperText(new HtmlString(
+                                                'Nur der Host — ohne <code>https://</code> und ohne Pfad; eine eingefügte URL wird beim Verlassen des Felds gekürzt. '
+                                                .'Nach dem Speichern wird auf die neue Domain umgeleitet. Liegt sie außerhalb der Session-Domain, ist dort eine erneute Anmeldung nötig. '
+                                                .'DNS und vHost müssen bereits auf diese Installation zeigen.'
                                             )),
                                     ]),
                             ]),
@@ -491,6 +561,30 @@ class EditTenantProfilePage extends EditTenantProfile
         $record->update(array_intersect_key($data, array_flip($this->tenantFields())));
 
         return $record->refresh();
+    }
+
+    /**
+     * Follow the tenant when its domain moves.
+     *
+     * The panel is domain-scoped (`tenantDomain('{tenant:primary_domain}')`), so
+     * saving a new domain takes this page's own URL out from under it: the next
+     * request to the old host resolves no tenant and 404s — with the edit already
+     * committed, which is the worst moment to lose the panel.
+     *
+     * Triggered by the domain actually changing, not by the request host
+     * differing from it: an install reachable under an alias would otherwise
+     * bounce the editor to the canonical host on every unrelated save.
+     *
+     * refresh() in handleRecordUpdate() re-reads the row but does NOT reset the
+     * dirty state — it calls setRawAttributes() + syncOriginal(), while
+     * `$changes` is only ever written by syncChanges() — so wasChanged() still
+     * answers for this save.
+     */
+    protected function getRedirectUrl(): ?string
+    {
+        return $this->tenant?->wasChanged('primary_domain')
+            ? static::getUrl(tenant: $this->tenant)
+            : null;
     }
 
     protected function tenantUploadDirectory(string $segment): string

@@ -42,7 +42,18 @@ class Menu extends BaseMenu
     /**
      * Get menu items as navigation link arrays for a given location and tenant.
      *
-     * @return array<int, array{path: string, href: string, label: string}>
+     * Every entry carries the item's own presentation metadata alongside the
+     * resolved URL. Without it a consumer can only infer how an entry wants to
+     * be rendered, and the obvious inference — "the host differs, so it must be
+     * the cross-site call to action" — silently claims every future external
+     * link a site adds. Editors set target/rel/classes/icon per item in the
+     * menu builder; this is what carries their choice to the frontend.
+     *
+     * `icon` is a free-text field there, so it is passed through unvalidated:
+     * render it via <x-site.menu-icon>, which drops an unknown name
+     * instead of throwing SvgNotFound on every page holding the menu.
+     *
+     * @return array<int, array{path: string, href: string, label: string, target: ?string, rel: ?string, classes: ?string, icon: ?string}>
      */
     public static function linksForLocation(string $location, Tenant $tenant): array
     {
@@ -69,6 +80,14 @@ class Menu extends BaseMenu
                         'path' => PayloadLink::safeUrl($item->url) ?? '/',
                         'href' => PayloadLink::safeUrl($item->url) ?? '/',
                         'label' => $item->title,
+                        // Presentation metadata, editor-owned. `target` is cast to
+                        // the menu-builder's LinkTarget enum and carries that
+                        // plugin's column default ('_self') when the editor set
+                        // none — passed through rather than second-guessed here.
+                        'target' => $item->target?->value,
+                        'rel' => $item->rel,
+                        'classes' => $item->classes,
+                        'icon' => $item->icon,
                     ])
                     ->all();
             }),

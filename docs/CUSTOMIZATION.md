@@ -531,7 +531,12 @@ components and the safelist — so previews render like the website:
 
 **4. Database classes go in the safelist.** Layout-preset classes live in
 `layout_presets.classes`, where Tailwind cannot scan them: list them in
-`site/_dynamic-classes.css`, imported by BOTH bundles.
+`site/_dynamic-classes.css`, imported by BOTH bundles. `menu_items.classes` is
+the second such source — the menu builder offers it as free text and its own
+placeholder suggests utilities, so either safelist what editors are meant to use
+there or keep the field to theme classes the stylesheet defines by hand
+(`flyout-btn--cta` and friends). A utility typed into it and never scanned
+produces a class attribute that does nothing, in every environment, silently.
 
 **5. No brand values outside the token file.** A second `--color-primary` in another
 stylesheet, or a hardcoded hex in a component rule, is exactly how a panel ends up
@@ -565,9 +570,25 @@ block previews).
 *computed* styles of both states — and include `width/height/max-height/object-fit` plus
 `getBoundingClientRect()`. A colour-only comparison passes while images silently collapse.
 
+**8. One bundle serves every tenant — scope a site-specific rule with `data-site`.** Both
+sites of an install load the same `app.css`, so a rule written while looking at one of them
+reaches all of them. `<x-site.layout>` puts the tenant's `site_key` on `<body>` for exactly
+this, and it is on the body rather than the page shell because the floating header and its
+flyout render outside that shell:
+
+```css
+/* the greyed-out active entry is this site's design decision, not a fix */
+[data-site='muench-tiefbau'] .flyout-btn.is-active { … }
+```
+
+Reach for it only for *design* differences. A fix belongs in the shared layer, and every
+rule that gets a scope it did not need is a fix the other sites silently stop receiving —
+which is the same mistake as the wrapper-scoped rules in point 6, one level up.
+
 Checklist for a new (or migrated) project: token file with the real brand · panel theme
 imports the same site CSS · shell emits `SiteTokens::inlineStyle()` · DB classes
-safelisted · no brand value declared twice · no wrapper-scoped component rules.
+safelisted · no brand value declared twice · no wrapper-scoped component rules ·
+site-specific rules scoped with `data-site`.
 
 ### Views
 
@@ -646,7 +667,11 @@ plus its `resources/views/frontend/onepager.blade.php` and
 View contract of the fallback onepager shell (`frontend/onepager.blade.php`):
 sections carry `.onepager-section` +
 `data-path/-loaded/-title/-label/-navigation[/-anchor]`, the root carries
-`data-content-endpoint`. The fallback floating header is **self-contained** (inline
+`data-content-endpoint`, and `<body>` carries `class="site"` plus
+`data-site="{site_key}"` — an app that publishes its own shell has to keep both:
+without the class every `--site-*` custom property is undefined, and without the
+attribute every `[data-site='…']` rule in the shared bundle stops matching. Both
+fail silently and visually rather than with an error. The fallback floating header is **self-contained** (inline
 SVG icons, tenant logo via `resolvedMainLogoUrl()` — no app blade-icon sets needed)
 and binds only core members plus `[data-role="header-indicator"]` /
 `nav[data-role="header-breadcrumbs"]` / `.logo-link` / `.nav-menu-btn` as styling and

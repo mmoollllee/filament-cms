@@ -103,8 +103,11 @@ it('resolves a linked menu item url from the content, following renames', functi
     ]);
 
     expect($item->fresh()->url)->toBe('/ueber-uns')
-        ->and(Menu::linksForLocation('header', $this->tenant))
-        ->toBe([['path' => '/ueber-uns', 'href' => '/ueber-uns', 'label' => 'Über uns']]);
+        ->and(Menu::linksForLocation('header', $this->tenant))->toHaveCount(1)
+        // Subset match: the entry also carries the item's presentation metadata
+        // (see MenuLinkMetadataTest), which is not what this test is about.
+        ->and(Menu::linksForLocation('header', $this->tenant)[0])
+        ->toMatchArray(['path' => '/ueber-uns', 'href' => '/ueber-uns', 'label' => 'Über uns']);
 
     // Moving the page (path is the source of truth) must not leave a stale link.
     $page->update(['title' => 'Unternehmen', 'path' => '/unternehmen']);

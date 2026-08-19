@@ -69,6 +69,28 @@ function tipTapEditorWithPlugins(array $plugins): \Tiptap\Editor
 }
 
 /**
+ * A tenant's `header` menu holding a single item.
+ *
+ * Lives here rather than in a test file because Pest loads every test into one
+ * process: a second file declaring its own copy is a fatal redeclare.
+ *
+ * @param  array{title?: string, url?: string, target?: string, rel?: string, classes?: string, icon?: string}  $itemAttributes
+ */
+function makeHeaderMenu(Tenant $tenant, array $itemAttributes = []): \Mmoollllee\Cms\Models\Menu
+{
+    $menu = \Mmoollllee\Cms\Models\Menu::create([
+        'name' => 'Header',
+        'tenant_id' => $tenant->id,
+        'is_visible' => true,
+    ]);
+
+    $menu->locations()->create(['location' => 'header', 'tenant_id' => $tenant->id]);
+    $menu->menuItems()->create(['title' => 'Start', 'url' => '/', 'order' => 0, ...$itemAttributes]);
+
+    return $menu;
+}
+
+/**
  * Shared panel-test bootstrap: seeds the demo, selects the panel, signs in the
  * seeded superadmin and primes the marketing tenant. Returns that tenant.
  */

@@ -5,10 +5,13 @@ namespace Mmoollllee\Cms\Filament\Pages\Tenancy;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Pages\Tenancy\RegisterTenant;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\HtmlString;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Enums\TenantVisibility;
+use Mmoollllee\Cms\Support\Tenancy\TenantDomain;
 
 class RegisterTenantPage extends RegisterTenant
 {
@@ -33,8 +36,21 @@ class RegisterTenantPage extends RegisterTenant
                     ->alphaDash(),
                 TextInput::make('primary_domain')
                     ->label('Primäre Domain')
-                    ->required()
-                    ->maxLength(255),
+                    // Same shape and the same uniqueness the edit page enforces:
+                    // this is where a tenant is BORN, so an unnormalized paste
+                    // here produces a site that answers no request at all, and a
+                    // duplicate would surface as the DB unique index blowing up
+                    // instead of as a form error.
+                    ->rules(TenantDomain::rules())
+                    ->unique(table: fn (): string => (new (Cms::tenantModel()))->getTable(), column: 'primary_domain')
+                    ->live(onBlur: true)
+                    ->afterStateUpdated(fn (?string $state, Set $set): mixed => $set(
+                        'primary_domain',
+                        TenantDomain::normalize($state) ?? $state,
+                    ))
+                    ->helperText(new HtmlString(
+                        'Nur der Host — ohne <code>https://</code> und ohne Pfad; eine eingefügte URL wird beim Verlassen des Felds gekürzt.'
+                    )),
                 Select::make('visibility')
                     ->label('Sichtbarkeit')
                     ->required()
