@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Livewire\Livewire;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Symfony\Component\HttpFoundation\Response;
@@ -29,6 +30,22 @@ class EnsureTenantIsVisible
         $panelPath = Cms::panelPath();
 
         if ($request->is($panelPath) || $request->is($panelPath.'/*')) {
+            return $next($request);
+        }
+
+        // Livewire posts every interaction to its own endpoint, which sits
+        // outside the panel path — including the panel login, the one request
+        // that cannot already be authenticated. Gating it leaves a members-only
+        // tenant with a panel nobody can log into: the login screen renders (it
+        // is under the panel path) and the button then answers 403. That is the
+        // state a site is in for the whole time it is being finished with a
+        // customer, so the gate has to let this endpoint through.
+        //
+        // It does not open the gated frontend. Livewire only acts on a request
+        // carrying a valid checksummed snapshot, and the only way for a guest to
+        // obtain one is to render the page it came from — which this gate still
+        // blocks.
+        if ($request->is(ltrim(Livewire::getUpdateUri(), '/'))) {
             return $next($request);
         }
 
