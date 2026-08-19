@@ -383,3 +383,84 @@ editing, inactive-block UI, clipboard paste — no extension points exist for th
 with re-vendoring instructions whenever a Filament update touches them — see
 [`docs/CUSTOMIZATION.md` §11](docs/CUSTOMIZATION.md#11-vendored-filament-view-overrides).
 Everything else extends supported APIs.
+
+
+## Silent failure modes
+
+Four things in this engine fail without an error message: the content saves, the
+panel looks fine, and the site is simply wrong. They come up often enough to be
+worth naming.
+
+### Root blocks other than `section` disappear from the builder
+
+`Cms::rootBlockAllowlist()` defaults to `['section']`. A `text` or `media` block
+stored at the top level of `contents.blocks` still **renders on the site** —
+`<x-site.content-blocks>` iterates whatever it finds — but the page builder does
+not list it, so an editor can neither see nor change it, and saving the page drops
+it.
+
+Either wrap top-level content in a section block (what the builder expects), or
+widen the allowlist for that site:
+
+```php
+Cms::allowRootBlocks('my-site', ['section', 'text', 'media']);
+```
+
+### The parent select offers sections that cannot work
+
+`TenantScopedContentResource::getParentOptions()` returns every content of an
+allowed parent type. On an onepager that is every section, while usually exactly
+one of them renders the type in question — its template is the one calling
+`visibleChildren()`. Choosing any other saves cleanly, shows the record as
+published, and the site never displays it. `allowedParentTypes` is not enforced on
+save either.
+
+Narrow the options in the resource so the engine can preselect — and, where only
+one section qualifies, drop the select entirely:
+
+```php
+protected static function getParentOptions(?Tenant $tenant, ?string $contentType, ?Model $record = null): array
+{
+    $options = parent::getParentOptions($tenant, $contentType, $record);
+
+    $ids = Cms::contentModel()::query()
+        ->whereBelongsTo($tenant)
+        ->where('template', 'content.section-downloads')
+        ->pluck('id')
+        ->all();
+
+    // Fall back to the full list, or a tenant without that section yet cannot
+    // create records at all.
+    return array_intersect_key($options, array_flip($ids)) ?: $options;
+}
+```
+
+### Legacy file paths in media fields erase themselves on save
+
+`MediaField::image()/media()/document()` return a `MediaPicker` whenever the media
+library is enabled, and the picker can only hydrate a library item id. Given a
+plain storage path — seeded content, or data from before the library — it starts
+empty, and saving writes that emptiness back over the path. The frontend hides the
+problem until then, because `MediaUrlResolver::url()` maps legacy paths to
+`/storage/…` perfectly well.
+
+Migrate the references once, before anyone opens the panel:
+
+```bash
+php artisan cms:media:import --sync
+php artisan cms:clear-tenant-cache
+```
+
+### `content`-scope layout presets never reach the frontend
+
+`LayoutPresetResolver::resolve()` reads from a request cache that only
+`preload()` fills, and all three frontend controllers call it with
+`$content->blocks`. The `layout_preset_ids` on the content record itself are never
+read, so a `content`-scope preset resolves to an empty string however correctly it
+is configured.
+
+Style a section wrapper from its own markup instead:
+
+```css
+.onepager-section:has(> .my-section) { padding: 0 }
+```
