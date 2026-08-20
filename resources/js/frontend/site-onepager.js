@@ -82,6 +82,7 @@ export default (rootElement) => ({
         });
 
         this.sections.forEach((section) => this.loadingObserver.observe(section));
+        this.anchorSectionsOnLoad();
         this.prefetchAdjacent(this.activePath);
         this.updateDocumentTitle(this.titleForPath(this.activePath));
 
@@ -99,6 +100,74 @@ export default (rootElement) => ({
             await this.handleHashNavigation(window.location.hash, this.activePath, 'auto');
             this.trackSectionTop();
         });
+    },
+    /**
+     * Hold the reading position when a section ABOVE the active one changes height.
+     *
+     * A deep link (`/unternehmen`) renders that one section server-side and
+     * leaves the rest as viewport-tall placeholders, so the opening scroll lands
+     * on it before its predecessors hold anything. Every one of them that loads
+     * afterwards grows past its placeholder and pushes the section the visitor
+     * is reading down the page — for a section that ends up several viewports
+     * tall (a pinned slider claiming a scroll runway, say) by more than a
+     * screen, which drops the reader inside a section they never asked for. What
+     * they see is the header indicator naming the deep-linked section and then
+     * silently changing to another one.
+     *
+     * Browsers call this scroll anchoring and Chromium does it natively — but
+     * WebKit implements none of it, and even where it exists it is suppressed
+     * for the very layout changes that matter here (a computed `position`
+     * change, which is exactly what a slider pinning itself does).
+     *
+     * So the correction is measured, not computed: how far the active section
+     * ACTUALLY moved from where it was last seen (`lastSectionTop`), which is
+     * the same residual the resize handler corrects. Measuring the residual
+     * rather than summing the height changes is what makes it safe to run
+     * alongside the browser's own anchoring and alongside `handleResizeFrame()`
+     * — where either of those already did the work, the residual is zero and
+     * this does nothing. Summing height deltas would instead correct a second
+     * time, and would read a viewport resize (every section changes height at
+     * once) as drift.
+     *
+     * Sections at or after the active one are ignored: growth below the reading
+     * position moves nothing above it, and the active section resizing under the
+     * reader is the pinned slider doing its job, not drift.
+     */
+    anchorSectionsOnLoad() {
+        if (typeof ResizeObserver === 'undefined') {
+            return;
+        }
+
+        this.heightObserver = new ResizeObserver((entries) => {
+            const active = this.sectionMap.get(this.activePath);
+            const activeIndex = this.sections.indexOf(active);
+
+            // No recorded position yet (the opening scroll has not run), or
+            // nothing above the active section to push it around.
+            if (!active || activeIndex <= 0 || this.lastSectionTop === null) {
+                return;
+            }
+
+            if (! entries.some((entry) => this.sections.indexOf(entry.target) < activeIndex)) {
+                return;
+            }
+
+            const drift = active.getBoundingClientRect().top - this.lastSectionTop;
+
+            // Sub-pixel movement is layout noise, not a moved reading position.
+            if (Math.abs(drift) < 1) {
+                return;
+            }
+
+            window.scrollBy(0, drift);
+            this.trackSectionTop();
+        });
+
+        this.sections.forEach((section) => this.heightObserver.observe(section));
+    },
+    destroy() {
+        this.loadingObserver?.disconnect();
+        this.heightObserver?.disconnect();
     },
     sectionNavigationContext(path) {
         return this.sectionNavigationContexts.get(path) ?? null;
