@@ -9,6 +9,7 @@ use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
 use Mmoollllee\Cms\Support\Content\Blocks\Contracts\BuilderBlock;
 use Mmoollllee\Cms\Support\Content\Blocks\listing\ListingBlock;
 use Mmoollllee\Cms\Support\Content\Blocks\media\MediaBlock;
+use Mmoollllee\Cms\Support\Content\Blocks\note\NoteBlock;
 use Mmoollllee\Cms\Support\Content\Blocks\section\SectionBlock;
 use Mmoollllee\Cms\Support\Content\Blocks\text\TextBlock;
 use RuntimeException;
@@ -271,6 +272,9 @@ class Cms
             MediaBlock::class,
             TextBlock::class,
             ListingBlock::class,
+            // Editor-only, never rendered — last in the picker because it is a
+            // note about the page rather than a part of it.
+            NoteBlock::class,
         ];
     }
 
@@ -526,6 +530,7 @@ class Cms
         static::$mediaItemModel = null;
         static::$mediaDisk = null;
         static::$mediaFolderNames = null;
+        Support\Content\Blocks\BuilderBlockRegistry::flushRenderCache();
         Support\Analytics\Umami::flush();
         Support\Media\MediaLibrary::flush();
         Support\Media\MediaUrlResolver::flush();

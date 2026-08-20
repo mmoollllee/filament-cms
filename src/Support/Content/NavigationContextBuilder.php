@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 
 /**
  * Builds the navigation context array consumed by Alpine.js navigation components.
@@ -247,6 +248,13 @@ class NavigationContextBuilder
         $blockAnchors = [];
 
         foreach (array_values($content->blocks ?? []) as $index => $block) {
+            // An editor-only block (no frontend view — see NoteBlock) carries a
+            // title for the builder row, not for the page. Anchoring on it would
+            // put an entry in the jump navigation that scrolls nowhere.
+            if (! BuilderBlockRegistry::rendersInFrontend(data_get($block, 'type'))) {
+                continue;
+            }
+
             $title = trim((string) data_get($block, 'data.title'));
 
             if (blank($title)) {

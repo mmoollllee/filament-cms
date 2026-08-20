@@ -353,12 +353,20 @@
                                 @else
                                     {{-- cms:start (2) inline preview editing — replaces vendor's
                                          edit-overlay (which mounts the edit modal): clicking the
-                                         preview swaps it for the item's schema in place. .prevent
-                                         keeps links inside the static preview from navigating;
-                                         styling lives in resources/css/builder.css. --}}
+                                         preview swaps it for the item's schema in place.
+                                         preventDefault() is what keeps links inside the static
+                                         preview from navigating — skipped for a subtree that
+                                         declares itself interactive (.fi-cms-preview-interactive,
+                                         used by the note block), where the link IS the point and
+                                         builder.css lets the pointer reach it.
+                                         Styling lives in resources/css/builder.css. --}}
                                     <div
                                         x-show="! isEditing"
-                                        x-on:click.prevent.stop="isEditing = true"
+                                        x-on:click.stop="
+                                            if ($event.target.closest('.fi-cms-preview-interactive a, .fi-cms-preview-interactive button')) return;
+                                            $event.preventDefault();
+                                            isEditing = true;
+                                        "
                                         class="fi-fo-builder-item-preview"
                                     >
                                         {{ $item->getParentComponent()->renderPreview($item->getRawState()) }}

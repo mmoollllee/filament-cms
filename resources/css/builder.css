@@ -128,6 +128,17 @@
     pointer-events: auto;
 }
 
+/* …and EXCEPT a subtree that declares itself interactive. The note block uses
+   this: it is editorial UI whose whole purpose is pointing at the resource where
+   the real records live, so its links have to work from the preview card. The
+   preview's click handler skips its preventDefault() for the same subtree (see
+   the builder override) — without that half the pointer would reach the link and
+   the navigation would still be cancelled. */
+.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) .fi-cms-preview-interactive a,
+.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) .fi-cms-preview-interactive button {
+    pointer-events: auto;
+}
+
 /* Compact secondary-button look for that deep-link (styled here, not with Tailwind
    utilities, so it renders regardless of the consuming app's content scanning). */
 .fi-cms-listing-manage {

@@ -69,6 +69,10 @@
         @endphp
 
         @continue(!($childData['active'] ?? true))
+        {{-- Same rule as the root loop: a type without a frontend view is
+             editor-only (see NoteBlock), and <x-dynamic-component> would throw
+             on the missing view rather than skip it. --}}
+        @continue(! \Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry::rendersInFrontend($childType))
 
         @php
             $childAnchorId = $childData['anchor_id'] ?? null;

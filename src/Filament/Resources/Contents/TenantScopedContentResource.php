@@ -471,10 +471,19 @@ abstract class TenantScopedContentResource extends Resource
      * Shared block-builder configuration (icons, per-item options incl. the
      * background-image upload for sections, block set). Used for both the main
      * content blocks and the teaser blocks, differing only in the state path.
+     *
+     * Previews are ON, but that is decided per BLOCK, not per builder: the
+     * builder override renders a card only for a block that declares a
+     * `->preview()` view and leaves every other one as an open form
+     * ({@see \Mmoollllee\Cms\Support\Content\Blocks\section\SectionBlock},
+     * which is the only top-level block most sites offer, has none). So this
+     * changes nothing for a section-only page builder and gives blocks that DO
+     * have a preview — the note, and whatever a site allows at the top level —
+     * the click-to-edit card they were written for.
      */
     protected static function makeBuilder(string $statePath, ?Tenant $tenant): Builder
     {
-        return BlockBuilder::make($statePath, $tenant, static::getBuilderBlocks($tenant), previews: false)
+        return BlockBuilder::make($statePath, $tenant, static::getBuilderBlocks($tenant))
             ->columnSpanFull();
     }
 

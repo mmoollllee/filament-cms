@@ -35,7 +35,7 @@
         @endphp
 
         @continue(!($data['active'] ?? true))
-        @continue(! view()->exists("blocks::{$type}.{$type}") && ! view()->exists("blocks::{$type}"))
+        @continue(! \Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry::rendersInFrontend($type))
 
         @php
             // anchor_id in block data takes precedence over navigationContext system
