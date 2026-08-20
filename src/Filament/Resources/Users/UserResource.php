@@ -4,7 +4,6 @@ namespace Mmoollllee\Cms\Filament\Resources\Users;
 
 use BackedEnum;
 use Filament\Facades\Filament;
-use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -15,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\User as UserContract;
 use Mmoollllee\Cms\Enums\TenantUserRole;
+use Mmoollllee\Cms\Filament\Forms\MembershipFields;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\CreateUser;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\EditUser;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\ListUsers;
@@ -61,11 +61,7 @@ class UserResource extends Resource
                     ->requiredWith('password')
                     ->dehydrated(false)
                     ->maxLength(255),
-                Select::make('role')
-                    ->label('Rolle')
-                    ->options(TenantUserRole::options())
-                    ->required()
-                    ->default(TenantUserRole::Editor->value),
+                MembershipFields::roleSelect(),
             ]);
     }
 
@@ -79,8 +75,10 @@ class UserResource extends Resource
                     ->searchable(),
                 TextColumn::make('role')
                     ->label('Rolle')
-                    ->state(fn (UserContract $record): ?string => $record->tenantRole(Filament::getTenant())?->value)
-                    ->badge(),
+                    ->state(fn (UserContract $record): ?TenantUserRole => $record->tenantRole(Filament::getTenant()))
+                    ->badge()
+                    ->formatStateUsing(fn (?TenantUserRole $state): string => $state?->label() ?? '—')
+                    ->color(fn (?TenantUserRole $state): string => $state?->color() ?? 'gray'),
                 TextColumn::make('created_at')
                     ->label('Erstellt')
                     ->dateTime()

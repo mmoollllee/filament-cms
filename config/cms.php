@@ -63,6 +63,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Tenant invitations
+    |--------------------------------------------------------------------------
+    | expires_after_days  how long an invitation link stays valid. It bounds the
+    |        signed accept URL as well as the model check, so a lapsed link is
+    |        refused by the signature before any row is read. An expired
+    |        invitation stays in the panel list and can be re-sent.
+    */
+    'invitations' => [
+        'expires_after_days' => (int) env('CMS_INVITATIONS_EXPIRE_DAYS', 14),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Versioning (HasVersions)
     |--------------------------------------------------------------------------
     | keep   snapshot versions kept per record (older ones are pruned and

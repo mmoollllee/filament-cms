@@ -49,6 +49,14 @@ class EnsureTenantIsVisible
             return $next($request);
         }
 
+        // Accepting an invitation is how a person GETS access to a tenant, so
+        // gating it on already having access locks out exactly the people the
+        // invitation was for — the same reasoning as the Livewire exemption
+        // above. The route is signed and token-bound; it opens nothing else.
+        if ($request->routeIs('cms.tenant-invitations.accept')) {
+            return $next($request);
+        }
+
         $tenant = $this->currentTenant->get();
 
         if ($tenant === null) {

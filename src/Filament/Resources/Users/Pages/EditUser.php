@@ -2,14 +2,44 @@
 
 namespace Mmoollllee\Cms\Filament\Resources\Users\Pages;
 
+use Filament\Actions\DeleteAction;
 use Filament\Facades\Filament;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
+use Mmoollllee\Cms\Concerns\ResolvesPanelTenant;
+use Mmoollllee\Cms\Filament\Actions\MembershipActions;
 use Mmoollllee\Cms\Filament\Resources\Users\UserResource;
 
 class EditUser extends EditRecord
 {
+    use ResolvesPanelTenant;
+
     protected static string $resource = UserResource::class;
+
+    /**
+     * The same split as the list ({@see ListUsers}): ending a membership is a
+     * tenant-admin act, ending the account is not.
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            MembershipActions::detachFromTenant()
+                ->visible(fn (): bool => Gate::allows('detach', $this->getRecord()))
+                ->action(function (): void {
+                    $this->currentTenant()?->removeUser($this->getRecord());
+
+                    Notification::make()
+                        ->success()
+                        ->title('Zugriff entzogen')
+                        ->send();
+
+                    $this->redirect($this->getResource()::getUrl('index'));
+                }),
+            MembershipActions::deleteAccountCopy(DeleteAction::make()),
+        ];
+    }
 
     protected function mutateFormDataBeforeFill(array $data): array
     {

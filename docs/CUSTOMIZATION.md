@@ -376,6 +376,17 @@ preview card) + `<x-block::{key}>` (frontend) — register an app view path or p
 package views (`vendor:publish --tag=cms-blocks`) to override the core ones. Full
 walk-through: the demo's "Custom blocks" HowTo.
 
+**A block without a frontend view never reaches the site.** That is the rule, not a
+side effect: `BuilderBlockRegistry::rendersInFrontend($type)` decides it, and both render
+loops plus the navigation-context builder consult it. The package ships one such block —
+`note` ("Notiz") — for editorial notes and for standing in where a template composes a
+section itself (a slider, a filtered listing), so the builder is not simply empty there.
+Add your own by registering a block and shipping only its `preview` view.
+
+**Previews are per block, not per builder.** A block that declares `->preview(...)` renders
+as a click-to-edit card; one that does not renders its form open. That holds in the page
+builder too, so a top-level block gets whichever of the two suits it.
+
 **Builders are built by one factory** — `Filament\Forms\BlockBuilder::make($statePath,
 $tenant, $blocks, previews: …, sortableGroup: …, extraItemActions: …)` configures every
 builder (icons, add labels, the scope-aware "Block-Optionen" gear, "Block kopieren",
@@ -416,6 +427,45 @@ Also automatic: the `LoginResponse` → `TenantAwareLoginResponse` binding (host
 post-login redirect), tenant branding (name/logo/primary color), the menu-builder plugin
 (locations from `Cms::menuLocations()`), the tenant middleware incl. persistent
 `ResolveTenantFromHost`, and the local-env login prefill (`cms.dev_login`, env-backed).
+
+### Access management (users & invitations)
+
+The Users list answers one question — who can get into this site — so it lists members
+**and** invitations that have not been accepted yet, in one table. (That is why it is built
+from `Table::records()` rather than the resource's Eloquent query: the rows come from
+`tenant_user` and `tenant_invitations` and are plain arrays, keyed `member-{id}` /
+`invitation-{id}`. `ListRecords` wires a row click and row URL that expect a Model, so both
+are cleared.) Access is granted in three ways: **einladen** (a signed mail link — the normal
+route), **direkt zuweisen** (attach an existing account without mail; superadmin only, since
+it needs a picker over the whole directory) and **anlegen** (admin picks the password).
+Removal follows the same split as `UserPolicy`:
+
+| Action | Who | Effect |
+|---|---|---|
+| Aus dieser Seite entfernen | tenant admin | ends the `tenant_user` membership; account and other tenants untouched |
+| Benutzerkonto löschen | superadmin | deletes the account — including its access to every other tenant |
+
+A pending invitation appears as its own row (address, role, "Eingeladen, gültig bis …")
+with **Neu senden** and **Zurückziehen**. It is a `tenant_invitations` row with a unique
+token, an expiry (`cms.invitations.expires_after_days`) and the role to grant. The accept link is a signed
+route (`cms.tenant-invitations.accept`, exempt from the tenant-visibility gate — a
+members-only site is precisely the one whose invitees have to get in). Signed in with the
+invited address it attaches immediately; signed out it routes to the login or, when no
+account exists, to `Filament\Pages\Auth\Register` — **not an open sign-up**: that page
+refuses any visit without a valid token and takes the e-mail from the invitation, never
+from the form.
+
+**App-side work for this release:** publish and run the invitation migration
+(`php artisan vendor:publish --tag=cms-migrations` → `tenant_invitations`), and make sure
+the app's mail configuration can actually deliver — the invite action is useless without
+it. The invitation mail is queued (`ShouldQueue`), so it also needs a worker; without one
+it does not fail, it simply never goes out.
+
+**Every update:** `php artisan filament:assets`. The package's builder/revision CSS and
+the TipTap extensions are registered assets, not part of the app's vite build, and
+`composer update` does not republish them. Their cache-busting version is a content hash
+({@see \Mmoollllee\Cms\Support\Assets\HasContentHashVersion}), so a republished file
+reaches every browser — but only once it has actually been published.
 
 The topbar **"Öffnen"** button (rendered before the global search) points at the frontend
 page of the record currently open. Content models get this from `GeneratesPathAndSlug`;
@@ -615,7 +665,14 @@ every site via `composer update`:
 - **`siteOnepager`** — section lazy-loading via `/_content` (each injected section
   dispatches a bubbling `cms:section-loaded` event for app hooks), scroll-synced
   URL/title/indicator, anchor + history handling. **Architecture only** — no visual
-  behavior ships here.
+  behavior ships here. It also holds the reading position when a section ABOVE the
+  active one grows past its placeholder (`anchorSectionsOnLoad()`): a deep link
+  scrolls to its section before the earlier ones have loaded, and one of them
+  turning out to be several viewports tall would otherwise carry the visitor off
+  into a section they never asked for. It corrects the MEASURED residual (how far
+  the active section actually moved), not the summed height changes — so where
+  the browser's own scroll anchoring already did the work, or `handleResizeFrame()`
+  did, it is a no-op instead of a second correction.
 - **`siteChildNavigation`** — breadcrumbs, local-section tracking + flyout state on
   standalone pages.
 

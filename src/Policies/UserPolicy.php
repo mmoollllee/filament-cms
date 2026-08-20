@@ -2,30 +2,12 @@
 
 namespace Mmoollllee\Cms\Policies;
 
-use Filament\Facades\Filament;
-use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Contracts\User;
-use Mmoollllee\Cms\Enums\TenantUserRole;
+use Mmoollllee\Cms\Policies\Concerns\AuthorizesTenantAdmins;
 
 class UserPolicy
 {
-    protected function currentTenant(): ?Tenant
-    {
-        $tenant = Filament::getTenant();
-
-        return $tenant instanceof Tenant ? $tenant : null;
-    }
-
-    protected function isAdminOfCurrentTenant(User $user): bool
-    {
-        $tenant = $this->currentTenant();
-
-        if ($tenant === null) {
-            return false;
-        }
-
-        return $user->isSuperadmin() || $user->tenantRole($tenant) === TenantUserRole::Admin;
-    }
+    use AuthorizesTenantAdmins;
 
     public function viewAny(User $user): bool
     {
@@ -55,12 +37,34 @@ class UserPolicy
         return true;
     }
 
-    public function delete(User $user, User $model): bool
+    /**
+     * Revoke a member's access to the tenant currently being administered —
+     * the tenant-scoped counterpart of delete(), and the one a tenant admin
+     * gets. It unlinks a membership; the account itself survives, along with
+     * every other tenant it belongs to.
+     */
+    public function detach(User $user, User $model): bool
     {
         if ($user->is($model)) {
             return false;
         }
 
         return $this->update($user, $model);
+    }
+
+    /**
+     * Delete the account itself. Superadmin-only on purpose: the user resource
+     * is scoped to one tenant, but the record it lists is global — a tenant
+     * admin deleting "a user of this site" would silently revoke that person's
+     * access to every OTHER site they work on. Tenant admins get detach()
+     * instead, which does what they actually mean.
+     */
+    public function delete(User $user, User $model): bool
+    {
+        if ($user->is($model)) {
+            return false;
+        }
+
+        return $user->isSuperadmin();
     }
 }

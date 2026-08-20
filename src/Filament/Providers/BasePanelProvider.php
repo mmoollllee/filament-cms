@@ -34,6 +34,7 @@ use Mmoollllee\Cms\Contracts\Tenant as TenantContract;
 use Mmoollllee\Cms\Filament\Auth\TenantAwareLoginResponse;
 use Mmoollllee\Cms\Filament\Pages\Auth\EditProfile;
 use Mmoollllee\Cms\Filament\Pages\Auth\Login;
+use Mmoollllee\Cms\Filament\Pages\Auth\Register;
 use Mmoollllee\Cms\Filament\Pages\Dashboard;
 use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\Branding\SiteTokens;
@@ -82,6 +83,11 @@ abstract class BasePanelProvider extends FilamentPanelProvider
             ->id('panel')
             ->path('panel')
             ->login(Login::class)
+            // NOT an open sign-up: the page refuses every visit that does not
+            // carry a valid, unaccepted invitation token and sends it to the
+            // login screen. It exists so an invited person without an account
+            // has somewhere to land ({@see Register}).
+            ->registration(Register::class)
             ->profile(EditProfile::class)
             ->tenant(Cms::tenantModel(), slugAttribute: 'primary_domain')
             ->tenantDomain('{tenant:primary_domain}')

@@ -5,8 +5,6 @@ namespace Mmoollllee\Cms;
 use Datlechin\FilamentMenuBuilder\Models\MenuItem;
 use Datlechin\FilamentMenuBuilder\Models\MenuLocation;
 use Filament\Resources\Events\RecordUpdated;
-use Filament\Support\Assets\Css;
-use Filament\Support\Assets\Js;
 use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
@@ -26,16 +24,20 @@ use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
+use Mmoollllee\Cms\Models\TenantInvitation;
 use Mmoollllee\Cms\Observers\ContentCacheObserver;
 use Mmoollllee\Cms\Observers\RedirectCacheObserver;
 use Mmoollllee\Cms\Policies\ContentPolicy;
 use Mmoollllee\Cms\Policies\MediaFolderPolicy;
 use Mmoollllee\Cms\Policies\MediaItemPolicy;
+use Mmoollllee\Cms\Policies\TenantInvitationPolicy;
 use Mmoollllee\Cms\Policies\TenantPolicy;
 use Mmoollllee\Cms\Policies\UserPolicy;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Analytics\Umami;
+use Mmoollllee\Cms\Support\Assets\ContentVersionedCss;
+use Mmoollllee\Cms\Support\Assets\ContentVersionedJs;
 use Mmoollllee\Cms\Support\Locking\Locks;
 use Mmoollllee\Cms\Support\ContactLinkShortcodes;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
@@ -215,19 +217,23 @@ class CmsServiceProvider extends ServiceProvider
         // extensions), loaded on demand by the RichEditor via HtmlPreservePlugin /
         // LinkPickerPlugin. Pre-built into resources/dist (`npm run build`);
         // `php artisan filament:assets` publishes them to the app's public dir.
+        // ContentVersioned*, not Filament's Js/Css: the default cache-busting
+        // version is the installed COMPOSER version, so an asset edited within a
+        // release keeps its exact URL and every browser that has already seen it
+        // serves the stale copy — see HasContentHashVersion.
         FilamentAsset::register([
-            Js::make('tiptap-html-button', __DIR__.'/../resources/dist/tiptap-extensions/html-button.js')->loadedOnRequest(),
-            Js::make('tiptap-html-div', __DIR__.'/../resources/dist/tiptap-extensions/html-div.js')->loadedOnRequest(),
-            Js::make('tiptap-html-span', __DIR__.'/../resources/dist/tiptap-extensions/html-span.js')->loadedOnRequest(),
-            Js::make('tiptap-link-attributes', __DIR__.'/../resources/dist/tiptap-extensions/link-attributes.js')->loadedOnRequest(),
-            Js::make('tiptap-link-bubble', __DIR__.'/../resources/dist/tiptap-extensions/link-bubble.js')->loadedOnRequest(),
-            Js::make('tiptap-rich-text-surface', __DIR__.'/../resources/dist/tiptap-extensions/rich-text-surface.js')->loadedOnRequest(),
+            ContentVersionedJs::make('tiptap-html-button', __DIR__.'/../resources/dist/tiptap-extensions/html-button.js')->loadedOnRequest(),
+            ContentVersionedJs::make('tiptap-html-div', __DIR__.'/../resources/dist/tiptap-extensions/html-div.js')->loadedOnRequest(),
+            ContentVersionedJs::make('tiptap-html-span', __DIR__.'/../resources/dist/tiptap-extensions/html-span.js')->loadedOnRequest(),
+            ContentVersionedJs::make('tiptap-link-attributes', __DIR__.'/../resources/dist/tiptap-extensions/link-attributes.js')->loadedOnRequest(),
+            ContentVersionedJs::make('tiptap-link-bubble', __DIR__.'/../resources/dist/tiptap-extensions/link-bubble.js')->loadedOnRequest(),
+            ContentVersionedJs::make('tiptap-rich-text-surface', __DIR__.'/../resources/dist/tiptap-extensions/rich-text-surface.js')->loadedOnRequest(),
             // Precompiled builder UX styles (inactive pill, preview interaction, inline
             // editing) — plain CSS, so every panel works without a custom vite theme.
-            Css::make('filament-cms-builder', __DIR__.'/../resources/css/builder.css'),
+            ContentVersionedCss::make('filament-cms-builder', __DIR__.'/../resources/css/builder.css'),
             // Precompiled diff styles for the revisions pages (the plugin's own
             // CSS is Tailwind source and would need a custom theme build).
-            Css::make('filament-cms-versionable', __DIR__.'/../resources/css/versionable.css'),
+            ContentVersionedCss::make('filament-cms-versionable', __DIR__.'/../resources/css/versionable.css'),
         ], package: 'mmoollllee/filament-cms');
 
         // Both wire the registered Content/Tenant models, which are unset until
@@ -369,6 +375,7 @@ class CmsServiceProvider extends ServiceProvider
         Gate::policy(Cms::contentModel(), ContentPolicy::class);
         Gate::policy(Cms::tenantModel(), TenantPolicy::class);
         Gate::policy(Cms::userModel(), UserPolicy::class);
+        Gate::policy(TenantInvitation::class, TenantInvitationPolicy::class);
 
         $this->registerLockingGates();
     }
