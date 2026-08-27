@@ -14,6 +14,7 @@ use Filament\Forms\Components\RichEditor\TipTapExtensions\MergeTagExtension;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\RawHtmlMergeTagExtension;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\RenderedCustomBlockExtension;
 use Filament\Forms\Components\RichEditor\TipTapExtensions\SmallExtension;
+use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Tiptap\Marks\HtmlButton;
 use Mmoollllee\Cms\Tiptap\Marks\HtmlSpan;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
@@ -46,6 +47,23 @@ use Tiptap\Nodes\Text;
 
 class Renderer extends RichContentRenderer
 {
+    /**
+     * @param  string|array<string, mixed>|null  $content
+     */
+    public function __construct(string|array|null $content = null)
+    {
+        parent::__construct($content);
+
+        // Image nodes store a media-library item id in `data-id` and have their
+        // src regenerated at render time, so the same provider has to be on
+        // both ends: without it here the editor writes ids the frontend cannot
+        // resolve, and every uploaded picture renders empty. `plugins()` merges,
+        // so a caller's own plugins still apply.
+        if (MediaLibrary::enabled()) {
+            $this->plugins([MediaLibraryAttachmentPlugin::make()]);
+        }
+    }
+
     /**
      * @return array<Extension>
      */

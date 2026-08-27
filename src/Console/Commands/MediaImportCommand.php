@@ -10,6 +10,8 @@ use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Filament\Forms\MediaField;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 /**
  * One-time (idempotent) migration of legacy file-path references into the
@@ -29,6 +31,20 @@ use Mmoollllee\Cms\Support\Media\MediaLibrary;
  * live: a MediaPicker cannot hydrate a legacy path — it would show empty and
  * drop the value on save. The frontend needs no import (legacy fallback).
  *
+ * ONE-TIME COMMAND — DELETE IT WHEN THE LAST INSTALL HAS RUN IT.
+ *
+ * This is migration scaffolding, not a feature. Nothing produces the data it
+ * consumes any more: MediaField writes item ids, and
+ * {@see \Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider}
+ * makes rich-editor uploads library items too, so no new legacy path can come
+ * into existence. Once every consuming app reports "0 Referenzen, 0
+ * Inline-Bilder", this class, its test and its mention in the docs are removed
+ * from the codebase rather than carried along as something future readers have
+ * to recognise as obsolete.
+ *
+ * Check before removing — an app that never migrated still needs it; as of
+ * 2026-08-27 landmetzgerei-geiwiz.de was still on filament-cms ^0.2.
+ *
  * Files are imported with `preservingOriginal()` — originals stay on disk as
  * rollback safety. Idempotency: rewritten values are ints (skipped on rerun);
  * already-imported paths are recognized via the `cms_legacy_path` custom
@@ -40,9 +56,10 @@ class MediaImportCommand extends Command
         {--dry-run : Analyse and report only — no writes}
         {--tenant= : Limit to one tenant (site_key)}
         {--all : Also import unreferenced files below the tenant directories}
+        {--inline : Also import images embedded in rich text (<img src="…">) and rewrite them to media ids}
         {--sync : Generate conversions synchronously (installs without a queue worker)}';
 
-    protected $description = 'Import legacy file-path references (blocks, payload, meta, drafts, tenant branding) into the media library and rewrite them to item ids';
+    protected $description = 'ONE-TIME migration (delete this command once every install has run it): import legacy file-path references — blocks, payload, meta, drafts, tenant branding, and with --inline the images embedded in rich text — into the media library and rewrite them to item ids';
 
     /** @var array<int, array<string, int>> [tenant id][path] => item id */
     protected array $map = [];
@@ -89,7 +106,7 @@ class MediaImportCommand extends Command
 
     protected function importTenant(Model $tenant, bool $isOnlyTenant): void
     {
-        $this->stats[$tenant->site_key] = ['refs' => 0, 'imported' => 0, 'rows' => 0];
+        $this->stats[$tenant->site_key] = ['refs' => 0, 'imported' => 0, 'rows' => 0, 'inline' => 0];
 
         $this->collectAltTexts($tenant);
 
@@ -221,13 +238,113 @@ class MediaImportCommand extends Command
             return $result;
         }
 
-        if (is_string($value) && $this->isImportablePath($value)) {
+        if (! is_string($value)) {
+            return $value;
+        }
+
+        if ($this->isImportablePath($value)) {
             $itemId = $this->importFile($value, $tenant);
 
             return $itemId ?? $value;
         }
 
+        // Rich text is one long HTML string, so the value-based scan above can
+        // never see the files inside it — `isImportablePath()` rejects anything
+        // holding markup, and rightly so.
+        if ($this->option('inline') && Str::contains($value, '<img')) {
+            return $this->rewriteInlineImages($value, $tenant);
+        }
+
         return $value;
+    }
+
+    /**
+     * Import `<img src="…">` files embedded in rich text and rewrite the tag to
+     * carry the item id.
+     *
+     * These were deliberately skipped by the value scan: a WordPress import
+     * leaves inline URLs alone because they resolve fine as they are. The cost
+     * only shows later — such a file has no library item, so it is invisible to
+     * the Mediathek, to `cms:media:prune` and to every question about which
+     * media are still in use. Deleting the directory it lives in looks safe from
+     * every angle the tooling can see, and is not.
+     *
+     * `data-id` is the identifier Filament's renderer regenerates `src` from, so
+     * the rewritten tag stops depending on a path staying put. The `src` is
+     * refreshed too, so content renders correctly even where it is output
+     * without the renderer.
+     */
+    protected function rewriteInlineImages(string $html, Model $tenant): string
+    {
+        return preg_replace_callback('#<img\b[^>]*>#i', function (array $matches) use ($tenant): string {
+            $tag = $matches[0];
+
+            // Already managed — the default provider and this command both
+            // leave a data-id behind, and re-importing would duplicate the file.
+            if (preg_match('#\sdata-id="[^"]*"#i', $tag) === 1) {
+                return $tag;
+            }
+
+            if (preg_match('#\ssrc="([^"]+)"#i', $tag, $src) !== 1) {
+                return $tag;
+            }
+
+            $path = $this->normalizeInlineSrc($src[1]);
+
+            if ($path === null || ! $this->isImportablePath($path)) {
+                return $tag;
+            }
+
+            // Counted on identification, not after the import: `importFile()`
+            // returns null under --dry-run, and a dry run that reports "0
+            // inline images" when there are three is worse than no report.
+            $this->stats[$tenant->site_key]['inline']++;
+
+            $itemId = $this->importFile($path, $tenant);
+
+            if ($itemId === null) {
+                return $tag;
+            }
+
+            $tag = preg_replace('#\sdata-id="[^"]*"#i', '', $tag);
+
+            return preg_replace(
+                '#\ssrc="[^"]+"#i',
+                ' src="'.e((string) MediaUrlResolver::url($itemId)).'" data-id="'.$itemId.'"',
+                (string) $tag,
+                limit: 1,
+            ) ?? $matches[0];
+        }, $html) ?? $html;
+    }
+
+    /**
+     * The disk-relative path behind an inline `src`, or null when it is not a
+     * local file this command may touch (remote URLs, data: URIs, and anything
+     * already pointing at a library item id).
+     */
+    protected function normalizeInlineSrc(string $src): ?string
+    {
+        if (Str::startsWith($src, ['http://', 'https://', 'data:', '//'])) {
+            return null;
+        }
+
+        $path = ltrim($src, '/');
+
+        if (Str::startsWith($path, 'storage/')) {
+            $path = Str::after($path, 'storage/');
+        }
+
+        // `{id}/file.jpg` is a library item — but a WordPress tree opens with a
+        // YEAR, which is digits too. Only the exact one-segment-below-a-real-id
+        // shape counts, checked against the media table rather than guessed at:
+        // `2020/01/x.jpg` is not media #2020, and treating it as such is how a
+        // legacy image gets skipped and then silently deleted later.
+        if (preg_match('#^(\d+)/[^/]+$#', $path, $m) === 1
+            && Media::query()->whereKey((int) $m[1])->exists()) {
+            return null;
+        }
+
+        return $path;
     }
 
     /**
@@ -380,9 +497,9 @@ class MediaImportCommand extends Command
     protected function report(): void
     {
         $this->table(
-            ['Tenant', 'Referenzen', 'Importiert', 'Zeilen umgeschrieben', 'Fehler'],
+            ['Tenant', 'Referenzen', 'Importiert', 'Inline-Bilder', 'Zeilen umgeschrieben', 'Fehler'],
             collect($this->stats)->map(fn (array $row, string $siteKey) => [
-                $siteKey, $row['refs'], $row['imported'], $row['rows'], count($this->missing[$siteKey] ?? []),
+                $siteKey, $row['refs'], $row['imported'], $row['inline'], $row['rows'], count($this->missing[$siteKey] ?? []),
             ]),
         );
 

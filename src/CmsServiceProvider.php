@@ -9,10 +9,6 @@ use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
-use Mmoollllee\Cms\Contracts\Tenant;
-use Mmoollllee\Cms\Contracts\User;
-use Mmoollllee\Cms\Enums\TenantUserRole;
-use Mmoollllee\Cms\Enums\TenantVisibility;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
@@ -20,8 +16,14 @@ use Illuminate\Support\ServiceProvider;
 use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
 use Mmoollllee\Cms\Console\Commands\MediaImportCommand;
+use Mmoollllee\Cms\Console\Commands\MediaPruneCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
+use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Contracts\User;
+use Mmoollllee\Cms\Enums\TenantUserRole;
+use Mmoollllee\Cms\Enums\TenantVisibility;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
+use Mmoollllee\Cms\Filament\Providers\BasePanelProvider;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Models\TenantInvitation;
@@ -38,12 +40,12 @@ use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\Assets\ContentVersionedCss;
 use Mmoollllee\Cms\Support\Assets\ContentVersionedJs;
-use Mmoollllee\Cms\Support\Locking\Locks;
 use Mmoollllee\Cms\Support\ContactLinkShortcodes;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
+use Mmoollllee\Cms\Support\Locking\Locks;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
@@ -57,9 +59,9 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
 use Mmoollllee\Filami\Filami;
-use Tiptap\Marks\Link;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
+use Tiptap\Marks\Link;
 
 /**
  * Boots the shared CMS engine.
@@ -332,8 +334,8 @@ class CmsServiceProvider extends ServiceProvider
 
     /**
      * Media-library plugin wiring (guarded by MediaLibrary::installed()):
-     * Gate policies for the vendor models (not auto-discovered) and the
-     * legacy-import command.
+     * Gate policies for the vendor models (not auto-discovered) plus the
+     * legacy-import and disk-prune commands.
      *
      * Picker UX (upload button, dropzones, extended preview action) is NOT
      * wired here: it comes from the optional
@@ -349,6 +351,7 @@ class CmsServiceProvider extends ServiceProvider
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MediaImportCommand::class,
+                MediaPruneCommand::class,
             ]);
         }
     }
@@ -382,7 +385,7 @@ class CmsServiceProvider extends ServiceProvider
 
     /**
      * Authorization for editorial locking (blendbyte/filament-resource-lock,
-     * wired in {@see \Mmoollllee\Cms\Filament\Providers\BasePanelProvider}).
+     * wired in {@see BasePanelProvider}).
      *
      * - `cms.take-over-lock` decides who may seize a record another editor is
      *   holding ("übernehmen" in the blocking modal): tenant admins, since an

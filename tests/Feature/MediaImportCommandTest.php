@@ -144,3 +144,103 @@ it('fails cleanly when the media library is unavailable', function () {
 
     $this->artisan('cms:media:import')->assertFailed();
 });
+
+/*
+ * Inline images were skipped on purpose for years: a WordPress import leaves
+ * `<img src="/storage/2020/01/…">` alone because it resolves fine. What that
+ * costs only shows later — the file has no library item, so nothing that
+ * reasons about media can see it, and the directory it lives in looks
+ * unreferenced from every angle the tooling has.
+ */
+
+it('leaves inline images alone without the flag', function () {
+    $tenant = Tenant::factory()->create();
+    Storage::disk('public')->put('2020/01/inline.png', cmsTestPngBytes());
+
+    $content = Content::factory()->for($tenant)->create([
+        'blocks' => [[
+            'type' => 'text',
+            'data' => ['content' => '<p><img src="/storage/2020/01/inline.png" alt="Ein Bild"></p>'],
+        ]],
+    ]);
+
+    $this->artisan('cms:media:import')->assertSuccessful();
+
+    expect(data_get($content->fresh()->blocks, '0.data.content'))
+        ->toContain('src="/storage/2020/01/inline.png"')
+        ->not->toContain('data-id');
+});
+
+it('imports inline images and rewrites them to a media id', function () {
+    $tenant = Tenant::factory()->create();
+    Storage::disk('public')->put('2020/01/inline.png', cmsTestPngBytes());
+
+    $content = Content::factory()->for($tenant)->create([
+        'blocks' => [[
+            'type' => 'text',
+            'data' => ['content' => '<p><img src="/storage/2020/01/inline.png" alt="Ein Bild"></p>'],
+        ]],
+    ]);
+
+    $this->artisan('cms:media:import --inline')->assertSuccessful();
+
+    $item = Cms::mediaItemModel()::query()->first();
+    $html = data_get($content->fresh()->blocks, '0.data.content');
+
+    // data-id is what the renderer regenerates src from, so the content stops
+    // depending on the file staying at that exact path.
+    expect($item)->not->toBeNull()
+        ->and($html)->toContain('data-id="'.$item->getKey().'"')
+        ->and($html)->toContain('/'.$item->getKey().'/')
+        ->and($html)->not->toContain('/storage/2020/01/inline.png')
+        // Everything else about the tag survives.
+        ->and($html)->toContain('alt="Ein Bild"');
+});
+
+it('is idempotent for inline images', function () {
+    $tenant = Tenant::factory()->create();
+    Storage::disk('public')->put('2020/01/inline.png', cmsTestPngBytes());
+
+    Content::factory()->for($tenant)->create([
+        'blocks' => [[
+            'type' => 'text',
+            'data' => ['content' => '<p><img src="/storage/2020/01/inline.png"></p>'],
+        ]],
+    ]);
+
+    $this->artisan('cms:media:import --inline')->assertSuccessful();
+    $this->artisan('cms:media:import --inline')->assertSuccessful();
+
+    expect(Cms::mediaItemModel()::query()->count())->toBe(1);
+});
+
+it('does not touch remote or already-migrated inline images', function () {
+    $tenant = Tenant::factory()->create();
+
+    $html = '<p><img src="https://example.test/remote.png">'
+        .'<img src="data:image/png;base64,AAAA">'
+        .'<img src="/storage/42/already.png" data-id="42"></p>';
+
+    $content = Content::factory()->for($tenant)->create([
+        'blocks' => [['type' => 'text', 'data' => ['content' => $html]]],
+    ]);
+
+    $this->artisan('cms:media:import --inline')->assertSuccessful();
+
+    expect(data_get($content->fresh()->blocks, '0.data.content'))->toBe($html)
+        ->and(Cms::mediaItemModel()::query()->count())->toBe(0);
+});
+
+it('reports inline images without importing them on a dry run', function () {
+    $tenant = Tenant::factory()->create();
+    Storage::disk('public')->put('2020/01/inline.png', cmsTestPngBytes());
+
+    $content = Content::factory()->for($tenant)->create([
+        'blocks' => [['type' => 'text', 'data' => ['content' => '<p><img src="/storage/2020/01/inline.png"></p>']]],
+    ]);
+
+    $this->artisan('cms:media:import --inline --dry-run')->assertSuccessful();
+
+    expect(data_get($content->fresh()->blocks, '0.data.content'))->toContain('/storage/2020/01/inline.png')
+        ->and(Cms::mediaItemModel()::query()->count())->toBe(0);
+});

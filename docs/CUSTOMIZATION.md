@@ -854,6 +854,59 @@ Cms::useMediaFolderNames([                       // rename the default per-tenan
 ]);
 ```
 
+**Conversion budget** (`config/cms.php`, all env-backed) — how much disk each upload
+costs. Every library image carries five conversions plus one srcset candidate per
+responsive step, so these two values decide whether media occupies its own size or
+twenty times it:
+
+```php
+'media' => [
+    'max_width' => 1920,   // CMS_MEDIA_MAX_WIDTH — cap for `responsive` (Fit::Max, never
+                           // upsized). Candidates derive from that file, so the cap
+                           // bounds the whole srcset. 0 = vendor default (uncapped).
+    'format' => 'webp',    // CMS_MEDIA_FORMAT — `responsive`/`800`/`400`/`thumb` and,
+                           // by inheritance, every srcset candidate.
+    'og_format' => 'jpg',  // CMS_MEDIA_OG_FORMAT — separate on purpose: messenger
+                           // link-preview crawlers still lag on WebP.
+],
+```
+
+Both affect NEW conversions only. To apply them to existing media:
+
+```bash
+php artisan media-library:regenerate    # rewrite conversions + srcset in the new format
+php artisan cms:media:prune --dry-run   # review what the old format left behind
+php artisan cms:media:prune             # delete it
+```
+
+`cms:media:prune` compares the disk against what the media rows actually name, so it
+also catches `{id}/` directories whose row is gone. It leaves a legacy `2020/01/…`
+upload tree in place (a year looks exactly like an id) and reports it instead.
+
+**Rich editor uploads** go into the library as well, via
+`MediaLibraryAttachmentPlugin` (registered in `configureRichEditor()` whenever the
+library is enabled). Nothing to wire in an app. Two consequences worth knowing:
+
+- an image pasted into a paragraph is a Mediathek item like any other — same tenant,
+  same `Seiten` folder, same alt text, and it shows up in every media tool;
+- older content keeps rendering. A `data-id` holding a path (Filament's default
+  provider, or a WordPress import) still resolves, because `MediaUrlResolver` handles
+  ids and paths alike. Migrate those with:
+
+```bash
+php artisan cms:media:import --inline --dry-run
+php artisan cms:media:import --inline
+```
+
+A field opts out with `RichEditor::make('content')->plugins([])`, but note that drops
+the CMS's other editor plugins with it.
+
+`cms:media:import` is **migration scaffolding with an end date**: no code path creates a
+legacy path any more, so once every app reports `0 Referenzen, 0 Inline-Bilder` the
+command, its test and this paragraph are deleted rather than kept around as something a
+future reader has to recognise as obsolete. Check every consumer first — an install that
+never migrated still needs it.
+
 **Panel options** — override `BasePanelProvider::mediaLibraryPlugin()` to change
 navigation/slug/accepted types or swap the library page; the driver stays the single
 owner of behavior.

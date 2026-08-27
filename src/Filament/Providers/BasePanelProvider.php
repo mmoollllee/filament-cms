@@ -8,6 +8,7 @@ use Awcodes\RicherEditor\Plugins\SourceCodePlugin;
 use Datlechin\FilamentMenuBuilder\FilamentMenuBuilderPlugin;
 use Datlechin\FilamentMenuBuilder\MenuPanel\ModelMenuPanel;
 use Filament\Actions\Action;
+use Filament\Auth\Http\Responses\Contracts\LoginResponse;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\RichEditor;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -27,21 +28,21 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use Filament\Auth\Http\Responses\Contracts\LoginResponse;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\CmsServiceProvider;
 use Mmoollllee\Cms\Concerns\Tenant\HasSpamQuestions;
 use Mmoollllee\Cms\Contracts\Tenant as TenantContract;
 use Mmoollllee\Cms\Filament\Auth\TenantAwareLoginResponse;
+use Mmoollllee\Cms\Filament\Concerns\LocksRecords;
+use Mmoollllee\Cms\Filament\Locking\ResourceLockPlugin;
 use Mmoollllee\Cms\Filament\Pages\Auth\EditProfile;
 use Mmoollllee\Cms\Filament\Pages\Auth\Login;
 use Mmoollllee\Cms\Filament\Pages\Auth\Register;
 use Mmoollllee\Cms\Filament\Pages\Dashboard;
-use Mmoollllee\Cms\Support\Analytics\Umami;
-use Mmoollllee\Cms\Support\Branding\SiteTokens;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\EditTenantProfilePage;
 use Mmoollllee\Cms\Filament\Pages\Tenancy\RegisterTenantPage;
 use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
-use Mmoollllee\Cms\Filament\Locking\ResourceLockPlugin;
 use Mmoollllee\Cms\Filament\Resources\LayoutPresets\LayoutPresetResource;
 use Mmoollllee\Cms\Filament\Resources\Locks\LockResource;
 use Mmoollllee\Cms\Filament\Resources\Menus\MenuResource;
@@ -49,17 +50,23 @@ use Mmoollllee\Cms\Filament\Resources\NotFoundLogs\NotFoundLogResource;
 use Mmoollllee\Cms\Filament\Resources\Redirects\RedirectResource;
 use Mmoollllee\Cms\Filament\Resources\Users\UserResource;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\ButtonGroupBlock;
-use Mmoollllee\Cms\Support\Media\MediaLibrary;
-use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
-use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\NavigationCardGroupBlock;
 use Mmoollllee\Cms\Filament\RichEditor\HtmlPreservePlugin;
 use Mmoollllee\Cms\Filament\RichEditor\LinkPickerPlugin;
+use Mmoollllee\Cms\Filament\RichEditor\MediaLibraryAttachmentPlugin;
 use Mmoollllee\Cms\Http\Middleware\RedirectUnauthorizedPanelAccess;
 use Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
+use Mmoollllee\Cms\Support\Analytics\Umami;
+use Mmoollllee\Cms\Support\Branding\SiteTokens;
+use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider;
 use Mmoollllee\Cms\Support\Shortcodes;
+use Mmoollllee\FilamentConsentControl\Filament\ConsentIframePlugin;
+use Mmoollllee\Filami\Filament\Pages\UmamiStatistics;
+use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
+use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
 
 /**
  * Shared multi-tenant admin panel for the CMS engine.
@@ -172,7 +179,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
 
     /**
      * Editorial locking: opening a record claims it, everyone else gets the
-     * blocking modal ({@see \Mmoollllee\Cms\Filament\Concerns\LocksRecords}).
+     * blocking modal ({@see LocksRecords}).
      *
      * Polling is switched ON deliberately — it is the presence heartbeat, and
      * without it a lock is never refreshed after the page load, so a long edit
@@ -186,7 +193,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
      * The timeout is deliberately NOT set here: the model trait reads
      * `filament-resource-lock.lock_timeout` and never consults the plugin, so a
      * value set on the plugin alone would be dead configuration. It is bridged
-     * into that config key by {@see \Mmoollllee\Cms\CmsServiceProvider}, which
+     * into that config key by {@see CmsServiceProvider}, which
      * the plugin's own getter falls back to — one owner, and the manager page
      * and `clear-expired` agree with the model on what expired means.
      *
@@ -273,7 +280,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
         // Optional consent-gated iframe embeds: wired only when the project installs
         // mmoollllee/filament-consent-control. The CMS engine offers the integration;
         // the consent config/policy stays in the project (multi-tenant friendly).
-        $consentIframePlugin = \Mmoollllee\FilamentConsentControl\Filament\ConsentIframePlugin::class;
+        $consentIframePlugin = ConsentIframePlugin::class;
         $consentEnabled = class_exists($consentIframePlugin);
 
         RichEditor::configureUsing(function (RichEditor $component) use ($consentIframePlugin, $consentEnabled): void {
@@ -289,6 +296,31 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                 // also holds the side panels, and rearranges the editor UI.
                 HtmlPreservePlugin::make(),
             ];
+
+            // Editor uploads become Mediathek items rather than loose files on a
+            // disk path, so every image on the site is managed the same way no
+            // matter which field it entered through.
+            //
+            // The provider has to be attached TWICE, because the two ends find
+            // it differently. The renderer reads it off a plugin. The editor
+            // does not: `RichEditor::getFileAttachmentProvider()` goes through
+            // `getContentAttribute()`, which is null unless the MODEL implements
+            // HasRichContent and registers the attribute — and CMS rich text
+            // lives inside a `blocks` builder, never as a model attribute. So on
+            // the editor side the closures are wired directly; without them the
+            // provider is silently absent, every id fails the disk lookup and
+            // each image renders with its bare id as the src.
+            if (MediaLibrary::enabled()) {
+                $provider = MediaLibraryFileAttachmentProvider::make();
+
+                $plugins[] = MediaLibraryAttachmentPlugin::make();
+
+                $component
+                    ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => $provider->getFileAttachmentUrl($file))
+                    ->saveUploadedFileAttachmentUsing(
+                        fn (TemporaryUploadedFile $file): mixed => $provider->saveUploadedFileAttachment($file),
+                    );
+            }
 
             // Toolbar's last group; the consent-iframe button slots in next to embed.
             $embedGroup = ['undo', 'redo', 'sourceCode', 'customBlocks', 'embed', 'mergeTags'];
@@ -375,7 +407,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
     {
         return [
             Dashboard::class,
-            ...(Umami::installed() ? [\Mmoollllee\Filami\Filament\Pages\UmamiStatistics::class] : []),
+            ...(Umami::installed() ? [UmamiStatistics::class] : []),
         ];
     }
 

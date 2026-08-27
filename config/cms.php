@@ -103,6 +103,41 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Media conversions (CmsMediaLibraryDriver)
+    |--------------------------------------------------------------------------
+    | Governs the image derivatives the media library pre-generates. Storage
+    | cost scales with BOTH values: every library image yields the `responsive`,
+    | `800`, `400`, `thumb` and `og` conversions plus one srcset candidate per
+    | responsive step, so an uncapped 4000px original can occupy 25x its own
+    | size on disk.
+    |
+    | max_width  longest edge (px) the `responsive` conversion — and with it
+    |        every srcset candidate derived from it — is capped to. Applied as
+    |        Fit::Max, so smaller images are never upscaled and aspect ratios
+    |        are preserved. Sized against real viewports: a 1920px candidate
+    |        already covers a 2x DPR phone and a 1x desktop. 0 disables the cap
+    |        and restores the vendor default (candidates up to original size).
+    | format  image format for the frontend conversions (`responsive`, `800`,
+    |        `400`, `thumb`) and, because responsive candidates inherit the
+    |        format of the conversion they derive from, for the srcset too.
+    |        `webp` roughly halves the bytes at comparable quality. Set to
+    |        `jpg` for installs that must serve pre-WebP clients.
+    | og_format  kept SEPARATE from `format` on purpose: `og` feeds og:image,
+    |        and messenger link-preview crawlers are the last holdout of
+    |        WebP support. Change only if no one shares links to the site.
+    |
+    | Changing either value affects NEW conversions only. Re-run
+    | `php artisan media-library:regenerate` for existing media, then
+    | `php artisan cms:media:prune` to delete the superseded files.
+    */
+    'media' => [
+        'max_width' => (int) env('CMS_MEDIA_MAX_WIDTH', 1920),
+        'format' => env('CMS_MEDIA_FORMAT', 'webp'),
+        'og_format' => env('CMS_MEDIA_OG_FORMAT', 'jpg'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Video conversion (ConvertsUploadedVideos)
     |--------------------------------------------------------------------------
     | recompress_threshold  size in bytes above which an upload that is ALREADY
