@@ -285,6 +285,11 @@ abstract class BasePanelProvider extends FilamentPanelProvider
         $consentEnabled = class_exists($consentIframePlugin);
 
         RichEditor::configureUsing(function (RichEditor $component) use ($consentIframePlugin, $consentEnabled): void {
+            // Read per component, not hoisted out of the closure: this runs at
+            // boot, and an app that calls Cms::disableMediaLibrary() afterwards
+            // would otherwise still get the library wiring.
+            $mediaLibraryEnabled = MediaLibrary::enabled();
+
             $plugins = [
                 SourceCodePlugin::make(),
                 IdPlugin::make(),
@@ -311,9 +316,13 @@ abstract class BasePanelProvider extends FilamentPanelProvider
             // the editor side the closures are wired directly; without them the
             // provider is silently absent, every id fails the disk lookup and
             // each image renders with its bare id as the src.
-            if (MediaLibrary::enabled()) {
+            if ($mediaLibraryEnabled) {
                 $provider = MediaLibraryFileAttachmentProvider::make();
 
+                // The only plugin here implementing HasFileAttachmentProvider,
+                // and so the one the renderer resolves URLs through. MediaPlugin
+                // below has a getFileAttachmentProvider() method but does not
+                // implement that interface, so it is never consulted for one.
                 $plugins[] = MediaLibraryAttachmentPlugin::make();
 
                 // Insert an image by PICKING one from the Mediathek — the same
@@ -323,13 +332,9 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                 // text and lets a conversion be chosen. Uploading stays
                 // available next to it — see the toolbar below.
                 //
-                // The vendor documents registering this on the model
-                // (`registerRichContent()->plugins()->fileAttachmentProvider()`),
-                // which CMS content cannot do: its rich text lives in a `blocks`
-                // builder under a virtual field name, so there is no model
-                // attribute to register. Plugins merge from the component too,
-                // so the picker arrives this way; the provider half is the
-                // closures below.
+                // Registered on the component rather than the model, for the
+                // reason given above; only its PROVIDER would have needed the
+                // model route, and that half is covered by the closures.
                 $plugins[] = MediaPlugin::make();
 
                 $component
@@ -363,22 +368,26 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                     // `attachFiles` is NOT listed here when the library is on:
                     // MediaPlugin strips it from any list, so it is re-enabled
                     // below instead — see there.
-                    MediaLibrary::enabled() ? ['table', 'mediaLibrary'] : ['table', 'attachFiles'],
+                    $mediaLibraryEnabled ? ['table', 'mediaLibrary'] : ['table', 'attachFiles'],
                     $embedGroup,
-                ])
-                // MediaPlugin disables `attachFiles`, and we put it back —
-                // AFTER toolbarButtons(), which clears every modification
-                // registered before it.
-                //
-                // The two are not alternatives: `mediaLibrary` PICKS an existing
-                // item, `attachFiles` uploads a new one. And RichEditor derives
+                ]);
+
+            if ($mediaLibraryEnabled) {
+                // MediaPlugin removes `attachFiles`; put it back. The two are
+                // not alternatives — one PICKS an existing item, the other
+                // uploads a new one — and RichEditor derives
                 // `hasFileAttachments()` from that button being present, so
-                // dropping it also switches off paste and drag-and-drop —
-                // pasting a screenshot is the most common way an image enters a
-                // page, and it lands in the Mediathek anyway via the attachment
-                // provider above. Re-enabling appends it, so it sits at the end
-                // of the toolbar rather than beside the picker.
-                ->enableToolbarButtons(MediaLibrary::enabled() ? ['attachFiles'] : []);
+                // dropping it also switches off paste and drag-and-drop.
+                //
+                // Two orderings matter here. This call has to come AFTER
+                // toolbarButtons(), which clears every modification registered
+                // before it; and it wins over the plugin because
+                // getToolbarButtons() applies plugin modifications first,
+                // "so that user-level modifications always take precedence".
+                // Re-enabling appends, so the button lands at the end of the
+                // toolbar rather than beside the picker.
+                $component->enableToolbarButtons(['attachFiles']);
+            }
         });
     }
 

@@ -15,6 +15,9 @@ use Mmoollllee\Cms\Filament\RichEditor\Renderer;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use RalphJSmit\Filament\Explore\Data\FileData;
+use RalphJSmit\Filament\Explore\Filament\Forms\Components\RichEditor\Plugins\FilePlugin;
+use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Workbench\App\Filament\Pages\Dashboard;
 use Workbench\App\Models\Tenant;
@@ -235,4 +238,77 @@ it('leaves no invisible item row when storing the file fails', function () {
     }
 
     expect(DB::table('filament_media_library')->count())->toBe(0);
+});
+
+/**
+ * Exactly what the Mediathek picker stores in a node: the driver's FileData key
+ * — `media-library-item:{id}`, NOT the bare id — encrypted and base64-encoded.
+ *
+ * Getting this shape wrong makes the tests below pass against a value
+ * production never produces: `encryptKeyHash((string) $item->getKey())` yields
+ * a decryptable `"42"`, which is numeric and so takes the guarded path, while
+ * the real key is not.
+ */
+function pickedIdentifier(MediaLibraryItem $item): string
+{
+    return FileData::encryptKeyHash('media-library-item:'.$item->getKey());
+}
+
+/*
+ * The picker and the upload both write into the same `data-id` attribute, in
+ * different shapes: an upload stores a plain item id, the picker stores the key
+ * AES-encrypted and base64-encoded, optionally suffixed with a chosen
+ * conversion. Read as-is the second shape is neither numeric nor a path, so it
+ * would slip past the tenant check AND resolve to /storage/<base64 blob>.
+ */
+
+it('resolves an id written by the Mediathek picker', function () {
+    $tenant = Tenant::factory()->create();
+    app(CurrentTenant::class)->set($tenant);
+
+    $item = makeLibraryImage($tenant);
+    $picked = pickedIdentifier($item);
+
+    $url = MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($picked);
+
+    expect($url)->toContain('/'.$item->getKey().'/')
+        // The encoded hash itself must not survive into the URL.
+        ->and($url)->not->toContain($picked);
+});
+
+it('honours a conversion chosen in the picker', function () {
+    $tenant = Tenant::factory()->create();
+    app(CurrentTenant::class)->set($tenant);
+
+    $item = makeLibraryImage($tenant);
+    $composite = FilePlugin::getCompositeId(pickedIdentifier($item), ['thumb']);
+
+    // No thumb file exists here, so the resolver falls back to the original —
+    // what matters is that the suffix is parsed off rather than pasted into the
+    // URL.
+    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($composite))
+        ->toContain('/'.$item->getKey().'/')
+        ->and(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($composite))
+        ->not->toContain('|');
+});
+
+it('still scopes a picked id to the current tenant', function () {
+    $mine = Tenant::factory()->create();
+    $theirs = Tenant::factory()->create();
+
+    app(CurrentTenant::class)->set($theirs);
+    $theirItem = makeLibraryImage($theirs);
+
+    app(CurrentTenant::class)->set($mine);
+
+    // The encoded shape must not become a way around the check.
+    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl(pickedIdentifier($theirItem)))
+        ->toBeNull();
+});
+
+it('leaves a legacy path untouched by the picker decoding', function () {
+    Storage::disk('public')->put('2020/01/legacy.png', 'x');
+
+    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl('2020/01/legacy.png'))
+        ->toContain('2020/01/legacy.png');
 });

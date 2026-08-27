@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Mmoollllee\Cms\Cms;
+use RalphJSmit\Filament\Explore\Filament\Forms\Components\RichEditor\Plugins\FilePlugin;
 use RuntimeException;
 
 /**
@@ -58,16 +59,51 @@ class MediaLibraryFileAttachmentProvider implements FileAttachmentProvider
      */
     public function getFileAttachmentUrl(mixed $file): ?string
     {
+        [$ref, $conversion] = $this->parseIdentifier($file);
+
+        // Normalize FIRST, then check. The picker stores the item key encrypted
+        // (`base64(AES("media-library-item:42"))`), which is neither numeric nor
+        // a path — checking the raw value would skip the guard entirely while
+        // the resolver went on to resolve it anyway.
+        $ref = MediaUrlResolver::normalize($ref);
+
         // An id is client-controlled: the editor ships a source-code tab, so an
-        // editor on one tenant can type another tenant's item id and have the
-        // site render — and, on a private disk, sign — a file they may not read.
-        // The item model carries only a `has_media` scope, so the check is here,
-        // and without a tenant to scope against nothing is trusted.
-        if (is_numeric($file) && ! $this->belongsToCurrentTenant((int) $file)) {
+        // editor on one tenant can paste another tenant's identifier and have
+        // the site render — and, on a private disk, sign — a file they may not
+        // read. The item model carries only a `has_media` scope, so the check is
+        // here, and without a tenant to scope against nothing is trusted.
+        if (is_int($ref) && ! $this->belongsToCurrentTenant($ref)) {
             return null;
         }
 
-        return MediaUrlResolver::url($file);
+        return MediaUrlResolver::url($ref, $conversion);
+    }
+
+    /**
+     * Peel the conversion off a stored node identifier.
+     *
+     * Two writers share this attribute: an upload stores a plain item id, the
+     * Mediathek picker stores the item key encrypted and, when one was chosen,
+     * suffixed `|conversion`. Only that suffix needs handling here —
+     * {@see MediaUrlResolver::normalize()} already decrypts the key itself.
+     *
+     * The suffix is accepted only when it looks like a conversion NAME, so a
+     * legacy path that happens to contain a pipe is not silently cut in half.
+     *
+     * @return array{0: mixed, 1: string|null}
+     */
+    protected function parseIdentifier(mixed $file): array
+    {
+        if (! is_string($file) || ! str_contains($file, '|')) {
+            return [$file, null];
+        }
+
+        [$key, $arguments] = FilePlugin::parseCompositeId($file);
+        $conversion = $arguments[0] ?? null;
+
+        return preg_match('/^[A-Za-z0-9_-]+$/', (string) $conversion) === 1
+            ? [$key, $conversion]
+            : [$file, null];
     }
 
     protected function belongsToCurrentTenant(int $id): bool
