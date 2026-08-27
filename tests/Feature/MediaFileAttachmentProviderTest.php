@@ -19,7 +19,6 @@ use RalphJSmit\Filament\Explore\Data\FileData;
 use RalphJSmit\Filament\Explore\Filament\Forms\Components\RichEditor\Plugins\FilePlugin;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
-use Workbench\App\Filament\Pages\Dashboard;
 use Workbench\App\Models\Tenant;
 
 /*
@@ -178,7 +177,7 @@ it('routes an editor upload into the library', function () {
 
     // A real Livewire host: saveUploadedFileAttachmentUsing() runs through
     // evaluate(), which needs one.
-    $editor = RichEditor::make('content')->container(Schema::make(app(Dashboard::class)));
+    $editor = configuredRichEditor();
 
     $id = $editor->saveUploadedFileAttachment(temporaryUpload());
 

@@ -329,8 +329,9 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                 // MediaPicker the media fields use, so an editor meets one
                 // library everywhere instead of a bare upload box in the editor
                 // and a picker two fields down. It also carries the item's alt
-                // text and lets a conversion be chosen. Uploading stays
-                // available next to it — see the toolbar below.
+                // text and lets a conversion be chosen. Its modal uploads too
+                // (SelectFileAction builds the topbar with `uploadAction(true)`),
+                // which is why no separate upload button is wired below.
                 //
                 // Registered on the component rather than the model, for the
                 // reason given above; only its PROVIDER would have needed the
@@ -365,29 +366,26 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                     ['bold', 'italic', 'underline', 'strike', 'subscript', 'superscript', 'linkPicker'],
                     ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
                     ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
-                    // `attachFiles` is NOT listed here when the library is on:
-                    // MediaPlugin strips it from any list, so it is re-enabled
-                    // below instead — see there.
+                    // One upload route, not two: the Mediathek modal already
+                    // uploads, and does it better — with a folder, alt text and
+                    // a conversion. `attachFiles` would be a second, poorer one.
                     $mediaLibraryEnabled ? ['table', 'mediaLibrary'] : ['table', 'attachFiles'],
                     $embedGroup,
-                ]);
-
-            if ($mediaLibraryEnabled) {
-                // MediaPlugin removes `attachFiles`; put it back. The two are
-                // not alternatives — one PICKS an existing item, the other
-                // uploads a new one — and RichEditor derives
-                // `hasFileAttachments()` from that button being present, so
-                // dropping it also switches off paste and drag-and-drop.
+                ])
+                // Drag-and-drop and paste, without the button. Filament derives
+                // `hasFileAttachments()` from `attachFiles` being in the toolbar
+                // and gates both gestures — plus saveUploadedFileAttachment()
+                // itself — on it, so dropping the button alone would switch them
+                // off. This sets the flag directly instead.
                 //
-                // Two orderings matter here. This call has to come AFTER
-                // toolbarButtons(), which clears every modification registered
-                // before it; and it wins over the plugin because
-                // getToolbarButtons() applies plugin modifications first,
-                // "so that user-level modifications always take precedence".
-                // Re-enabling appends, so the button lands at the end of the
-                // toolbar rather than beside the picker.
-                $component->enableToolbarButtons(['attachFiles']);
-            }
+                // Which also means it survives a field that declares its own
+                // toolbar: `toolbarButtons()` clears every registered button
+                // modification, and anything derived from the toolbar goes with
+                // it. This is not.
+                //
+                // Null, not false, in the off case: null keeps Filament's own
+                // default, which is the `attachFiles` button listed above.
+                ->fileAttachments($mediaLibraryEnabled ?: null);
         });
     }
 

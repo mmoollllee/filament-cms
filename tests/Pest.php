@@ -187,3 +187,17 @@ function panelPages(): array
 
     return $provider->pages();
 }
+
+/**
+ * A RichEditor as the panel actually resolves it: configureUsing() applied,
+ * plugin toolbar modifications folded in, on a real Livewire host so that the
+ * `...Using()` closures — which run through evaluate() — have one.
+ *
+ * Lives here rather than in a test file because Pest loads every test into one
+ * process: a second file declaring its own copy is a fatal redeclare.
+ */
+function configuredRichEditor(): \Filament\Forms\Components\RichEditor
+{
+    return \Filament\Forms\Components\RichEditor::make('content')
+        ->container(\Filament\Schemas\Schema::make(app(\Workbench\App\Filament\Pages\Dashboard::class)));
+}

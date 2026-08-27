@@ -911,6 +911,14 @@ php artisan cms:media:import --inline --dry-run
 php artisan cms:media:import --inline
 ```
 
+The toolbar carries **one** upload route, `mediaLibrary`, not the built-in
+`attachFiles`. The picker's modal uploads too (`SelectFileAction` builds its topbar with
+`uploadAction(true)`) and does it better — with a folder, alt text and a conversion — so
+a second button would only be a poorer way in. Drag-and-drop and paste stay live
+regardless: Filament normally derives `hasFileAttachments()` from that button being
+present, and `configureRichEditor()` sets the flag directly with `->fileAttachments()`
+instead. A field may therefore declare its own `toolbarButtons()` without losing them.
+
 A field opts out with `RichEditor::make('content')->plugins([])`, but note that drops
 the CMS's other editor plugins with it.
 

@@ -22,7 +22,8 @@ die Integration aktiviert sich selbst, sobald der Client das Plugin installiert
 | Default-Ordner **Branding / Seiten / Dokumente** (flach, kontextbasiert, lazy `firstOrCreate` pro Tenant, Namen per Registry) | ✅ |
 | `cms:media:import` — **wert-basierter** Scan (siehe unten), idempotent, `--dry-run/--tenant/--all/--sync`, Draft-Rewrite, Originale bleiben | ✅ |
 | Workbench/Testbench-Wiring (Provider, Migrationskopien), Doku (README, FEATURES §Media, CUSTOMIZATION §12) | ✅ |
-| Offen: Video-Pipeline-Umzug an den Upload (P4), RichEditor-`MediaPlugin` (P5), Galerie-/Downloads-Block, Tags, Private-Disk-Modul (P6) | ⏳ |
+| RichEditor am `MediaPlugin`: Picker statt Upload-Box, Uploads (auch Drop/Paste) werden Mediathek-Items | ✅ |
+| Offen: Video-Pipeline-Umzug an den Upload (P4), Galerie-/Downloads-Block, Tags, Private-Disk-Modul (P6) | ⏳ |
 
 **Erkenntnisse aus dem Consumer-Audit (pernes-hebesysteme.de, muench-tiefbau.de),
 die das Design geändert haben:**
@@ -221,9 +222,13 @@ MediaPicker::make('media_path')                 // Key bleibt! Wert wird Item-ID
 
 `SeoFields` bekommt `meta.og_image` (MediaPicker, image-only) — schließt „OG-Bild pro Inhalt". `seo-head.blade.php`: `meta.og_image` (ID → `og`-Conversion, absolute URL) → Legacy `meta.og_image_url` → `resolvedDefaultOgImageUrl()`.
 
-### 4.5 RichEditor (Spike nötig)
+### 4.5 RichEditor (umgesetzt)
 
-Ziel: `attachFiles` durch das Plugin-`MediaPlugin` ersetzen (Einfügen aus der Mediathek, Alt-Text, Conversion-Wahl; gespeichert wird die Item-ID). Klärpunkte, weil unsere RichText-Blöcke nicht model-gebunden sind und das Frontend über den eigenen tiptap-php-`Renderer` läuft: (1) funktioniert `->plugins([MediaPlugin::make()])` feld-level ohne `InteractsWithRichContent`? (2) Node-/Attribut-Form fürs Renderer-Mapping (ID → `srcset`-`<img>`). nest nutzt keine RichEditor-Media-Integration — hier liefert die Referenz nichts; Fallback: `attachFiles` behalten, aber `fileAttachmentsDisk('public')` + tenant-gescopetes Directory.
+`attachFiles` ist durch das `MediaPlugin` ersetzt: Einfügen aus der Mediathek mit Alt-Text und Conversion-Wahl, gespeichert wird die Item-ID.
+
+Die beiden Klärpunkte des Spikes sind beantwortet. (1) Feld-level `->plugins([MediaPlugin::make()])` genügt fürs Einfügen, aber **nicht** für die URL-Auflösung: `RichEditor::getFileAttachmentProvider()` geht über `getContentAttribute()`, das ohne model-gebundenes `HasRichContent` null ist — unsere RichText-Blöcke liegen im `blocks`-Builder. Deshalb wird der Provider zusätzlich per `getFileAttachmentUrlUsing()`/`saveUploadedFileAttachmentUsing()` direkt am Component verdrahtet. (2) Der Node trägt die Item-ID in `data-id`; der Picker schreibt sie als verschlüsselten Driver-Key (`media-library-item:{id}`, optional `|conversion`), was `MediaUrlResolver::normalize()` auflöst.
+
+Kein separater Upload-Button: der Picker-Dialog lädt selbst hoch (`SelectFileAction` baut die Topbar mit `uploadAction(true)`). Drop und Paste bleiben trotzdem aktiv — sie hängen an `hasFileAttachments()`, das per `->fileAttachments(true)` direkt gesetzt wird statt aus der Toolbar abgeleitet.
 
 ### 4.6 Video-Pipeline
 
@@ -335,7 +340,7 @@ Damit nest später die CMS-Engine einsetzen kann und beide **eine** Mediathek te
 | **P2 Picker-UX & Felder** | Als Redakteur möchte ich überall aus der Mediathek wählen statt hochzuladen — mit Vorschau wie in nest. | **`MediaPickerPreviewAction`-Port (+ View + lang)**, MediaBlock, Sektions-BG, `PageHeaderFields`, Tenant-Branding + Favicon, `SeoFields.og_image` |
 | **P3 Referenzen & Bestandsmigration** | Als Betreiber möchte ich Bestandsdateien verlustfrei überführen und sehen, wo Medien verwendet werden. | `HasMediaReferences` + `MediaReferences` + Parity-Test, „Wird verwendet"-Info, Lösch-Schutz, `cms:media:import` (+ Log), Rollout-Doku, Starter/`cms:install` |
 | **P4 Video** | Als Redakteur möchte ich, dass Videos beim Upload einmalig weboptimiert werden. | Observer + `ConvertLibraryVideo`, `video_status`, Auto-Poster, Deprecation alte Pipeline |
-| **P5 RichEditor** | Als Redakteur möchte ich Mediathek-Bilder im Fließtext einfügen. | Spike (§4.5), `MediaPlugin`-Wiring, Renderer-Node-Mapping |
+| **P5 RichEditor** ✅ | Als Redakteur möchte ich Mediathek-Bilder im Fließtext einfügen. | `MediaPlugin`-Wiring (§4.5), `MediaLibraryFileAttachmentProvider`, Node-Mapping über `MediaUrlResolver::normalize()` |
 | **P6 Kür** | §5-Stories + E10-Story | Galerie-Block, Downloads-Block, Tags, `MediaColumn`, Re-Encode-Aktion, Private-Disk-Modul (Generator + Serve-Controller + `PublicMediaReferences`) |
 
 Reihenfolge: P0 → P3 als zusammenhängender Kern (ein Release); P4/P5 danach; P6 nach Bedarf. Consumer-Rollout (§6.3) nach P3.
