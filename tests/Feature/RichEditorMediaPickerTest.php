@@ -1,6 +1,7 @@
 <?php
 
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Filament\RichEditor\MediaLibraryPickerPlugin;
 use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\RichEditor\Plugins\MediaPlugin;
 
 /*
@@ -26,9 +27,14 @@ it('offers the media library picker in the toolbar', function () {
 });
 
 it('registers the picker plugin on the editor', function () {
-    $names = array_map(fn ($plugin) => $plugin::class, configuredRichEditor()->getPlugins());
+    $plugins = configuredRichEditor()->getPlugins();
 
-    expect($names)->toContain(MediaPlugin::class);
+    expect(array_map(fn ($plugin) => $plugin::class, $plugins))
+        ->toContain(MediaLibraryPickerPlugin::class)
+        // The upstream plugin underneath, so the picker action, its conversion
+        // select and the alt-text handling are all still the vendor's.
+        ->and(collect($plugins)->first(fn ($plugin) => $plugin instanceof MediaPlugin))
+        ->not->toBeNull();
 });
 
 it('leaves the redundant upload button out of the toolbar', function () {
@@ -64,4 +70,37 @@ it('falls back to the plain upload button without the library', function () {
         // Null, not false: without the library the flag stays Filament's own,
         // which the restored button satisfies.
         ->and(configuredRichEditor()->hasFileAttachments())->toBeTrue();
+});
+
+/*
+ * The picker used to store `FileData::getKeyHash()` — the driver key encrypted
+ * with APP_KEY. That only resolves in the environment that wrote it: pulling a
+ * production database locally, or rotating the key, killed every picked image.
+ * The id is portable, and the driver's own findFile() prefixes a bare key, so
+ * reading still works.
+ */
+
+it('stores a portable item id, not an environment-bound key hash', function () {
+    $tenant = actingAsMarketingPanelAdmin();
+    $item = makeLibraryImage($tenant);
+
+    $attributes = MediaLibraryPickerPlugin::make()
+        ->driver(app(Cms::mediaDriver()))
+        ->getEditorActionImageAttributes(['file' => 'media-library-item:'.$item->getKey()], []);
+
+    expect($attributes['id'])->toBe((string) $item->getKey());
+});
+
+it('keeps a chosen conversion alongside the id', function () {
+    $tenant = actingAsMarketingPanelAdmin();
+    $item = makeLibraryImage($tenant);
+
+    $attributes = MediaLibraryPickerPlugin::make()
+        ->driver(app(Cms::mediaDriver()))
+        ->getEditorActionImageAttributes(
+            ['file' => 'media-library-item:'.$item->getKey(), 'conversion' => 'responsive'],
+            [],
+        );
+
+    expect($attributes['id'])->toBe($item->getKey().'|responsive');
 });

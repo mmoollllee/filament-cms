@@ -54,6 +54,7 @@ use Mmoollllee\Cms\Filament\RichEditor\Blocks\NavigationCardGroupBlock;
 use Mmoollllee\Cms\Filament\RichEditor\HtmlPreservePlugin;
 use Mmoollllee\Cms\Filament\RichEditor\LinkPickerPlugin;
 use Mmoollllee\Cms\Filament\RichEditor\MediaLibraryAttachmentPlugin;
+use Mmoollllee\Cms\Filament\RichEditor\MediaLibraryPickerPlugin;
 use Mmoollllee\Cms\Http\Middleware\RedirectUnauthorizedPanelAccess;
 use Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost;
 use Mmoollllee\Cms\Models\Menu;
@@ -66,7 +67,6 @@ use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\FilamentConsentControl\Filament\ConsentIframePlugin;
 use Mmoollllee\Filami\Filament\Pages\UmamiStatistics;
 use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
-use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\RichEditor\Plugins\MediaPlugin;
 use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
 
 /**
@@ -336,7 +336,7 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                 // Registered on the component rather than the model, for the
                 // reason given above; only its PROVIDER would have needed the
                 // model route, and that half is covered by the closures.
-                $plugins[] = MediaPlugin::make();
+                $plugins[] = MediaLibraryPickerPlugin::make();
 
                 $component
                     ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => $provider->getFileAttachmentUrl($file))
