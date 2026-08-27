@@ -5,7 +5,9 @@ namespace Mmoollllee\Cms\Console\Commands;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Filament\RichEditor\MediaLibraryPickerPlugin;
+use Mmoollllee\Cms\Observers\ContentCacheObserver;
 use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 
 /**
@@ -94,8 +96,19 @@ class MediaRepairPickerIdsCommand extends Command
 
         $this->stats['rows']++;
 
-        if (! $this->option('dry-run')) {
-            $row->saveQuietly();
+        if ($this->option('dry-run')) {
+            return;
+        }
+
+        // Quietly, so a repair does not bump timestamps or stack a content
+        // version on every row it touches...
+        $row->saveQuietly();
+
+        // ...but the frontend caches rememberForever and this observer is its
+        // only invalidation. Skipping it leaves the old markup serving, which
+        // reads exactly like the command having done nothing.
+        if ($row instanceof Content) {
+            app(ContentCacheObserver::class)->contentSaved($row);
         }
     }
 

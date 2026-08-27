@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Mmoollllee\Cms\Support\Content\ContentResolver;
 use RalphJSmit\Filament\Explore\Data\FileData;
 use RalphJSmit\Filament\Explore\Support\AesFixedInitializationVectorCrypt;
 use Workbench\App\Models\Content;
@@ -163,5 +164,38 @@ it('reaches rich text nested inside a section block', function () {
     $this->artisan('cms:media:repair-picker-ids')->assertSuccessful();
 
     expect($content->fresh()->blocks[0]['data']['blocks'][0]['data']['content'])
+        ->toContain('data-id="'.$id.'"');
+});
+
+it('does not leave the repaired page serving from a stale cache', function () {
+    // Found the hard way: saveQuietly() skips ContentCacheObserver, which is the
+    // sole invalidation for the rememberForever frontend cache. The repair wrote
+    // correct ids and the page kept rendering the dead ciphertext — which reads
+    // exactly like the command having done nothing at all.
+    $tenant = Tenant::factory()->create();
+    $item = makeLibraryImage($tenant);
+    $id = $item->getKey();
+
+    $content = Content::create([
+        'tenant_id' => $tenant->id,
+        'content_type' => 'default.page',
+        'title' => 'Über Uns',
+        'path' => '/ueber-uns',
+        'visibility' => 'public',
+        'publish_from' => now()->subDay(),
+        'blocks' => [[
+            'type' => 'text',
+            'data' => ['content' => '<p><img src="/storage/'.$id.'/pic.png" data-id="'.foreignPickerKeyHash($id).'"></p>'],
+        ]],
+    ]);
+
+    $resolver = app(ContentResolver::class);
+
+    // Warm it the way a visitor would.
+    $resolver->findByPath($tenant, '/ueber-uns');
+
+    $this->artisan('cms:media:repair-picker-ids')->assertSuccessful();
+
+    expect($resolver->findByPath($tenant, '/ueber-uns')->blocks[0]['data']['content'])
         ->toContain('data-id="'.$id.'"');
 });
