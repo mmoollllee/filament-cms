@@ -871,6 +871,19 @@ twenty times it:
 ],
 ```
 
+**The image driver has to survive that budget.** Spatie defaults to GD
+(`IMAGE_DRIVER`, `config/media-library.php`), which decodes an image UNCOMPRESSED into
+PHP's memory: a 4000x3000 camera photo is roughly 48 MB per copy, and a conversion holds
+source and target at once. On the usual 128M limit a `media-library:regenerate` over real
+uploads dies part-way through with `Allowed memory size … exhausted` in `GdDriver`. Set
+`IMAGE_DRIVER=imagick` wherever the extension is available — it manages its own buffers
+outside PHP's limit — and raise `memory_limit` where it is not.
+
+Non-raster media in the library (SVG, PDF, video, ICO) still get the vendor's four
+frontend conversions registered, so a regenerate reports one failure per such file
+(`unable to open file … magick-…` for an SVG). Harmless — the original is what gets
+served — but noisy.
+
 Both affect NEW conversions only. To apply them to existing media:
 
 ```bash

@@ -66,6 +66,7 @@ use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\FilamentConsentControl\Filament\ConsentIframePlugin;
 use Mmoollllee\Filami\Filament\Pages\UmamiStatistics;
 use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
+use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\RichEditor\Plugins\MediaPlugin;
 use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
 
 /**
@@ -315,6 +316,22 @@ abstract class BasePanelProvider extends FilamentPanelProvider
 
                 $plugins[] = MediaLibraryAttachmentPlugin::make();
 
+                // Insert an image by PICKING one from the Mediathek — the same
+                // MediaPicker the media fields use, so an editor meets one
+                // library everywhere instead of a bare upload box in the editor
+                // and a picker two fields down. It also carries the item's alt
+                // text and lets a conversion be chosen. Uploading stays
+                // available next to it — see the toolbar below.
+                //
+                // The vendor documents registering this on the model
+                // (`registerRichContent()->plugins()->fileAttachmentProvider()`),
+                // which CMS content cannot do: its rich text lives in a `blocks`
+                // builder under a virtual field name, so there is no model
+                // attribute to register. Plugins merge from the component too,
+                // so the picker arrives this way; the provider half is the
+                // closures below.
+                $plugins[] = MediaPlugin::make();
+
                 $component
                     ->getFileAttachmentUrlUsing(fn (mixed $file): ?string => $provider->getFileAttachmentUrl($file))
                     ->saveUploadedFileAttachmentUsing(
@@ -343,9 +360,25 @@ abstract class BasePanelProvider extends FilamentPanelProvider
                     ['bold', 'italic', 'underline', 'strike', 'subscript', 'superscript', 'linkPicker'],
                     ['h2', 'h3', 'alignStart', 'alignCenter', 'alignEnd'],
                     ['blockquote', 'codeBlock', 'bulletList', 'orderedList'],
-                    ['table', 'attachFiles'],
+                    // `attachFiles` is NOT listed here when the library is on:
+                    // MediaPlugin strips it from any list, so it is re-enabled
+                    // below instead — see there.
+                    MediaLibrary::enabled() ? ['table', 'mediaLibrary'] : ['table', 'attachFiles'],
                     $embedGroup,
-                ]);
+                ])
+                // MediaPlugin disables `attachFiles`, and we put it back —
+                // AFTER toolbarButtons(), which clears every modification
+                // registered before it.
+                //
+                // The two are not alternatives: `mediaLibrary` PICKS an existing
+                // item, `attachFiles` uploads a new one. And RichEditor derives
+                // `hasFileAttachments()` from that button being present, so
+                // dropping it also switches off paste and drag-and-drop —
+                // pasting a screenshot is the most common way an image enters a
+                // page, and it lands in the Mediathek anyway via the attachment
+                // provider above. Re-enabling appends it, so it sits at the end
+                // of the toolbar rather than beside the picker.
+                ->enableToolbarButtons(MediaLibrary::enabled() ? ['attachFiles'] : []);
         });
     }
 
