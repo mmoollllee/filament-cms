@@ -332,6 +332,25 @@ it('reports a flat numeric directory instead of deleting it', function () {
     expect(Storage::disk('public')->exists('2019/foto.jpg'))->toBeTrue();
 });
 
+it('does not report a conversion-less medium as a legacy tree', function () {
+    $tenant = Tenant::factory()->create();
+    $media = libraryMedia($tenant);
+
+    // An SVG or a PDF never gets conversions, so its directory holds the
+    // original and nothing else — the same shape as a flat `2019/` upload year.
+    // Reading that as a legacy tree invites an admin to delete a live logo, so
+    // the media table has to break the tie.
+    $directories = mediaDirectories($media);
+    Storage::disk('public')->deleteDirectory($directories['conversions']);
+    Storage::disk('public')->deleteDirectory($directories['responsive']);
+
+    $this->artisan('cms:media:prune --force')
+        ->doesntExpectOutputToContain('Legacy upload trees found')
+        ->assertSuccessful();
+
+    expect(Storage::disk('public')->exists($media->getPathRelativeToRoot()))->toBeTrue();
+});
+
 it('leaves conversions alone when the media row\'s model is unresolvable', function () {
     $tenant = Tenant::factory()->create();
     $media = libraryMedia($tenant);

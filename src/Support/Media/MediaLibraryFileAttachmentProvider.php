@@ -30,8 +30,7 @@ use RuntimeException;
  *
  * Legacy content keeps working: {@see MediaUrlResolver::url()} resolves both
  * ids and stored paths, so a `data-id` left over from the default provider (or
- * from a WordPress import) still renders while it waits to be migrated by
- * `cms:media:import --inline`.
+ * from a WordPress import) still renders.
  */
 class MediaLibraryFileAttachmentProvider implements FileAttachmentProvider
 {

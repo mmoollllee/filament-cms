@@ -651,12 +651,6 @@ group Inhalt), folders, search, filters, bulk actions, image editor, central
   button on the picker, inline/dropzone uploads with progress tiles, auto-selection of
   fresh uploads, and the extended preview action (arrow-key navigation, inline PDF
   preview, policy-aware URLs) on field/modal tiles and the file-info sidebar.
-- `cms:media:import` **(one-time — removed from the codebase once every install has
-  run it)** migrates legacy installs: a VALUE-based scan over
-  contents/fragments (blocks, payload, meta **and draft stash**) + tenant `*_path`
-  columns imports every existing file reference (arbitrary keys — `payload.galerie`
-  arrays, WordPress-era `2020/01/…` paths) and rewrites it to an item id. Idempotent,
-  `--dry-run`/`--tenant=`/`--all`/`--sync`, originals stay on disk.
 - **Editor uploads land in the Mediathek too.** `MediaLibraryAttachmentPlugin`
   carries a `FileAttachmentProvider` to both the RichEditor and the renderer, so an
   image pasted into a paragraph becomes a library item (tenant, folder `Seiten`,
@@ -665,13 +659,14 @@ group Inhalt), folders, search, filters, bulk actions, image editor, central
   the provider off the plugin on both ends — setting it on the field alone would store
   ids the frontend cannot resolve. Existing path-shaped ids keep rendering:
   `MediaUrlResolver` resolves ids and paths alike.
-- `cms:media:import --inline` migrates images embedded in rich text. The value scan
-  skips them by design (a leading-slash URL resolves fine as it is), and that is
-  exactly what makes them dangerous later: such a file has no item, so it is invisible
-  to the Mediathek, to `cms:media:prune` and to any question about which media are
-  still used — deleting the directory it sits in looks safe from every angle the
-  tooling can see. Idempotent (tags already carrying `data-id` are skipped), and the
-  dry run counts candidates rather than imports, so it reports honestly.
+- **Legacy references** — raw file paths in blocks, payload, drafts and tenant
+  branding, including images embedded in rich text, were converted to item ids by the
+  one-time `cms:media:import`. It has been removed now that every install reports zero;
+  v0.17.6 is the last release carrying it. `MediaUrlResolver` still resolves a stored
+  path, so anything that was never migrated keeps rendering — but a file with no item
+  is invisible to the Mediathek, to `cms:media:prune` and to any question about which
+  media are still used, so deleting the directory it sits in looks safe from every
+  angle the tooling can see.
 - `cms:media:prune` reclaims disk the library never cleans up itself: conversions
   superseded by a format/size change (the library only knows the name it writes *today*,
   so a `jpg`→`webp` switch abandons the old file), srcset candidates dropped by a

@@ -15,9 +15,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
-use Mmoollllee\Cms\Console\Commands\MediaImportCommand;
 use Mmoollllee\Cms\Console\Commands\MediaPruneCommand;
-use Mmoollllee\Cms\Console\Commands\MediaRepairPickerIdsCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Contracts\User;
@@ -351,9 +349,7 @@ class CmsServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
-                MediaImportCommand::class,
                 MediaPruneCommand::class,
-                MediaRepairPickerIdsCommand::class,
             ]);
         }
     }

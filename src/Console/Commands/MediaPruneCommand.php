@@ -56,7 +56,7 @@ use Throwable;
  * would be proposed for deletion. Such rows are skipped and counted instead.
  *
  * "Numeric top-level directory" is NOT sufficient to call something a media
- * directory: a WordPress upload tree left behind by `cms:media:import` is
+ * directory: a WordPress upload tree left behind by the media import is
  * numeric too (`2020/01/…`), and a year is indistinguishable from an id. The
  * layout decides instead — a media directory holds its original file plus at
  * most `conversions/` and `responsive-images/`, so anything nesting other
@@ -372,7 +372,9 @@ class MediaPruneCommand extends Command
                 continue;
             }
 
-            if (! $this->hasMediaDirectoryLayout($disk, $directory)) {
+            $isKnown = isset($knownIds[(int) $name]);
+
+            if (! $this->hasMediaDirectoryLayout($disk, $directory, $isKnown)) {
                 $this->rememberLegacyTree($disk, $directory);
 
                 continue;
@@ -380,7 +382,7 @@ class MediaPruneCommand extends Command
 
             $this->scannedDirectories++;
 
-            if (isset($knownIds[(int) $name])) {
+            if ($isKnown) {
                 continue;
             }
 
@@ -399,22 +401,29 @@ class MediaPruneCommand extends Command
      * Whether a numeric directory is shaped like a media directory rather than
      * a legacy `YYYY/MM/` upload tree: the library nests nothing below its own
      * `conversions/` and `responsive-images/`.
+     *
+     * @param  bool  $hasMediaRow  whether a media row carries this directory's id
      */
-    protected function hasMediaDirectoryLayout(Filesystem $disk, string $directory): bool
+    protected function hasMediaDirectoryLayout(Filesystem $disk, string $directory, bool $hasMediaRow): bool
     {
-        // Absence of counter-evidence is not evidence: a flat `2019/foto.jpg`
-        // has no subdirectories either, and reading that as a media directory
-        // deletes exactly the legacy tree this method exists to spare. Require a
-        // derivative directory the library itself would have created.
         $children = array_map(basename(...), $disk->directories($directory));
 
-        return $children !== []
-            && array_diff($children, ['conversions', 'responsive-images']) === [];
+        if (array_diff($children, ['conversions', 'responsive-images']) !== []) {
+            return false;
+        }
+
+        // A derivative directory settles it on its own. Without one there is
+        // nothing in the layout to tell `302/logo.svg` from `2019/foto.jpg`, so
+        // the media table decides: an SVG or a PDF has no conversions and would
+        // otherwise be reported as a legacy tree an admin is invited to delete —
+        // which for a logo means deleting it. An id with no row behind it stays
+        // reported rather than pruned, so a year folder is still spared.
+        return $children !== [] || $hasMediaRow;
     }
 
     /**
      * A numeric directory that is not shaped like a media directory — almost
-     * always the WordPress upload tree `cms:media:import` copies FROM and
+     * always the WordPress upload tree the media import copied FROM and
      * leaves in place as rollback safety. Reported with its size so the
      * leftovers are visible, never deleted: only an admin can confirm the
      * import is settled.

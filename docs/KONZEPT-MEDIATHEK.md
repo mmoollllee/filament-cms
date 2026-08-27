@@ -272,6 +272,10 @@ Siehe E7. Übergang: `ConvertsUploadedVideos`/`ConvertVideoForWeb` bleiben für 
 
 ### 6.2 Bestandsdaten: `cms:media:import`
 
+> **Erledigt und entfernt.** Alle Installationen melden 0 Referenzen und 0 Inline-Bilder;
+> der Befehl wurde aus dem Paket gelöscht (zuletzt enthalten in v0.17.6). Der Abschnitt
+> bleibt als Beschreibung dessen stehen, was migriert wurde.
+
 Idempotenter Befehl (`--dry-run`, `--tenant=`, `--all`, Report/Mapping-Log):
 
 1. **Sammeln:** alle Datei-Referenzen aus `contents.blocks|payload|meta`, **`contents.draft`**, `fragments.blocks`, **`fragments.draft`**, `tenants.*_path` — dieselbe Scan-Logik wie `HasMediaReferences` (E8), einmal gebaut.
@@ -283,7 +287,7 @@ Idempotenter Befehl (`--dry-run`, `--tenant=`, `--all`, Report/Mapping-Log):
 
 ### 6.3 Consumer-Apps (Starter, muench-tiefbau.de, pernes-hebesysteme.de)
 
-Pro App: satis-Repo + `auth.json`-Lizenz, `composer update`, `php artisan migrate`, Theme-Import (Starter fertig; sonst `make:filament-theme`), ggf. `media-library.php` publishen (`max_file_size` — Videos!), Queue-Worker für Conversions, dann `cms:media:import`. Apps mit eigenem `configureRichEditor()` ziehen den neuen Toolbar-Button nach.
+Pro App: satis-Repo + `auth.json`-Lizenz, `composer update`, `php artisan migrate`, Theme-Import (Starter fertig; sonst `make:filament-theme`), ggf. `media-library.php` publishen (`max_file_size` — Videos!), Queue-Worker für Conversions. (Der Bestands-Import entfiel mit §6.2.) Apps mit eigenem `configureRichEditor()` ziehen den neuen Toolbar-Button nach.
 
 ### 6.4 Rückwärtskompatibilität & Rollback
 

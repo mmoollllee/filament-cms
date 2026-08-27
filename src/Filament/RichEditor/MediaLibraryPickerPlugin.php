@@ -22,9 +22,9 @@ use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\RichEditor\Plugin
  * Reading stays compatible in both directions. The picker's own prefill runs
  * the id through `FileData::ensureDecryptedKeyHash()`, which returns a plain id
  * unchanged, and the driver's `findFile()` prefixes a key without a colon
- * itself — so `312` finds `media-library-item:312`. Key hashes already in
- * content keep resolving too, as long as they are read where they were
- * written; `cms:media:repair-picker-ids` rewrites those.
+ * itself — so `312` finds `media-library-item:312`. A key hash still resolves
+ * too, as long as it is read where it was written — v0.17.5 rewrote the ones
+ * the broken versions had left behind.
  */
 class MediaLibraryPickerPlugin extends MediaPlugin
 {

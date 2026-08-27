@@ -904,12 +904,7 @@ library is enabled). Nothing to wire in an app. Two consequences worth knowing:
   same `Seiten` folder, same alt text, and it shows up in every media tool;
 - older content keeps rendering. A `data-id` holding a path (Filament's default
   provider, or a WordPress import) still resolves, because `MediaUrlResolver` handles
-  ids and paths alike. Migrate those with:
-
-```bash
-php artisan cms:media:import --inline --dry-run
-php artisan cms:media:import --inline
-```
+  ids and paths alike.
 
 The toolbar carries **one** upload route, `mediaLibrary`, not the built-in
 `attachFiles`. The picker's modal uploads too (`SelectFileAction` builds its topbar with
@@ -921,12 +916,6 @@ instead. A field may therefore declare its own `toolbarButtons()` without losing
 
 A field opts out with `RichEditor::make('content')->plugins([])`, but note that drops
 the CMS's other editor plugins with it.
-
-`cms:media:import` is **migration scaffolding with an end date**: no code path creates a
-legacy path any more, so once every app reports `0 Referenzen, 0 Inline-Bilder` the
-command, its test and this paragraph are deleted rather than kept around as something a
-future reader has to recognise as obsolete. Check every consumer first — an install that
-never migrated still needs it.
 
 **Panel options** — override `BasePanelProvider::mediaLibraryPlugin()` to change
 navigation/slug/accepted types or swap the library page; the driver stays the single
@@ -968,7 +957,7 @@ current tenant, superadmin bypass via `before()`) are registered on the plugin m
 visibility itself comes from the driver's tenant scope (auto-active whenever a Filament
 tenant exists).
 
-**Legacy migration** — `cms:media:import` (idempotent; `--dry-run`, `--tenant=`,
-`--all`, `--sync`) imports every referenced file and rewrites refs to ids, draft stashes
-included. Run it BEFORE editors touch the panel — a picker cannot hydrate a raw path and
-would drop it on save. Originals stay on disk; prune later.
+**Legacy migration** — `cms:media:import` did this and has been removed now that every
+install reports zero references. A picker still cannot hydrate a raw path and would drop
+it on save, so an install arriving late with raw paths needs that command back: it was
+last present in v0.17.6.

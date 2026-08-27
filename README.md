@@ -320,13 +320,10 @@ Filament theme:
 @import '../../../vendor/ralphjsmit/laravel-filament-media-library/resources/css/index.css';
 ```
 
-Then migrate existing file references (paths in blocks/payload/drafts + tenant branding
-become media items; run BEFORE editors use the panel — pickers cannot hydrate raw paths):
-
-```bash
-php artisan cms:media:import --dry-run
-php artisan cms:media:import          # add --sync without a queue worker, --all for orphans
-```
+A fresh install has nothing to migrate. Older installs carried raw file paths in
+blocks, payload, drafts and tenant branding; `cms:media:import` turned those into
+media items and was deleted once every install reported zero. `MediaUrlResolver`
+still resolves a stored path, so content that was never migrated keeps rendering.
 
 **Recommended companion** — the free
 [`mmoollllee/filament-media-library-extensions`](https://github.com/mmoollllee/filament-media-library-extensions)
@@ -444,12 +441,9 @@ empty, and saving writes that emptiness back over the path. The frontend hides t
 problem until then, because `MediaUrlResolver::url()` maps legacy paths to
 `/storage/…` perfectly well.
 
-Migrate the references once, before anyone opens the panel:
-
-```bash
-php artisan cms:media:import --sync
-php artisan cms:clear-tenant-cache
-```
+The one-time `cms:media:import` used to convert them; it has been removed. If an
+install still shows raw paths in a picker, restore that command from the history
+of this package (it was last present in v0.17.6) and run it once.
 
 ### `content`-scope layout presets never reach the frontend
 
