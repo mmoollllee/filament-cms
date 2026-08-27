@@ -10,6 +10,7 @@ use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Filament\Forms\MediaField;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider;
 use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
@@ -35,15 +36,16 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  *
  * This is migration scaffolding, not a feature. Nothing produces the data it
  * consumes any more: MediaField writes item ids, and
- * {@see \Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider}
+ * {@see MediaLibraryFileAttachmentProvider}
  * makes rich-editor uploads library items too, so no new legacy path can come
- * into existence. Once every consuming app reports "0 Referenzen, 0
- * Inline-Bilder", this class, its test and its mention in the docs are removed
+ * into existence. Once every consuming app reports zero
+ * references and zero inline images, this class, its test and its mention in the docs are removed
  * from the codebase rather than carried along as something future readers have
  * to recognise as obsolete.
  *
- * Check before removing — an app that never migrated still needs it; as of
- * 2026-08-27 landmetzgerei-geiwiz.de was still on filament-cms ^0.2.
+ * Check every consumer before removing: an install that never ran it still
+ * needs it, and one that is several majors behind may not have reached the
+ * media library at all.
  *
  * Files are imported with `preservingOriginal()` — originals stay on disk as
  * rollback safety. Idempotency: rewritten values are ints (skipped on rerun);
@@ -69,6 +71,9 @@ class MediaImportCommand extends Command
 
     /** @var array<string, array<string, int>> [site_key][metric] */
     protected array $stats = [];
+
+    /** @var array<int, int>|null memoized set of media ids */
+    protected ?array $mediaIds = null;
 
     /** @var array<string, array<int, string>> [site_key][] => "path (reason)" */
     protected array $missing = [];
@@ -285,7 +290,7 @@ class MediaImportCommand extends Command
                 return $tag;
             }
 
-            if (preg_match('#\ssrc="([^"]+)"#i', $tag, $src) !== 1) {
+            if (preg_match('#\ssrc=(?|"([^"]*)"|\'([^\']*)\')#i', $tag, $src) !== 1 || $src[1] === '') {
                 return $tag;
             }
 
@@ -309,12 +314,24 @@ class MediaImportCommand extends Command
             $tag = preg_replace('#\sdata-id="[^"]*"#i', '', $tag);
 
             return preg_replace(
-                '#\ssrc="[^"]+"#i',
+                '#\ssrc=(?:"[^"]*"|\'[^\']*\')#i',
                 ' src="'.e((string) MediaUrlResolver::url($itemId)).'" data-id="'.$itemId.'"',
                 (string) $tag,
                 limit: 1,
             ) ?? $matches[0];
         }, $html) ?? $html;
+    }
+
+    /**
+     * Every media id, as a set. Read once: this is consulted per embedded image
+     * across every rich-text field of every row, and one SELECT each would make
+     * the scan quadratic in the size of the content table.
+     *
+     * @return array<int, int>
+     */
+    protected function mediaIds(): array
+    {
+        return $this->mediaIds ??= Media::query()->pluck('id')->flip()->all();
     }
 
     /**
@@ -328,7 +345,10 @@ class MediaImportCommand extends Command
             return null;
         }
 
-        $path = ltrim($src, '/');
+        // Editors and HTML purifiers percent-encode spaces and non-ASCII, and
+        // the disk stores the decoded name. Comparing the raw value means every
+        // umlaut file name is skipped while the run reports success.
+        $path = rawurldecode(ltrim($src, '/'));
 
         if (Str::startsWith($path, 'storage/')) {
             $path = Str::after($path, 'storage/');
@@ -340,7 +360,7 @@ class MediaImportCommand extends Command
         // `2020/01/x.jpg` is not media #2020, and treating it as such is how a
         // legacy image gets skipped and then silently deleted later.
         if (preg_match('#^(\d+)/[^/]+$#', $path, $m) === 1
-            && Media::query()->whereKey((int) $m[1])->exists()) {
+            && isset($this->mediaIds()[(int) $m[1]])) {
             return null;
         }
 
@@ -497,7 +517,7 @@ class MediaImportCommand extends Command
     protected function report(): void
     {
         $this->table(
-            ['Tenant', 'Referenzen', 'Importiert', 'Inline-Bilder', 'Zeilen umgeschrieben', 'Fehler'],
+            ['Tenant', 'References', 'Imported', 'Inline images', 'Rows rewritten', 'Errors'],
             collect($this->stats)->map(fn (array $row, string $siteKey) => [
                 $siteKey, $row['refs'], $row['imported'], $row['inline'], $row['rows'], count($this->missing[$siteKey] ?? []),
             ]),

@@ -4,6 +4,7 @@ use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\RichEditor\Plugins\Contracts\HasFileAttachmentProvider;
 use Filament\Schemas\Schema;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
@@ -180,4 +181,58 @@ it('routes an editor upload into the library', function () {
 
     expect($id)->toBeInt()
         ->and(Cms::mediaItemModel()::query()->find($id))->not->toBeNull();
+});
+
+/*
+ * Guards added after review. A `data-id` is client-controlled — the editor ships
+ * a source-code tab — and a silent null is worse than a failure, because
+ * Filament writes it straight into the node and the image is gone for good.
+ */
+
+it('refuses an item id belonging to another tenant', function () {
+    $mine = Tenant::factory()->create();
+    $theirs = Tenant::factory()->create();
+
+    app(CurrentTenant::class)->set($theirs);
+    $theirId = MediaLibraryFileAttachmentProvider::make()->saveUploadedFileAttachment(temporaryUpload());
+
+    app(CurrentTenant::class)->set($mine);
+
+    // Typed into the HTML tab by an editor on another site.
+    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($theirId))->toBeNull();
+});
+
+it('refuses any item id when there is no tenant to scope against', function () {
+    app(CurrentTenant::class)->forget();
+
+    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl(1))->toBeNull();
+});
+
+it('fails loudly rather than destroying an upload without a tenant', function () {
+    app(CurrentTenant::class)->forget();
+
+    // Returning null would have Filament write null into the node id and src;
+    // the next dehydration drops the node and the image is unrecoverable.
+    expect(fn () => MediaLibraryFileAttachmentProvider::make()->saveUploadedFileAttachment(temporaryUpload()))
+        ->toThrow(RuntimeException::class);
+});
+
+it('leaves no invisible item row when storing the file fails', function () {
+    $tenant = Tenant::factory()->create();
+    app(CurrentTenant::class)->set($tenant);
+
+    $upload = temporaryUpload();
+
+    // The file disappears between the row being created and the media being
+    // attached. Without a transaction the row survives, and the `has_media`
+    // global scope then hides it from every query in the application.
+    Storage::disk(FileUploadConfiguration::disk())->deleteDirectory(FileUploadConfiguration::directory());
+
+    try {
+        MediaLibraryFileAttachmentProvider::make()->saveUploadedFileAttachment($upload);
+    } catch (Throwable) {
+        // The failure is the point; what matters is what it left behind.
+    }
+
+    expect(DB::table('filament_media_library')->count())->toBe(0);
 });

@@ -275,7 +275,7 @@ it('keeps the files when the confirmation is declined', function () {
     Storage::disk('public')->put($stale, 'old');
 
     $this->artisan('cms:media:prune')
-        ->expectsConfirmation('Delete 1 file(s), freeing 3 B?', 'no')
+        ->expectsConfirmation('Delete 1 file(s), freeing 3.0 B?', 'no')
         ->assertFailed();
 
     expect(Storage::disk('public')->exists($stale))->toBeTrue();
@@ -294,4 +294,94 @@ it('fails when the media library is disabled', function () {
     Cms::disableMediaLibrary();
 
     $this->artisan('cms:media:prune')->assertFailed();
+});
+
+/*
+ * Guards added after review. Each one stands between a plausible operational
+ * mistake and the deletion of a live library, so each gets a test that would
+ * catch its removal.
+ */
+
+it('refuses to prune when the database has no media rows at all', function () {
+    // A .env pointing at an empty or freshly migrated database while the disk
+    // still holds production media: with no rows, every directory looks like an
+    // orphan and the whole library would go in one pass.
+    Storage::disk('public')->put('40/photo.png', cmsTestPngBytes());
+    Storage::disk('public')->put('40/conversions/photo-thumb.png', cmsTestPngBytes());
+
+    $this->artisan('cms:media:prune --force')
+        ->expectsOutputToContain('Refusing to prune')
+        ->assertFailed();
+
+    expect(Storage::disk('public')->exists('40/photo.png'))->toBeTrue();
+});
+
+it('reports a flat numeric directory instead of deleting it', function () {
+    $tenant = Tenant::factory()->create();
+    makeLibraryImage($tenant);
+
+    // An upload year that was never partitioned by month, or a pre-library
+    // feature filing under a numeric key. No subdirectories — which must not be
+    // read as "shaped like a media directory".
+    Storage::disk('public')->put('2019/foto.jpg', cmsTestPngBytes());
+
+    $this->artisan('cms:media:prune --force')
+        ->expectsOutputToContain('Legacy upload trees found')
+        ->assertSuccessful();
+
+    expect(Storage::disk('public')->exists('2019/foto.jpg'))->toBeTrue();
+});
+
+it('leaves conversions alone when the media row\'s model is unresolvable', function () {
+    $tenant = Tenant::factory()->create();
+    $media = libraryMedia($tenant);
+
+    $stray = $media->getKey().'/conversions/pic-responsive.jpg';
+    Storage::disk('public')->put($stray, 'old');
+
+    // A morph alias dropped from the map. The library answers "no conversions"
+    // and "I cannot tell you" identically, and the second must not delete.
+    $media->model_type = 'a_type_that_no_longer_exists';
+    $media->save();
+
+    $this->artisan('cms:media:prune --force')->assertSuccessful();
+
+    expect(Storage::disk('public')->exists($stray))->toBeTrue();
+});
+
+it('refuses to prune while jobs are still queued', function () {
+    $tenant = Tenant::factory()->create();
+    $media = libraryMedia($tenant);
+    Storage::disk('public')->put($media->getKey().'/conversions/pic-responsive.jpg', 'old');
+
+    // Spatie writes a responsive file before registering it, so a prune during
+    // a regenerate deletes a candidate the job is about to record.
+    Queue::push(fn () => null);
+
+    $this->artisan('cms:media:prune --force')
+        ->expectsOutputToContain('Refusing to prune')
+        ->assertFailed();
+});
+
+it('keeps the original-level srcset when the conversion files are gone', function () {
+    $tenant = Tenant::factory()->create();
+    $media = libraryMedia($tenant);
+    $directories = mediaDirectories($media);
+
+    $originalLevel = 'pic___media_library_original_800_600.jpg';
+    Storage::disk('public')->put($directories['responsive'].$originalLevel, 'keep');
+
+    // The conversion set is REGISTERED but its file is missing — an interrupted
+    // prune or a failed regenerate. Registration is not existence, and deleting
+    // the fallback here would leave a srcset of nothing but 404s.
+    $media->responsive_images = [
+        'responsive' => ['urls' => ['pic___responsive_1920_1440.webp']],
+        'media_library_original' => ['urls' => [$originalLevel]],
+    ];
+    $media->save();
+
+    $this->artisan('cms:media:prune --force')->assertSuccessful();
+
+    expect(Storage::disk('public')->exists($directories['responsive'].$originalLevel))->toBeTrue()
+        ->and($media->fresh()->responsive_images)->toHaveKey('media_library_original');
 });

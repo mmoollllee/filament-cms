@@ -244,3 +244,39 @@ it('reports inline images without importing them on a dry run', function () {
     expect(data_get($content->fresh()->blocks, '0.data.content'))->toContain('/storage/2020/01/inline.png')
         ->and(Cms::mediaItemModel()::query()->count())->toBe(0);
 });
+
+it('imports a percent-encoded inline src', function () {
+    $tenant = Tenant::factory()->create();
+    Storage::disk('public')->put('2020/01/Hebebühne Detail.png', cmsTestPngBytes());
+
+    // What an editor or an HTML purifier writes. Comparing the raw value against
+    // the disk skips the file while the run still reports success.
+    $content = Content::factory()->for($tenant)->create([
+        'blocks' => [['type' => 'text', 'data' => [
+            'content' => '<p><img src="/storage/2020/01/Hebeb%C3%BChne%20Detail.png"></p>',
+        ]]],
+    ]);
+
+    $this->artisan('cms:media:import --inline')->assertSuccessful();
+
+    $item = Cms::mediaItemModel()::query()->first();
+
+    expect($item)->not->toBeNull()
+        ->and(data_get($content->fresh()->blocks, '0.data.content'))->toContain('data-id="'.$item->getKey().'"');
+});
+
+it('imports a single-quoted inline src', function () {
+    $tenant = Tenant::factory()->create();
+    Storage::disk('public')->put('2020/01/inline.png', cmsTestPngBytes());
+
+    $content = Content::factory()->for($tenant)->create([
+        'blocks' => [['type' => 'text', 'data' => [
+            'content' => "<p><img src='/storage/2020/01/inline.png'></p>",
+        ]]],
+    ]);
+
+    $this->artisan('cms:media:import --inline')->assertSuccessful();
+
+    expect(Cms::mediaItemModel()::query()->count())->toBe(1)
+        ->and(data_get($content->fresh()->blocks, '0.data.content'))->toContain('data-id=');
+});

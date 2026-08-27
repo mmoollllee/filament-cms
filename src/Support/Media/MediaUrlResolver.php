@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Support\Media;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Mmoollllee\Cms\Cms;
 use RalphJSmit\Filament\Explore\Data\FileData;
@@ -37,9 +38,12 @@ final class MediaUrlResolver
     /** @var array<string, int|null> Picker key hash → item id; null marks "not a hash". */
     private static array $pickerKeys = [];
 
+    /** @var array<string, bool> per-request memo for {@see conversionFileExists()} */
+    protected static array $conversionExists = [];
+
     public static function url(mixed $ref, ?string $conversion = null): ?string
     {
-        $ref = static::normalize($ref);
+        $ref = self::normalize($ref);
 
         if ($ref === null) {
             return null;
@@ -53,17 +57,67 @@ final class MediaUrlResolver
             return '/storage/'.$ref;
         }
 
-        $media = static::media($ref);
+        $media = self::media($ref);
 
         if ($media === null) {
             return null;
         }
 
-        if ($conversion !== null && $media->hasGeneratedConversion($conversion)) {
+        if ($conversion !== null && self::conversionFileExists($media, $conversion)) {
             return $media->getUrl($conversion);
         }
 
         return $media->getUrl();
+    }
+
+    /**
+     * Whether a conversion is both registered AND actually on disk.
+     *
+     * `hasGeneratedConversion()` reads the stored `generated_conversions` JSON,
+     * which records that a conversion RAN — not what it is called now. Change
+     * `cms.media.format` and every existing derivative keeps its old extension
+     * while the library derives the new one, so the registration stays true and
+     * every URL 404s until a regenerate finishes. The disk is the only honest
+     * answer, and falling back to the original is what this method's caller
+     * already promises for conversions that have not run yet.
+     *
+     * Memoized per request: a page renders the same media repeatedly, and the
+     * check is a stat call (a billed HEAD on S3).
+     */
+    protected static function conversionFileExists(Media $media, string $conversion): bool
+    {
+        if (! $media->hasGeneratedConversion($conversion)) {
+            return false;
+        }
+
+        $key = $media->getKey().'@'.$conversion;
+
+        return self::$conversionExists[$key] ??= Storage::disk($media->conversions_disk ?: $media->disk)
+            ->exists($media->getPathRelativeToRoot($conversion));
+    }
+
+    /**
+     * Whether a reference points at something that can actually be shown.
+     *
+     * The predicate form of {@see url()}, and the reason it exists: templates
+     * guard an aspect-ratio wrapper with `@if ($ref)` to mean "there is an image
+     * here". A raw reference is truthy even when its library item is gone, so
+     * that guard renders an empty box — or, wrapped in a link, an empty
+     * clickable one. Free at runtime; the underlying lookup is memoized.
+     */
+    public static function resolves(mixed $ref): bool
+    {
+        $ref = self::normalize($ref);
+
+        if ($ref === null) {
+            return false;
+        }
+
+        // A stored path always yields a URL; only a library id can dangle.
+        // Asking the memoized lookup rather than url() avoids building a URL
+        // string the caller is going to throw away — this runs once per image
+        // in a listing, on top of the render that follows it.
+        return ! is_int($ref) || self::media($ref) !== null;
     }
 
     /**
@@ -79,9 +133,9 @@ final class MediaUrlResolver
      */
     public static function conversionUrl(mixed $ref, string $conversion): ?string
     {
-        $media = static::media($ref);
+        $media = self::media($ref);
 
-        return $media?->hasGeneratedConversion($conversion)
+        return $media !== null && self::conversionFileExists($media, $conversion)
             ? $media->getUrl($conversion)
             : null;
     }
@@ -93,7 +147,7 @@ final class MediaUrlResolver
      */
     public static function absoluteUrl(mixed $ref, ?string $conversion = null): ?string
     {
-        $url = static::url($ref, $conversion);
+        $url = self::url($ref, $conversion);
 
         if ($url === null) {
             return null;
@@ -110,9 +164,9 @@ final class MediaUrlResolver
      */
     public static function srcset(mixed $ref): ?string
     {
-        $media = static::media($ref);
+        $media = self::media($ref);
 
-        if ($media === null || ! static::isImageMime($media->mime_type)) {
+        if ($media === null || ! self::isImageMime($media->mime_type)) {
             return null;
         }
 
@@ -123,7 +177,7 @@ final class MediaUrlResolver
         // The plugin registers responsive images on the `responsive`
         // conversion; fall back to original-level responsive images for
         // custom conversion sets.
-        $srcset = $media->getSrcset('responsive');
+        $srcset = $media->getSrcset(CmsMediaLibraryDriver::RENDERED_CONVERSION);
 
         if (blank($srcset)) {
             $srcset = $media->getSrcset();
@@ -135,12 +189,12 @@ final class MediaUrlResolver
     /** Central alt text stored on the media-library item (null for legacy refs). */
     public static function alt(mixed $ref): ?string
     {
-        return static::item($ref)?->alt_text;
+        return self::item($ref)?->alt_text;
     }
 
     public static function mime(mixed $ref): ?string
     {
-        return static::media($ref)?->mime_type;
+        return self::media($ref)?->mime_type;
     }
 
     /**
@@ -149,14 +203,14 @@ final class MediaUrlResolver
      */
     public static function isVideo(mixed $ref): bool
     {
-        $ref = static::normalize($ref);
+        $ref = self::normalize($ref);
 
         if ($ref === null) {
             return false;
         }
 
         if (is_int($ref)) {
-            return Str::startsWith((string) static::mime($ref), 'video/');
+            return Str::startsWith((string) self::mime($ref), 'video/');
         }
 
         // Same extension set <x-site.media-item> detects (ogg included).
@@ -166,12 +220,12 @@ final class MediaUrlResolver
     /** Whether the ref is a media-library item id (vs. a legacy path/URL). */
     public static function isLibraryRef(mixed $ref): bool
     {
-        return is_int(static::normalize($ref));
+        return is_int(self::normalize($ref));
     }
 
     public static function item(mixed $ref): ?MediaLibraryItem
     {
-        $ref = static::normalize($ref);
+        $ref = self::normalize($ref);
 
         if (! is_int($ref) || ! MediaLibrary::enabled()) {
             return null;
@@ -186,14 +240,14 @@ final class MediaUrlResolver
 
     public static function media(mixed $ref): ?Media
     {
-        $ref = static::normalize($ref);
+        $ref = self::normalize($ref);
 
         if (! is_int($ref)) {
             return null;
         }
 
         if (! array_key_exists($ref, self::$media)) {
-            self::$media[$ref] = static::item($ref)?->getItem();
+            self::$media[$ref] = self::item($ref)?->getItem();
         }
 
         return self::$media[$ref];
@@ -281,7 +335,7 @@ final class MediaUrlResolver
             return (int) $ref;
         }
 
-        return static::itemIdFromPickerKey($ref) ?? $ref;
+        return self::itemIdFromPickerKey($ref) ?? $ref;
     }
 
     /**
@@ -347,6 +401,6 @@ final class MediaUrlResolver
 
     protected static function isImageMime(?string $mime): bool
     {
-        return static::isProcessableImageMime($mime);
+        return self::isProcessableImageMime($mime);
     }
 }

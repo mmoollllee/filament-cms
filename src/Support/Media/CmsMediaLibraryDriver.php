@@ -24,6 +24,13 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  */
 class CmsMediaLibraryDriver extends MediaLibraryItemDriver
 {
+    /**
+     * The conversion that carries the srcset the frontend renders. Named here
+     * because this is where it is registered; {@see MediaUrlResolver::srcset()}
+     * reads it back and `cms:media:prune` decides what is dead weight by it.
+     */
+    public const RENDERED_CONVERSION = 'responsive';
+
     protected function setUp(): void
     {
         parent::setUp();

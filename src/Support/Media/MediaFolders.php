@@ -42,17 +42,17 @@ final class MediaFolders
 
     public static function branding(?Model $tenant = null): ?MediaLibraryFolder
     {
-        return static::ensure(self::BRANDING, $tenant);
+        return self::ensure(self::BRANDING, $tenant);
     }
 
     public static function pages(?Model $tenant = null): ?MediaLibraryFolder
     {
-        return static::ensure(self::PAGES, $tenant);
+        return self::ensure(self::PAGES, $tenant);
     }
 
     public static function documents(?Model $tenant = null): ?MediaLibraryFolder
     {
-        return static::ensure(self::DOCUMENTS, $tenant);
+        return self::ensure(self::DOCUMENTS, $tenant);
     }
 
     /**
@@ -66,18 +66,18 @@ final class MediaFolders
             return null;
         }
 
-        $tenant ??= static::currentTenant();
+        $tenant ??= self::currentTenant();
 
         if ($tenant === null) {
             return null;
         }
 
-        $memoKey = static::memoKey($key, $tenant);
+        $memoKey = self::memoKey($key, $tenant);
 
         if (! array_key_exists($memoKey, self::$memo)) {
             self::$memo[$memoKey] = MediaLibraryFolder::query()
                 ->whereNull('parent_id')
-                ->where('name', static::name($key))
+                ->where('name', self::name($key))
                 ->whereMorphedTo('tenant', $tenant)
                 ->first();
         }
@@ -95,26 +95,26 @@ final class MediaFolders
             return null;
         }
 
-        $tenant ??= static::currentTenant();
+        $tenant ??= self::currentTenant();
 
         if ($tenant === null) {
             return null;
         }
 
-        $existing = static::find($key, $tenant);
+        $existing = self::find($key, $tenant);
 
         if ($existing !== null) {
             return $existing;
         }
 
         $folder = MediaLibraryFolder::query()->firstOrCreate([
-            'name' => static::name($key),
+            'name' => self::name($key),
             'parent_id' => null,
             'tenant_type' => $tenant->getMorphClass(),
             'tenant_id' => $tenant->getKey(),
         ]);
 
-        return self::$memo[static::memoKey($key, $tenant)] = $folder;
+        return self::$memo[self::memoKey($key, $tenant)] = $folder;
     }
 
     /**
@@ -146,7 +146,7 @@ final class MediaFolders
         return $tenant->getMorphClass().':'.$tenant->getKey().':'.$key;
     }
 
-    protected static function currentTenant(): ?Model
+    public static function currentTenant(): ?Model
     {
         return Filament::getTenant() ?? app(CurrentTenant::class)->get();
     }

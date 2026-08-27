@@ -23,4 +23,13 @@ class AssetUrlResolver
     {
         return MediaUrlResolver::url($path, $conversion);
     }
+
+    /**
+     * Whether a reference resolves to something showable — the guard a template
+     * wants when it wraps an image in a fixed-ratio box.
+     */
+    public static function resolves(string|int|array|null $path): bool
+    {
+        return MediaUrlResolver::resolves($path);
+    }
 }

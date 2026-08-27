@@ -2,13 +2,14 @@
 
 namespace Mmoollllee\Cms\Support\Media;
 
-use Filament\Facades\Filament;
 use Filament\Forms\Components\RichEditor\FileAttachmentProviders\Contracts\FileAttachmentProvider;
 use Filament\Forms\Components\RichEditor\RichContentAttribute;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Livewire\Features\SupportFileUploads\FileUploadConfiguration;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Mmoollllee\Cms\Cms;
-use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use RuntimeException;
 
 /**
  * Routes RichEditor image uploads into the media library instead of dropping
@@ -33,63 +34,110 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  */
 class MediaLibraryFileAttachmentProvider implements FileAttachmentProvider
 {
-    protected ?RichContentAttribute $attribute = null;
-
     public static function make(): static
     {
         return app(static::class);
     }
 
+    /**
+     * Required by the contract; this provider needs no per-field state, so the
+     * attribute is not kept.
+     */
     public function attribute(RichContentAttribute $attribute): static
     {
-        $this->attribute = $attribute;
-
         return $this;
     }
 
     /**
-     * The stored identifier is a media-library item id — but the resolver is
-     * deliberately given whatever is there, so pre-existing path-shaped ids
-     * keep rendering rather than turning into broken images the moment this
-     * provider is switched on.
+     * The URL for a stored identifier, or null when it is an item the current
+     * tenant may not see.
+     *
+     * Path-shaped ids — left by Filament's default provider or a WordPress
+     * import — are passed through untouched, so switching this provider on does
+     * not turn existing content into broken images.
      */
     public function getFileAttachmentUrl(mixed $file): ?string
     {
+        // An id is client-controlled: the editor ships a source-code tab, so an
+        // editor on one tenant can type another tenant's item id and have the
+        // site render — and, on a private disk, sign — a file they may not read.
+        // The item model carries only a `has_media` scope, so the check is here,
+        // and without a tenant to scope against nothing is trusted.
+        if (is_numeric($file) && ! $this->belongsToCurrentTenant((int) $file)) {
+            return null;
+        }
+
         return MediaUrlResolver::url($file);
     }
 
+    protected function belongsToCurrentTenant(int $id): bool
+    {
+        $tenant = $this->tenant();
+
+        if ($tenant === null) {
+            return false;
+        }
+
+        // Read from the memoized lookup that resolves the URL a line later, not
+        // a query of its own: the renderer calls this for EVERY image node in
+        // every rich-text field, so a separate SELECT here is one per image per
+        // page render.
+        $item = MediaUrlResolver::item($id);
+
+        return $item !== null
+            && $item->tenant_id === $tenant->getKey()
+            && $item->tenant_type === $tenant->getMorphClass();
+    }
+
     /**
-     * @return int|null the media-library item id, or null when there is no
-     *                  tenant to file the upload under
+     * @return int the media-library item id
+     *
+     * @throws RuntimeException when there is no tenant to file the upload under
      */
     public function saveUploadedFileAttachment(TemporaryUploadedFile $file): mixed
     {
         $tenant = $this->tenant();
 
+        // Returning null here would be worse than failing: Filament writes the
+        // result straight into the node's id and src, and the next dehydration
+        // drops a node with a blank id — the image is gone, with no exception,
+        // no notification and nothing in the log. Fail loudly instead.
         if ($tenant === null) {
-            return null;
+            throw new RuntimeException('Cannot store a rich-editor upload: no tenant context. The media library files every upload under a tenant.');
         }
-
-        $itemModel = Cms::mediaItemModel();
-
-        $item = $itemModel::query()->create([
-            'tenant_type' => $tenant->getMorphClass(),
-            'tenant_id' => $tenant->getKey(),
-            // Editor uploads belong to a page, which is what the Pages folder
-            // is for; the folder is provisioned lazily on first use.
-            'folder_id' => MediaFolders::ensure(MediaFolders::PAGES, $tenant)?->getKey(),
-        ]);
 
         $fileName = $this->fileNameFor($file);
 
-        $item
-            ->driver(app(Cms::mediaDriver()))
-            ->addMedia($file->getRealPath())
-            ->usingFileName($fileName)
-            ->usingName(pathinfo($fileName, PATHINFO_FILENAME))
-            ->toMediaCollection($item->getMediaLibraryCollectionName());
+        // One unit of work: the item row is invisible to the whole application
+        // without media (the model carries a `has_media` global scope), so a
+        // half-done upload would leave a row nothing can list, edit or delete.
+        return DB::transaction(function () use ($tenant, $file, $fileName): int {
+            $item = Cms::mediaItemModel()::query()->create([
+                'tenant_type' => $tenant->getMorphClass(),
+                'tenant_id' => $tenant->getKey(),
+                // Editor uploads belong to a page, which is what the Pages
+                // folder is for; provisioned lazily on first use.
+                'folder_id' => MediaFolders::ensure(MediaFolders::PAGES, $tenant)?->getKey(),
+            ]);
 
-        return (int) $item->getKey();
+            $item
+                ->driver(app(Cms::mediaDriver()))
+                // From the DISK, not a real path: Livewire's temporary upload
+                // disk may be remote, where getRealPath() is an object key and
+                // not a file. Preserving the original also leaves the temporary
+                // file in place for Filament's own post-upload validation,
+                // which still holds a handle to it.
+                ->addMediaFromDisk(
+                    FileUploadConfiguration::path($file->getFilename(), withS3Root: false),
+                    FileUploadConfiguration::disk(),
+                )
+                ->preservingOriginal()
+                ->usingFileName($fileName)
+                ->usingName(pathinfo($fileName, PATHINFO_FILENAME))
+                ->toMediaCollection($item->getMediaLibraryCollectionName());
+
+            return (int) $item->getKey();
+        });
     }
 
     /**
@@ -108,7 +156,7 @@ class MediaLibraryFileAttachmentProvider implements FileAttachmentProvider
             && ! str_contains($name, '/')
             && preg_match('#\.[A-Za-z0-9]{1,8}$#', $name) === 1;
 
-        return $isUsable ? $name : basename($file->getRealPath());
+        return $isUsable ? $name : $file->getFilename();
     }
 
     /**
@@ -143,11 +191,11 @@ class MediaLibraryFileAttachmentProvider implements FileAttachmentProvider
     public function cleanUpFileAttachments(array $exceptIds): void {}
 
     /**
-     * Panel requests carry the Filament tenant; a queued job or a console
-     * command falls back to the CMS's own current-tenant registry.
+     * Shared with {@see MediaFolders}: which tenant an upload belongs to is one
+     * policy, and two copies of it would let a queued job and the panel disagree.
      */
     protected function tenant(): ?Model
     {
-        return Filament::getTenant() ?? app(CurrentTenant::class)->get();
+        return MediaFolders::currentTenant();
     }
 }

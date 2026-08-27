@@ -4,8 +4,13 @@ namespace Mmoollllee\Cms\Console\Commands;
 
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Number;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Support\Media\CmsMediaLibraryDriver;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Spatie\MediaLibrary\Conversions\ConversionCollection;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
@@ -63,7 +68,8 @@ class MediaPruneCommand extends Command
 {
     protected $signature = 'cms:media:prune
         {--dry-run : Report only — no deletions}
-        {--force : Delete without the confirmation prompt}';
+        {--force : Delete without the confirmation prompt}
+        {--ignore-queue : Prune even while jobs are queued (they may be unrelated)}';
 
     protected $description = 'Delete orphaned files on the media disk: superseded conversions, stale srcset candidates and directories without a media row';
 
@@ -81,12 +87,6 @@ class MediaPruneCommand extends Command
      */
     protected const ORIGINAL_LEVEL = 'media_library_original';
 
-    /**
-     * The conversion whose candidates the CMS actually renders
-     * ({@see MediaUrlResolver::srcset()}).
-     */
-    protected const RENDERED_CONVERSION = 'responsive';
-
     /** @var array<int, array{disk: string, path: string, size: int, reason: string}> */
     protected array $orphans = [];
 
@@ -100,13 +100,20 @@ class MediaPruneCommand extends Command
     /** @var array<int, int> media ids whose original is not where the row says it is */
     protected array $unverifiedMedia = [];
 
-    /** @var array<int, int> media ids to drop the original-level srcset registration from */
-    protected array $supersededOriginalSrcset = [];
+    /** @var array<int, array<int, string>> [media id] => files its original-level registration covers */
+    protected array $supersededOriginalSrcsetPaths = [];
 
     public function handle(): int
     {
         if (! MediaLibrary::enabled()) {
             $this->error('The media library is not available (ralphjsmit/laravel-filament-media-library not installed, or disabled via Cms::disableMediaLibrary()).');
+
+            return self::FAILURE;
+        }
+
+        if (($pending = $this->pendingConversionJobs()) > 0) {
+            $this->error("Refusing to prune: {$pending} queued job(s) are still running.");
+            $this->line('Conversions write their file BEFORE registering it, so pruning now deletes derivatives that are about to be recorded — the srcset would keep a permanently dead candidate. Wait for the queue to drain, or pass --ignore-queue if you know these jobs are unrelated.');
 
             return self::FAILURE;
         }
@@ -224,6 +231,19 @@ class MediaPruneCommand extends Command
      */
     protected function expectedConversionFiles(Media $media): ?array
     {
+        // The library answers "no conversions" and "I cannot tell you" with the
+        // same empty collection: ConversionCollection returns silently when the
+        // model class is gone rather than throwing. Reading that as "the row
+        // names no conversion files" deletes the whole conversions directory,
+        // so the unresolvable case is detected before asking.
+        $model = $media->model_type;
+
+        if (blank($model) || (! class_exists($model) && blank(Relation::getMorphedModel($model)))) {
+            $this->warn("Media #{$media->getKey()}: model [{$model}] is not resolvable — conversions left alone.");
+
+            return null;
+        }
+
         try {
             return ConversionCollection::createForMedia($media)
                 ->map(fn ($conversion) => $conversion->getConversionFile($media))
@@ -245,17 +265,7 @@ class MediaPruneCommand extends Command
      */
     protected function expectedResponsiveFiles(Media $media): array
     {
-        $registered = $media->responsive_images ?? [];
-
-        $files = [];
-
-        foreach ($registered as $entry) {
-            foreach ($entry['urls'] ?? [] as $fileName) {
-                $files[] = $fileName;
-            }
-        }
-
-        return $files;
+        return Arr::flatten(Arr::pluck($media->responsive_images ?? [], 'urls'));
     }
 
     /**
@@ -269,7 +279,7 @@ class MediaPruneCommand extends Command
         $registered = $media->responsive_images ?? [];
 
         $originalLevel = $registered[static::ORIGINAL_LEVEL]['urls'] ?? [];
-        $rendered = $registered[static::RENDERED_CONVERSION]['urls'] ?? [];
+        $rendered = $registered[CmsMediaLibraryDriver::RENDERED_CONVERSION]['urls'] ?? [];
 
         // Without conversion-level candidates the original-level set is what
         // the resolver falls back to — it is the srcset, not a duplicate.
@@ -277,12 +287,24 @@ class MediaPruneCommand extends Command
             return;
         }
 
+        // Registration is not existence. If the conversion-level files are gone
+        // — an interrupted prune, a failed regenerate, a partial restore — the
+        // set that justifies the deletion is itself dead, and deleting the
+        // fallback would leave the row with a srcset of nothing but 404s.
+        if (Arr::first($rendered, fn (string $fileName) => $disk->exists($directory.$fileName)) === null) {
+            return;
+        }
+
+        $paths = [];
+
         foreach ($originalLevel as $fileName) {
             $path = $directory.$fileName;
 
             if (! $disk->exists($path)) {
                 continue;
             }
+
+            $paths[] = $path;
 
             $this->orphans[] = [
                 'disk' => $diskName,
@@ -292,7 +314,11 @@ class MediaPruneCommand extends Command
             ];
         }
 
-        $this->supersededOriginalSrcset[] = $media->getKey();
+        if ($paths === []) {
+            return;
+        }
+
+        $this->supersededOriginalSrcsetPaths[$media->getKey()] = $paths;
     }
 
     /**
@@ -300,10 +326,9 @@ class MediaPruneCommand extends Command
      */
     protected function compare(string $diskName, Filesystem $disk, string $directory, array $expected, string $reason): void
     {
-        if (! $disk->directoryExists($directory)) {
-            return;
-        }
-
+        // No directoryExists() guard: files() already returns [] for a missing
+        // directory on every adapter, and the guard is a second listing —
+        // three per media row, each a billed request on S3.
         foreach ($disk->files($directory) as $path) {
             if (in_array(basename($path), $expected, true)) {
                 continue;
@@ -335,7 +360,7 @@ class MediaPruneCommand extends Command
         }
 
         $prefix = (string) config('media-library.prefix', '');
-        $knownIds = Media::query()->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $knownIds = Media::query()->pluck('id')->flip()->all();
 
         foreach ($disk->directories($prefix) as $directory) {
             $name = basename($directory);
@@ -355,7 +380,7 @@ class MediaPruneCommand extends Command
 
             $this->scannedDirectories++;
 
-            if (in_array($name, $knownIds, true)) {
+            if (isset($knownIds[(int) $name])) {
                 continue;
             }
 
@@ -377,13 +402,14 @@ class MediaPruneCommand extends Command
      */
     protected function hasMediaDirectoryLayout(Filesystem $disk, string $directory): bool
     {
-        foreach ($disk->directories($directory) as $child) {
-            if (! in_array(basename($child), ['conversions', 'responsive-images'], true)) {
-                return false;
-            }
-        }
+        // Absence of counter-evidence is not evidence: a flat `2019/foto.jpg`
+        // has no subdirectories either, and reading that as a media directory
+        // deletes exactly the legacy tree this method exists to spare. Require a
+        // derivative directory the library itself would have created.
+        $children = array_map(basename(...), $disk->directories($directory));
 
-        return true;
+        return $children !== []
+            && array_diff($children, ['conversions', 'responsive-images']) === [];
     }
 
     /**
@@ -423,18 +449,11 @@ class MediaPruneCommand extends Command
 
     protected function report(): void
     {
-        $byReason = [];
-
-        foreach ($this->orphans as $orphan) {
-            $byReason[$orphan['reason']]['count'] = ($byReason[$orphan['reason']]['count'] ?? 0) + 1;
-            $byReason[$orphan['reason']]['size'] = ($byReason[$orphan['reason']]['size'] ?? 0) + $orphan['size'];
-        }
-
-        $rows = [];
-
-        foreach ($byReason as $reason => $totals) {
-            $rows[] = [$reason, $totals['count'], $this->formatBytes($totals['size'])];
-        }
+        $rows = collect($this->orphans)
+            ->groupBy('reason')
+            ->map(fn ($group, $reason) => [$reason, $group->count(), $this->formatBytes((int) $group->sum('size'))])
+            ->values()
+            ->all();
 
         $rows[] = ['<comment>total</comment>', count($this->orphans), $this->formatBytes($this->totalSize())];
 
@@ -448,9 +467,25 @@ class MediaPruneCommand extends Command
     }
 
     /**
-     * Surfaces legacy upload trees so "where did the disk go?" does not need a
-     * manual `du`, while keeping them out of the deletion set.
+     * Queued jobs still to run. Conversions write their file before recording
+     * it, so a prune overlapping a regenerate deletes a derivative in the window
+     * between the two — and the job then registers a name that no longer exists.
      */
+    protected function pendingConversionJobs(): int
+    {
+        if ($this->option('ignore-queue')) {
+            return 0;
+        }
+
+        try {
+            return (int) Queue::size(config('media-library.queue_name') ?: null);
+        } catch (Throwable) {
+            // A queue this command cannot inspect (sync, or a driver without a
+            // size) is not a reason to refuse.
+            return 0;
+        }
+    }
+
     /**
      * Surfaces rows whose original is missing. A handful means broken uploads;
      * a large share means the disk and the database are from different moments,
@@ -478,10 +513,21 @@ class MediaPruneCommand extends Command
      */
     protected function diskHasDrifted(): bool
     {
-        return $this->scannedMedia > 0
-            && count($this->unverifiedMedia) / $this->scannedMedia > self::DRIFT_THRESHOLD;
+        // No media rows at all, yet the disk holds media-shaped directories:
+        // the most complete drift there is. The `> 0` guard below only dodges a
+        // division by zero, and reading it as "no rows, no drift" would let a
+        // run against an empty or wrong database delete the entire library.
+        if ($this->scannedMedia === 0) {
+            return $this->scannedDirectories > 0;
+        }
+
+        return count($this->unverifiedMedia) / $this->scannedMedia > self::DRIFT_THRESHOLD;
     }
 
+    /**
+     * Surfaces legacy upload trees so "where did the disk go?" does not need a
+     * manual `du`, while keeping them out of the deletion set.
+     */
     protected function reportLegacyTrees(): void
     {
         if ($this->legacyTrees === []) {
@@ -520,6 +566,9 @@ class MediaPruneCommand extends Command
         $freed = 0;
         $failed = 0;
 
+        /** @var array<string, true> */
+        $deletedPaths = [];
+
         foreach ($this->orphans as $orphan) {
             $disk = Storage::disk($orphan['disk']);
 
@@ -527,6 +576,7 @@ class MediaPruneCommand extends Command
                 if ($disk->delete($orphan['path'])) {
                     $deleted++;
                     $freed += $orphan['size'];
+                    $deletedPaths[$orphan['path']] = true;
 
                     continue;
                 }
@@ -538,7 +588,10 @@ class MediaPruneCommand extends Command
             }
         }
 
-        $this->forgetSupersededOriginalSrcset();
+        // Only for rows whose candidates actually left the disk. Dropping the
+        // registration after a failed delete strands the files AND loses the
+        // fallback srcset, which no rerun can rebuild.
+        $this->forgetSupersededOriginalSrcset($deletedPaths);
 
         $this->info("Pruned {$deleted} file(s), freed {$this->formatBytes($freed)}.");
 
@@ -555,15 +608,28 @@ class MediaPruneCommand extends Command
      * Removes the original-level registration from the rows whose candidates
      * were just deleted. Written per row rather than by a mass update: the
      * column is a JSON map whose other keys must survive.
+     *
+     * @param  array<string, true>  $deletedPaths
      */
-    protected function forgetSupersededOriginalSrcset(): void
+    protected function forgetSupersededOriginalSrcset(array $deletedPaths): void
     {
-        if ($this->supersededOriginalSrcset === []) {
+        // Only rows whose candidates ALL left the disk: a partial delete that
+        // still dropped the registration would strand the files and lose the
+        // fallback srcset with them.
+        $ids = [];
+
+        foreach ($this->supersededOriginalSrcsetPaths as $id => $paths) {
+            if (array_diff_key(array_flip($paths), $deletedPaths) === []) {
+                $ids[] = $id;
+            }
+        }
+
+        if ($ids === []) {
             return;
         }
 
         Media::query()
-            ->whereIn((new Media)->getKeyName(), $this->supersededOriginalSrcset)
+            ->whereKey($ids)
             ->each(function (Media $media): void {
                 $registered = $media->responsive_images ?? [];
 
@@ -573,7 +639,7 @@ class MediaPruneCommand extends Command
                 $media->save();
             });
 
-        $this->info(count($this->supersededOriginalSrcset).' row(s) no longer register an original-level srcset.');
+        $this->info(count($ids).' row(s) no longer register an original-level srcset.');
     }
 
     protected function totalSize(): int
@@ -583,14 +649,6 @@ class MediaPruneCommand extends Command
 
     protected function formatBytes(int $bytes): string
     {
-        foreach (['B', 'KB', 'MB', 'GB'] as $unit) {
-            if ($bytes < 1024 || $unit === 'GB') {
-                return round($bytes, $unit === 'B' ? 0 : 1).' '.$unit;
-            }
-
-            $bytes /= 1024;
-        }
-
-        return $bytes.' B';
+        return Number::fileSize($bytes, precision: 1);
     }
 }
