@@ -45,6 +45,7 @@ use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
 use Mmoollllee\Cms\Support\Locking\Locks;
+use Mmoollllee\Cms\Support\Media\CmsMediaLibraryItemImageGenerator;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
@@ -58,6 +59,7 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
 use Mmoollllee\Filami\Filami;
+use RalphJSmit\Filament\MediaLibrary\ImageGenerators\MediaLibraryItemImageGenerator;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 use Tiptap\Marks\Link;
@@ -346,6 +348,12 @@ class CmsServiceProvider extends ServiceProvider
     {
         Gate::policy(MediaLibraryItem::class, MediaItemPolicy::class);
         Gate::policy(MediaLibraryFolder::class, MediaFolderPolicy::class);
+
+        // The driver resolves its thumbnail generator through the container
+        // (`app(MediaLibraryItemImageGenerator::class)`), so swapping the
+        // binding is what reaches every picker, table column and infolist at
+        // once — see the subclass for the guard it adds.
+        $this->app->bind(MediaLibraryItemImageGenerator::class, CmsMediaLibraryItemImageGenerator::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([
