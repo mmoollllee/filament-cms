@@ -13,15 +13,20 @@ use Mmoollllee\Cms\Support\Routing\PathNormalizer;
  * Called automatically during Content::saving() to keep the `path` column
  * in sync. Non-routable blueprints return null (content has no URL).
  *
- * Path generation priority:
- * 1. Parent-driven path (typical CMS nesting): for routable types WITHOUT a
- *    urlPathPrefix that have a parent, the path is parent path + own last
- *    segment — the parent defines the prefix, the record only owns its slug.
- * 2. Blueprint's generatePath() logic (urlPathPrefix types keep type-based paths)
- * 3. Content's existing path (if already set)
- * 4. Auto-generated from slug (or Str::slug(title))
+ * The one invariant everything here rests on: A DERIVED PATH NEVER READS THE STORED
+ * PATH AS A WHOLE — only its last segment. A record owns exactly one segment; who owns
+ * the rest is decided in this order:
+ *  1. the blueprint, when it declares a urlPathPrefix (the prefix wins over the tree)
+ *  2. the parent, for a type without a prefix that has one
+ *  3. nobody — then, and only then, the stored path stands as authored
+ *  4. nothing to compose from yet: the blueprint's own
+ *     {@see \Mmoollllee\Cms\Contracts\ContentBlueprint::generatePath()}
  *
- * @see ConfiguredContentBlueprint::generatePath() — blueprint-level logic
+ * Because lastSegment(compose(owner, segment)) === segment, steps 1 and 2 are idempotent
+ * by construction: re-running them on their own output returns it unchanged, and running
+ * them on a path that drifted (a form that composed by hand, a legacy row, an import)
+ * returns the record to where its type and its tree say it belongs. That is what keeps a
+ * wrong value from sticking — the class of bug this file used to be the origin of.
  */
 class PathGenerator
 {
@@ -50,18 +55,26 @@ class PathGenerator
             return null;
         }
 
-        // Parent-driven nesting: the parent's path is the prefix, the record only
-        // owns its last segment. Types with an explicit urlPathPrefix keep their
-        // type-based paths (the prefix wins over the hierarchy).
-        if ($blueprint->urlPathPrefix() === null && ($parentPath = $this->parentPath($content)) !== null) {
-            $segment = $this->ownSegment($content);
+        $segment = $this->ownSegment($content);
 
-            if (filled($segment)) {
+        if (filled($segment)) {
+            // Type-driven: the prefix owns everything but the last segment, wherever the
+            // record sits in the tree. Composed rather than trusted, so a record created
+            // in the panel — which always arrives with a path, the field being required —
+            // lands under its prefix like a programmatically created one.
+            if (($prefix = $blueprint->urlPathPrefix()) !== null) {
+                return $this->normalize(rtrim($prefix, '/').'/'.$segment);
+            }
+
+            // Parent-driven nesting: the parent's path is the prefix, the record only
+            // owns its last segment.
+            if (($parentPath = $this->parentPath($content)) !== null) {
                 return $this->normalize(rtrim($parentPath, '/').'/'.$segment);
             }
         }
 
-        // Path already set by the form — normalize and return
+        // Authored: no prefix and no parent owns any of this, so the stored path stands —
+        // in full, including the multi-segment path an orphaned record keeps.
         if (filled($content->path)) {
             return $this->normalize($content->path);
         }

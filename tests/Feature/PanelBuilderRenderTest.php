@@ -9,6 +9,7 @@
  */
 
 use Filament\Facades\Filament;
+use Filament\Forms\Components\Select;
 use Livewire\Livewire;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\EditContent;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
@@ -35,9 +36,9 @@ it('renders the block builder on the content edit form with the cms item actions
 
     Livewire::test(EditContent::class, ['record' => $home->getKey()])
         ->assertOk()
-        // The docs site (marketing) is pages-only: the Seite/Sektion choice is NOT
-        // enabled for its site_key, the type field stays hidden.
-        ->assertDontSee('Seiten-Typ')
+        // The docs site offers more than one routable type, so the type field renders
+        // as the Seiten-Typ select (WHICH types it offers is pinned below).
+        ->assertSee('Seiten-Typ')
         // Pages nest under pages: the parent select is offered.
         ->assertSee('Übergeordnete Seite')
         ->assertSee('Block-Optionen')                                    // shared options action (BlockBuilder)
@@ -53,10 +54,23 @@ it('renders the block builder on the content edit form with the cms item actions
         ->assertDontSee('cms features carried');
 });
 
-it('offers the Seite/Sektion choice only on sites that opted in', function () {
-    // Tenant B (site_key 'acme') is the onepager demo — its site extension
-    // overrides the default.section blueprint with offeredInTypeSelect, so the
-    // select renders (beside the title).
+it('offers the Sektion type only on sites that opted in', function () {
+    // What the opt-in decides is the OPTION, not the field: every site with more than
+    // one routable type renders the select, but only a site whose extension overrides
+    // the default.section blueprint with offeredInTypeSelect lets editors pick it.
+    // Asserted on the component's options rather than the rendered HTML — a page built
+    // from section blocks says "Sektion" all over itself.
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+
+    Livewire::test(EditContent::class, ['record' => $home->getKey()])
+        ->assertOk()
+        ->assertSchemaComponentExists(
+            'content_type',
+            'form',
+            fn (Select $select): bool => ! array_key_exists('default.section', $select->getOptions()),
+        );
+
+    // Tenant B (site_key 'acme') is the onepager demo — it opted in.
     $tenantB = Tenant::where('site_key', 'acme')->firstOrFail();
     Filament::setTenant($tenantB);
     app(CurrentTenant::class)->set($tenantB);
@@ -66,5 +80,9 @@ it('offers the Seite/Sektion choice only on sites that opted in', function () {
     Livewire::test(EditContent::class, ['record' => $section->getKey()])
         ->assertOk()
         ->assertSee('Seiten-Typ')
-        ->assertSee('Sektion');
+        ->assertSchemaComponentExists(
+            'content_type',
+            'form',
+            fn (Select $select): bool => array_key_exists('default.section', $select->getOptions()),
+        );
 });

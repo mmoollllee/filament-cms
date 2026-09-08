@@ -36,6 +36,7 @@ use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Unique;
 use Mmoollllee\Cms\Cms;
@@ -51,8 +52,11 @@ use Mmoollllee\Cms\Models\LayoutPreset;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
+use Mmoollllee\Cms\Support\Content\Blocks\section\SectionBlock;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
+use Mmoollllee\Cms\Support\Content\PathConflicts;
 use Mmoollllee\Cms\Support\Preview\Drafts;
+use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 abstract class TenantScopedContentResource extends Resource
@@ -114,7 +118,7 @@ abstract class TenantScopedContentResource extends Resource
         ];
 
         return $schema->components([
-            ...static::titleRowComponents($tenant),
+            ...static::titleRowComponents($tenant, static::currentContentType($schema)),
             ...static::beforeTabs($tenant),
             Tabs::make(static::getModelLabel())
                 ->contained(false)
@@ -384,55 +388,52 @@ abstract class TenantScopedContentResource extends Resource
                 ->default(fn (Get $get): ?int => static::getDefaultParentId($tenant, static::resolveSelectedContentType($get)))
                 ->hidden(fn (Get $get): bool => static::getAllowedParentTypes(static::resolveSelectedContentType($get)) === [])
                 ->searchable()
-                // Rebase the path under the chosen parent right in the form, so the
-                // URL preview reflects the hierarchy before saving (the saving hook
-                // enforces the same rule server-side).
                 ->live()
-                ->afterStateUpdated(function ($state, Get $get, Set $set) use ($tenant): void {
-                    $rebased = static::rebasePathUnderParent(
-                        $tenant,
-                        $state !== null ? (int) $state : null,
-                        (string) ($get('path') ?? ''),
-                        (string) ($get('title') ?? ''),
-                    );
-
-                    if ($rebased !== null) {
-                        $set('path', $rebased);
-                    }
-                })
+                ->afterStateUpdated(static::rebasePathOnParentChange($tenant))
                 ->helperText('Optional. Der Pfad ordnet sich der übergeordneten Seite unter.'),
             // Path is now edited via TitleWithSlugInput (combined with title)
         ];
     }
 
     /**
-     * The path a record should get under the given parent: parent path + own last
-     * segment. Returns null when nothing sensible can be derived (no title/path yet).
+     * `afterStateUpdated` for a parent Select: shows the editor the URL the record will
+     * actually have under the chosen parent, before saving.
+     *
+     * Exposed so a resource that supplies its own parent Select ({@see structureFields()}
+     * being replaced wholesale) can keep the behaviour instead of leaving the editor to
+     * discover the move from a validation error.
+     *
+     * The preview is ASKED of the generator ({@see pathThisFormWouldStore()}), never
+     * composed here. A preview composed by hand is not a preview at all: the generator
+     * keeps a filled path for the branches it does not own, so a hand-composed value does
+     * not predict the save — it becomes it, wrong prefix and all, and every later save
+     * reads it back as the typed value. Prefixes, nesting and non-routable types therefore
+     * need no special case here; the one authority answers for all of them.
      */
-    protected static function rebasePathUnderParent(?Tenant $tenant, ?int $parentId, string $currentPath, string $title): ?string
+    protected static function rebasePathOnParentChange(?Tenant $tenant): Closure
     {
-        $segment = filled($currentPath)
-            ? Str::afterLast(trim($currentPath, '/'), '/')
-            : Str::slug($title);
+        return static function ($state, Get $get, Set $set, ?Model $record) use ($tenant): void {
+            $typed = (string) ($get('path') ?? '');
 
-        if (blank($segment)) {
-            return null;
-        }
+            $segment = filled($typed)
+                ? app(PathNormalizer::class)->lastSegment($typed)
+                : Str::slug((string) ($get('title') ?? ''));
 
-        if ($parentId === null) {
-            return '/'.$segment;
-        }
+            if (blank($segment)) {
+                return;
+            }
 
-        $parentPath = Cms::contentModel()::query()
-            ->when($tenant, fn (EloquentBuilder $query) => $query->whereBelongsTo($tenant))
-            ->find($parentId)
-            ?->resolvedPath();
+            // Clearing the parent is the one case where the form AUTHORS rather than
+            // previews: the editor is moving the record to the root, so offer the bare
+            // segment and let the generator confirm where that lands.
+            $candidate = filled($state) ? $typed : '/'.$segment;
 
-        if (blank($parentPath)) {
-            return '/'.$segment;
-        }
+            $stored = static::pathThisFormWouldStore($get, $record, $tenant, $candidate);
 
-        return rtrim($parentPath, '/').'/'.$segment;
+            if (filled($stored)) {
+                $set('path', $stored);
+            }
+        };
     }
 
     protected static function templateField(): TextInput
@@ -475,7 +476,7 @@ abstract class TenantScopedContentResource extends Resource
      * Previews are ON, but that is decided per BLOCK, not per builder: the
      * builder override renders a card only for a block that declares a
      * `->preview()` view and leaves every other one as an open form
-     * ({@see \Mmoollllee\Cms\Support\Content\Blocks\section\SectionBlock},
+     * ({@see SectionBlock},
      * which is the only top-level block most sites offer, has none). So this
      * changes nothing for a section-only page builder and gives blocks that DO
      * have a preview — the note, and whatever a site allows at the top level —
@@ -1007,11 +1008,12 @@ abstract class TenantScopedContentResource extends Resource
      * site ({@see contentTypeSelectEnabled()}) — then the Seiten-Typ select sits
      * BESIDE the title input (right column).
      *
+     * @param  string|null  $currentType  the type the form is opened on ({@see currentContentType()})
      * @return array<int, Component>
      */
-    protected static function titleRowComponents(?Tenant $tenant): array
+    protected static function titleRowComponents(?Tenant $tenant, ?string $currentType = null): array
     {
-        $typeComponents = static::getContentTypeFormComponents(static::getContentTypeOptions());
+        $typeComponents = static::getContentTypeFormComponents(static::getContentTypeOptions(), $currentType);
         $title = static::buildTitleWithSlugInput($tenant);
 
         $select = collect($typeComponents)->first(fn ($component): bool => $component instanceof Select);
@@ -1041,17 +1043,25 @@ abstract class TenantScopedContentResource extends Resource
      * types a site keeps out of the picker (e.g. default.section on pages-only
      * sites) never appear here.
      *
+     * A form opened on a type the select does NOT offer keeps the hidden field, however
+     * many types the site offers: the select can neither show that value nor validate
+     * it, so the site's SECOND offered type would make every non-offered type
+     * unsaveable ("Der gewählte Wert ist ungültig" on a type the record already has)
+     * and reduce the ?type= deep-link — the only way to reach those types — to a
+     * silent fallback to the default one.
+     *
      * @param  array<string, string>  $contentTypeOptions
+     * @param  string|null  $currentType  the type the form is opened on ({@see currentContentType()})
      * @return array<int, Component>
      */
-    protected static function getContentTypeFormComponents(array $contentTypeOptions): array
+    protected static function getContentTypeFormComponents(array $contentTypeOptions, ?string $currentType = null): array
     {
         $selectable = static::selectableContentTypeOptions($contentTypeOptions);
 
-        if (count($selectable) <= 1) {
+        if (count($selectable) <= 1 || ($currentType !== null && ! array_key_exists($currentType, $selectable))) {
             return [
                 Hidden::make('content_type')
-                    ->default(static::initialContentType())
+                    ->default($currentType ?? static::initialContentType())
                     ->required(),
             ];
         }
@@ -1060,7 +1070,7 @@ abstract class TenantScopedContentResource extends Resource
             Select::make('content_type')
                 ->label('Seiten-Typ')
                 ->required()
-                ->default(static::initialContentType($selectable))
+                ->default(static::initialContentType())
                 ->options($selectable)
                 ->live()
                 ->afterStateUpdated(function (Set $set, ?string $state) use ($selectable): void {
@@ -1089,23 +1099,43 @@ abstract class TenantScopedContentResource extends Resource
      * The content type a new record initially selects.
      *
      * Honors the `?type=` deep-link (so "… anlegen" from a type-scoped list pre-selects
-     * that type, and non-routable types reachable only via the catch-all can be created
-     * at all), falling back to {@see defaultContentType()}. The visible Select only
-     * accepts a type it actually offers, so pass its options as `$selectable` to ignore
-     * a requested type that is not among them; the pinned Hidden field accepts any
-     * managed type (`$selectable = null`).
-     *
-     * @param  array<string, string>|null  $selectable  the Select's options, or null for the Hidden field
+     * that type), falling back to {@see defaultContentType()}. A requested type the
+     * Seiten-Typ select does not offer never reaches this method — it pins the hidden
+     * field instead ({@see getContentTypeFormComponents()}), which is what keeps
+     * non-routable types reachable only via the catch-all creatable at all.
      */
-    protected static function initialContentType(?array $selectable = null): ?string
+    protected static function initialContentType(): ?string
     {
-        $requestedType = static::getRequestedContentType();
+        return static::getRequestedContentType() ?? static::defaultContentType();
+    }
 
-        if ($requestedType !== null && ($selectable === null || array_key_exists($requestedType, $selectable))) {
-            return $requestedType;
+    /**
+     * The content type the form is opened on: the edited record's own type, the type a
+     * create form already holds, or the `?type=` deep-link it was reached through. Null
+     * when none of them says — then the type field falls back to
+     * {@see initialContentType()}.
+     *
+     * Read off the schema rather than through a closure because it decides which COMPONENT
+     * backs the type, and that is settled as the form tree is built. Which is also why the
+     * answer must not depend on the query string alone: a Livewire update rebuilds the
+     * schema on a request that carries no `?type=`, and a field that flipped from Hidden to
+     * Select between the first render and the save would reject the very type the
+     * deep-link pinned — leaving a type reachable ONLY through that link impossible to
+     * create. The component's own state is what carries the type across those round trips.
+     */
+    protected static function currentContentType(Schema $schema): ?string
+    {
+        // Edit forms carry the record, create forms only the model class — for which
+        // getRecord() answers null.
+        $record = $schema->getRecord();
+
+        if ($record instanceof Model) {
+            return $record->getAttribute('content_type');
         }
 
-        return static::defaultContentType();
+        $held = data_get($schema->getLivewire(), 'data.content_type');
+
+        return filled($held) ? (string) $held : static::getRequestedContentType();
     }
 
     /**
@@ -1131,7 +1161,10 @@ abstract class TenantScopedContentResource extends Resource
 
     protected static function resolveSelectedContentType(Get $get): ?string
     {
-        return $get('content_type') ?: static::getContentTypes()[0] ?? null;
+        // The fallback has to be the type the field is SEEDED with, not whichever type
+        // blueprint discovery happens to list first — otherwise adding a blueprint
+        // silently re-points every reactive closure that gates on the selected type.
+        return $get('content_type') ?: static::defaultContentType();
     }
 
     /**
@@ -1359,6 +1392,7 @@ abstract class TenantScopedContentResource extends Resource
             urlVisitLinkLabel: 'Seite öffnen',
             titleLabel: 'Titel',
             slugLabel: 'Pfad',
+            slugRules: static::getPathRules($tenant),
             slugRuleUniqueParameters: static::getPathRuleUniqueParameters($tenant),
             slugRuleRegex: '/^[a-z0-9\-\_\/]*$/',
             slugSlugifier: static::pathSlugifier($pathPrefix),
@@ -1369,6 +1403,12 @@ abstract class TenantScopedContentResource extends Resource
      * Slugifier for the path field: strips an existing prefix so repeated edits don't
      * double it (e.g. "/projekte/kanalbau" → "kanalbau" → "/projekte/kanalbau") and
      * re-applies the blueprint's urlPathPrefix.
+     *
+     * Slugified SEGMENT BY SEGMENT, because Str::slug() drops "/" without replacement and
+     * the field routinely holds a whole path — a nested page's own rebase writes one in
+     * ({@see rebasePathOnParentChange()}). Run over the whole string, one blur turned
+     * "/mietpark/anbauteile/lasthaken" into "/mietparkanbauteilelasthaken", and that is
+     * what got saved: no error, no redirect, the page gone from its URL.
      */
     protected static function pathSlugifier(?string $pathPrefix): Closure
     {
@@ -1381,7 +1421,10 @@ abstract class TenantScopedContentResource extends Resource
                 $text = substr($text, strlen($normalizedPrefix) + 1);
             }
 
-            $slug = Str::slug($text);
+            $slug = collect(explode('/', $text))
+                ->map(fn (string $segment): string => Str::slug($segment))
+                ->filter()
+                ->implode('/');
 
             return $normalizedPrefix ? '/'.$normalizedPrefix.'/'.$slug : '/'.$slug;
         };
@@ -1400,10 +1443,35 @@ abstract class TenantScopedContentResource extends Resource
             urlVisitLinkVisible: false,
             titleLabel: 'Titel',
             slugLabel: 'Slug',
-            slugRuleUniqueParameters: static::getPathRuleUniqueParameters($tenant),
+            slugRuleUniqueParameters: static::getSlugRuleUniqueParameters($tenant),
             slugRuleRegex: '/^[a-z0-9\-\_]*$/',
             slugSlugifier: fn (string $text): string => Str::slug($text),
         )->columnSpanFull();
+    }
+
+    /**
+     * Uniqueness parameters for the `slug` field of a non-routable type: tenant scoping,
+     * nothing else.
+     *
+     * Deliberately NOT {@see getPathRuleUniqueParameters()}. That one switches itself off
+     * whenever the typed value is not the path that would be stored, and it asks `path` to
+     * decide — which on the catch-all is filled even for a non-routable record, whose
+     * stored path is null. Sharing it turned off the only guard a tenant-unique slug has,
+     * and two records could take the same one without a word.
+     *
+     * @return array<string, mixed>
+     */
+    protected static function getSlugRuleUniqueParameters(?Tenant $tenant, bool $ignoreCurrentRecord = true): array
+    {
+        $parameters = [
+            'modifyRuleUsing' => fn (Unique $rule): Unique => $rule->where('tenant_id', $tenant?->getKey()),
+        ];
+
+        if ($ignoreCurrentRecord) {
+            $parameters['ignorable'] = fn (?Model $record): ?Model => $record;
+        }
+
+        return $parameters;
     }
 
     /**
@@ -1435,7 +1503,12 @@ abstract class TenantScopedContentResource extends Resource
             urlVisitLinkVisible: false,
             titleLabel: 'Titel',
             slugLabel: $routable ? 'Pfad' : 'Slug',
-            slugRuleUniqueParameters: static::getPathRuleUniqueParameters($tenant, ignoreCurrentRecord: false),
+            slugRules: $routable
+                ? static::getPathRules($tenant)
+                : ['required'],
+            slugRuleUniqueParameters: $routable
+                ? static::getPathRuleUniqueParameters($tenant, ignoreCurrentRecord: false)
+                : static::getSlugRuleUniqueParameters($tenant, ignoreCurrentRecord: false),
             slugRuleRegex: $routable ? '/^[a-z0-9\-\_\/]*$/' : '/^[a-z0-9\-\_]*$/',
             slugSlugifier: $routable
                 ? static::pathSlugifier($blueprint?->urlPathPrefix())
@@ -1444,13 +1517,152 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
+     * Rules for the "Pfad" field.
+     *
+     * The value in the field is not necessarily the path that gets stored: for a
+     * parent-driven blueprint the saving hook rebases it under the selected parent
+     * ({@see PathGenerator}). A typed "/seilwinde" under the category "/mietpark/anbauteile"
+     * becomes "/mietpark/anbauteile/seilwinde", which a sibling may already own — a
+     * collision no rule on the typed value can see, and one the unique index used to answer
+     * with an uncaught UniqueConstraintViolationException: a 500 in the panel, the edit
+     * lost, and the record permanently unsaveable because every retry produced the same
+     * path.
+     *
+     * The rule therefore builds the record this form would save and hands it to
+     * {@see PathConflicts} — the same service the model's saving hook uses as its backstop,
+     * so the panel and every other writer answer the question identically. Re-deriving the
+     * composition here instead ({@see rebasePathUnderParent()} covers only the
+     * parent-driven branch) would reject legal saves for every blueprint the generator
+     * treats differently — a urlPathPrefix type, where the prefix wins over the hierarchy,
+     * or a record with no parent, whose typed path is kept in full.
+     *
+     * Doing it here as well as in the hook is what puts the message ON the Pfad field: a
+     * ValidationException raised from the model lands in the component's error bag under a
+     * key no form component owns, so the editor would be left with a save that silently
+     * does nothing.
+     *
+     * @return array<int, string|Closure>
+     */
+    protected static function getPathRules(?Tenant $tenant): array
+    {
+        return ['required', static::storedPathIsFreeRule($tenant)];
+    }
+
+    /**
+     * Closure rule rejecting a path whose STORED form — or the path any descendant would be
+     * cascaded onto — is already taken by another record of the same tenant.
+     */
+    protected static function storedPathIsFreeRule(?Tenant $tenant): Closure
+    {
+        return static fn (Get $get, ?Model $record): Closure => static function (string $attribute, mixed $value, Closure $fail) use ($get, $record, $tenant): void {
+            $probe = static::pathProbeFor($get, $record, $tenant, (string) $value);
+
+            $conflict = app(PathConflicts::class)->firstConflict($probe);
+
+            if ($conflict === null) {
+                return;
+            }
+
+            $owner = $conflict['owner']->getAttribute('title');
+
+            if ($conflict['record'] !== $probe) {
+                $fail(sprintf(
+                    '„%s“ würde dadurch auf „%s“ verschoben, und diesen Pfad belegt bereits „%s“.',
+                    $conflict['record']->getAttribute('title'),
+                    $conflict['path'],
+                    $owner,
+                ));
+
+                return;
+            }
+
+            $fail($conflict['path'] === $value
+                ? sprintf('Diesen Pfad belegt bereits „%s“.', $owner)
+                : sprintf('Gespeichert wird daraus „%s“, und den belegt bereits „%s“.', $conflict['path'], $owner));
+        };
+    }
+
+    /**
+     * The path a save would store for the current form state — asked of the generator
+     * itself ({@see GeneratesPathAndSlug::resolvedPath()}) on a throwaway model, so
+     * routability, urlPathPrefix and normalization all come from the one place that
+     * decides them.
+     *
+     * A record being edited is probed as a CLONE of itself, so it keeps its key and its
+     * original attributes: that is what lets PathConflicts tell a rename from a create,
+     * exclude the record's own row, and walk the subtree the rename would drag along.
+     */
+    protected static function pathProbeFor(Get $get, ?Model $record, ?Tenant $tenant, string $path): Content
+    {
+        // The record's own type outranks the resource default: resolveSelectedContentType()
+        // falls back to that default, so on a form without a content_type field — the
+        // Duplizieren modal — it would answer for the wrong blueprint and never reach a
+        // `??` fallback behind it.
+        $contentType = $get('content_type')
+            ?: $record?->getAttribute('content_type')
+            ?: static::defaultContentType();
+
+        // The parent field owns the answer whenever the form carries one — including when
+        // the editor cleared it, which moves the record to the root. Only a form without
+        // the field at all falls back to the stored parent.
+        $parentId = $get('parent_id');
+
+        if ($parentId === null && static::getAllowedParentTypes($contentType) === []) {
+            $parentId = $record?->getAttribute('parent_id');
+        }
+
+        $model = Cms::contentModel();
+
+        /** @var Content $content */
+        $content = $record instanceof Model ? clone $record : new $model;
+
+        $content->forceFill([
+            'tenant_id' => $tenant?->getKey() ?? $record?->getAttribute('tenant_id'),
+            'content_type' => $contentType,
+            'parent_id' => filled($parentId) ? (int) $parentId : null,
+            'title' => $get('title') ?? $record?->getAttribute('title'),
+            'path' => $path,
+        ]);
+
+        // Spares resolvedPath() the tenant lookup; the clone it works on keeps the relation.
+        if ($tenant !== null) {
+            $content->setRelation('tenant', $tenant);
+        }
+
+        // Mirror the saving hook, which assigns the generator's answer back onto the
+        // record. Only then does isDirty('path') mean "this save would move the stored
+        // path" — the typed value alone can equal the stored one while the generated path
+        // differs, which is exactly the drifted record this whole guard exists for.
+        $content->forceFill(['path' => $content->resolvedPath()]);
+
+        return $content;
+    }
+
+    /**
+     * The path the current form state would store, or null for a type that stores none.
+     */
+    protected static function pathThisFormWouldStore(Get $get, ?Model $record, ?Tenant $tenant, string $path): ?string
+    {
+        return static::pathProbeFor($get, $record, $tenant, $path)->getAttribute('path');
+    }
+
+    /**
      * @return array<string, mixed>
      */
     protected static function getPathRuleUniqueParameters(?Tenant $tenant, bool $ignoreCurrentRecord = true): array
     {
         $parameters = [
-            'modifyRuleUsing' => function (Unique $rule) use ($tenant): Unique {
+            'modifyRuleUsing' => function (Unique $rule, Get $get, ?Model $record) use ($tenant): Unique {
                 $rule->where('tenant_id', $tenant?->getKey());
+
+                // TitleWithSlugInput always attaches this rule, and it can only check the
+                // typed value. Where that value is not the stored path, a hit on it means
+                // nothing — a page named "Kontakt" under a category would be rejected for a
+                // top-level /kontakt it will never occupy. Let the effective-path rule in
+                // {@see getPathRules()} answer alone.
+                if (static::pathThisFormWouldStore($get, $record, $tenant, (string) $get('path')) !== $get('path')) {
+                    $rule->where(fn (QueryBuilder $query) => $query->whereRaw('1 = 0'));
+                }
 
                 return $rule;
             },

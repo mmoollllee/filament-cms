@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Mmoollllee\Cms\Console\Commands\CheckContentPathsCommand;
 use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
 use Mmoollllee\Cms\Console\Commands\MediaPruneCommand;
@@ -326,6 +327,7 @@ class CmsServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                CheckContentPathsCommand::class,
                 ClearTenantCacheCommand::class,
                 InstallCommand::class,
                 PruneNotFoundLogsCommand::class,

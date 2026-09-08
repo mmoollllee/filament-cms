@@ -123,25 +123,30 @@ class ConfiguredContentBlueprint implements ContentBlueprint
         return [];
     }
 
+    /**
+     * The blueprint's own composition, asked only once nothing else owns any of the path:
+     * no prefix, no parent and no stored value ({@see PathGenerator::generate()}). Override
+     * it for a type that derives its URL from something other than its slug.
+     *
+     * It does NOT re-check a stored path or re-apply the prefix over one — the generator
+     * settled both before reaching here, and answering again from the stored string is what
+     * used to let a drifted path outlive every save.
+     */
     public function generatePath(Content $content): ?string
     {
         if ($this->isRoutable === false) {
             return null;
         }
 
-        // Path already set by the form — respect it
-        if (filled($content->path)) {
-            return $content->path;
-        }
-
-        // Fallback: generate from slug/title
         $slug = $content->slug ?: Str::slug($content->title);
 
-        if ($this->urlPathPrefix !== null && filled($slug)) {
-            return rtrim($this->urlPathPrefix, '/').'/'.$slug;
+        if (blank($slug)) {
+            return null;
         }
 
-        return filled($slug) ? "/{$slug}" : null;
+        return $this->urlPathPrefix !== null
+            ? rtrim($this->urlPathPrefix, '/').'/'.$slug
+            : "/{$slug}";
     }
 
     public function navigationLabel(): ?string
