@@ -102,7 +102,12 @@ class ResolveNotFoundController
                     ->first();
 
                 // Never overwrite an admin-confirmed redirect, and never resurrect a rejected one.
-                if ($existing !== null && ($existing->trashed() || $existing->origin === RedirectOrigin::Manual)) {
+                // A human-authored row is protected while it still answers something. One
+                // whose target is gone — a Rename row whose page was deleted, its
+                // to_content_id nulled by the foreign key — is a corpse, not a decision, and
+                // the unique index means nothing else could ever replace it.
+                if ($existing !== null && ($existing->trashed()
+                    || ($existing->origin->isHumanAuthored() && $existing->resolvedTarget() !== null))) {
                     return;
                 }
 

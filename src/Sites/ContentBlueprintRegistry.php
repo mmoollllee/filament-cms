@@ -2,7 +2,9 @@
 
 namespace Mmoollllee\Cms\Sites;
 
+use LogicException;
 use Mmoollllee\Cms\Contracts\ContentBlueprint;
+use Mmoollllee\Cms\Support\Content\PathGenerator;
 
 /**
  * Aggregates ContentBlueprint definitions from all active site extensions.
@@ -48,11 +50,42 @@ class ContentBlueprintRegistry
         // site-specific extension override a default blueprint (last wins).
         foreach ($this->siteExtensionRegistry->forSite($siteKey) as $extension) {
             foreach ($extension->blueprints() as $blueprint) {
+                $this->assertOneAddressRule($blueprint);
+
                 $blueprints[$blueprint->key()] = $blueprint;
             }
         }
 
         return array_values($blueprints);
+    }
+
+    /**
+     * A type derives its URL EITHER from its own namespace OR from the tree — never both.
+     *
+     * {@see PathGenerator} lets the prefix win, so a
+     * type declaring both hands the editor a parent Select that moves the breadcrumb and
+     * the listing but has no effect whatsoever on the URL. That contradiction is silent,
+     * and it is a declaration mistake rather than a runtime state — so it is refused.
+     *
+     * Asked HERE, where blueprints are aggregated (memoized per site key, and the funnel
+     * every blueprint passes through), rather than from the accessors: urlPathPrefix() is
+     * called per row by the frontend resolver, the sitemap, the navigation and the redirect
+     * map, so asserting there would turn one typo into a site-wide 500 on whichever request
+     * touched it first. It also covers a class implementing the interface directly, which
+     * an assert on {@see ConfiguredContentBlueprint} cannot.
+     *
+     * @throws LogicException
+     */
+    protected function assertOneAddressRule(ContentBlueprint $blueprint): void
+    {
+        if ($blueprint->urlPathPrefix() !== null && $blueprint->allowedParentTypes() !== []) {
+            throw new LogicException(sprintf(
+                'Content blueprint [%s] declares urlPathPrefix AND allowedParentTypes. A type '
+                .'takes its address from one of the two: the prefix owns the namespace wherever '
+                .'the record sits, or the parent does. Drop whichever the URL should not follow.',
+                $blueprint->key(),
+            ));
+        }
     }
 
     public function find(string $key, ?string $siteKey = null): ?ContentBlueprint

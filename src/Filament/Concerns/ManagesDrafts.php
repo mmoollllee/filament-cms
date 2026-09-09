@@ -156,9 +156,32 @@ trait ManagesDrafts
             return false;
         }
 
-        $this->save();
+        // Flagged for the duration: this branch runs the full save pipeline, so anything
+        // listening for "the editor applied their changes" would otherwise fire for a
+        // click that only asked to LOOK at the page.
+        $this->savingForPreview = true;
+
+        try {
+            $this->save();
+        } finally {
+            $this->savingForPreview = false;
+        }
 
         return true;
+    }
+
+    /**
+     * Whether the save currently running was started by "Vorschau" rather than by
+     * "Änderungen anwenden" / "Speichern".
+     *
+     * On a record with nothing live to protect ({@see draftWorkflowActive()} false — an
+     * unpublished page) "Vorschau" persists through the normal save, so the two are
+     * indistinguishable from a model hook or a Filament event. Anything that destroys
+     * something outside the record has to tell them apart.
+     */
+    public function isSavingForPreview(): bool
+    {
+        return $this->savingForPreview;
     }
 
     /**
@@ -369,8 +392,11 @@ trait ManagesDrafts
             ->visible(fn (): bool => $this->draftWorkflowActive());
     }
 
+    /** True only while {@see saveForPreview()} is driving a full save. */
+    protected bool $savingForPreview = false;
+
     /** The delete action, moved out of the header: icon-only, at the footer's end. */
-    protected function getDeleteFormAction(): Action
+    protected function getDeleteFormAction(): DeleteAction
     {
         return DeleteAction::make()
             ->iconButton()

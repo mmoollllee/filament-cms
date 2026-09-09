@@ -2,7 +2,6 @@
 
 namespace Mmoollllee\Cms\Support\Content;
 
-use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug;
 use Mmoollllee\Cms\Contracts\Content;
 
@@ -23,6 +22,8 @@ use Mmoollllee\Cms\Contracts\Content;
  */
 class PathConflicts
 {
+    public function __construct(protected ContentTree $tree) {}
+
     /**
      * Answers already given this request, keyed by the state that produced them.
      *
@@ -100,9 +101,9 @@ class PathConflicts
 
         // Everything the cascade moves keeps its old path only until it is rewritten, so
         // those rows must not count as owners of the paths being vacated.
-        $moving = $renaming ? $this->subtreeKeys($content) : [$content->getKey()];
+        $moving = $renaming ? $this->tree->subtreeKeys($content) : [$content->getKey()];
 
-        $owner = $this->ownerOf($content, $path, $moving);
+        $owner = $this->tree->ownerOf($content->getAttribute('tenant_id'), $path, $moving);
 
         if ($owner !== null) {
             return ['record' => $content, 'path' => $path, 'owner' => $owner];
@@ -127,12 +128,7 @@ class PathConflicts
      */
     protected function firstSubtreeConflict(Content $parent, array $moving, array &$claimed, array &$seen = []): ?array
     {
-        $children = Cms::contentModel()::query()
-            ->where('tenant_id', $parent->getAttribute('tenant_id'))
-            ->where('parent_id', $parent->getKey())
-            ->get();
-
-        foreach ($children as $child) {
+        foreach ($this->tree->childrenOf($parent) as $child) {
             // A cycle in parent_id would walk this forever; the tree is only a tree by
             // convention, nothing in the schema enforces it.
             if (isset($seen[$child->getKey()])) {
@@ -153,7 +149,7 @@ class PathConflicts
                 continue;
             }
 
-            $owner = $claimed[$path] ?? $this->ownerOf($child, $path, $moving);
+            $owner = $claimed[$path] ?? $this->tree->ownerOf($child->getAttribute('tenant_id'), $path, $moving);
 
             if ($owner !== null && $owner->getKey() !== $child->getKey()) {
                 return ['record' => $child, 'path' => $path, 'owner' => $owner];
@@ -171,45 +167,5 @@ class PathConflicts
         }
 
         return null;
-    }
-
-    /**
-     * The record already holding $path for this tenant, ignoring the rows that are moving
-     * as part of the same save.
-     *
-     * @param  array<int, mixed>  $ignoreKeys
-     */
-    protected function ownerOf(Content $content, string $path, array $ignoreKeys): ?Content
-    {
-        return Cms::contentModel()::query()
-            ->where('tenant_id', $content->getAttribute('tenant_id'))
-            ->where('path', $path)
-            ->whereKeyNot(array_values(array_filter($ignoreKeys)))
-            ->first();
-    }
-
-    /**
-     * $content plus every descendant, level by level. Guards against a malformed cycle in
-     * `parent_id` rather than looping forever on it.
-     *
-     * @return array<int, mixed>
-     */
-    protected function subtreeKeys(Content $content): array
-    {
-        $keys = [$content->getKey()];
-        $level = [$content->getKey()];
-
-        while ($level !== []) {
-            $level = Cms::contentModel()::query()
-                ->where('tenant_id', $content->getAttribute('tenant_id'))
-                ->whereIn('parent_id', $level)
-                ->whereKeyNot($keys)
-                ->pluck($content->getKeyName())
-                ->all();
-
-            $keys = [...$keys, ...$level];
-        }
-
-        return $keys;
     }
 }

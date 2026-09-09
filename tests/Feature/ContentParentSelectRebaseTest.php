@@ -48,11 +48,12 @@ it('rebases the path under the chosen parent for a type without a prefix', funct
     expect($page->fresh()->path)->toBe('/hilfe/erste-schritte');
 });
 
-it('leaves the path alone when the chosen parent cannot move a prefixed type', function () {
-    // marketing.guide carries urlPathPrefix "/ratgeber/": the prefix wins over the
-    // hierarchy, so the record stays at /ratgeber/… no matter which parent it is filed
-    // under. Before the guard the field was rewritten to "/hilfe/zweite-schritte" and
-    // that is what got stored.
+it('offers no parent at all for a prefixed type, so nothing can rebase it', function () {
+    // marketing.guide carries urlPathPrefix "/ratgeber/", and a type takes its address
+    // from the prefix OR from the tree, never both — so it declares no allowedParentTypes
+    // and the Select is not in its form. That is what makes the rebase unreachable here
+    // instead of merely harmless: it used to rewrite the field to "/hilfe/zweite-schritte"
+    // while the generator kept storing "/ratgeber/zweite-schritte".
     $guide = Content::create([
         'tenant_id' => $this->tenant->id,
         'content_type' => 'marketing.guide',
@@ -61,13 +62,12 @@ it('leaves the path alone when the chosen parent cannot move a prefixed type', f
     ]);
 
     Livewire::test(EditContent::class, ['record' => $guide->getRouteKey()])
-        ->fillForm(['parent_id' => $this->help->id])
+        ->assertFormFieldHidden('parent_id')
         ->assertFormSet(['path' => '/ratgeber/zweite-schritte'])
         ->call('save')
         ->assertHasNoFormErrors();
 
-    expect($guide->fresh()->path)->toBe('/ratgeber/zweite-schritte')
-        ->and($guide->fresh()->parent_id)->toBe($this->help->id);
+    expect($guide->fresh()->path)->toBe('/ratgeber/zweite-schritte');
 
     // …and it stays put: a later save must not read a drifted path back as the typed one.
     $guide->fresh()->save();

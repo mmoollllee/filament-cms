@@ -22,6 +22,13 @@ abstract class TestCase extends Orchestra
         // pin the locale so `cms::` lang strings resolve to lang/de instead
         // of the testbench default ('en').
         $app['config']->set('app.locale', 'de');
+
+        // SQLite enforces foreign keys only on request, and several behaviours exist
+        // BECAUSE of a `nullOnDelete` side effect — contents.parent_id stranding a
+        // subtree, redirects.to_content_id losing its target. Without this they would be
+        // verified against a database that never performs the thing they compensate for.
+        $connection = $app['config']->get('database.default');
+        $app['config']->set("database.connections.{$connection}.foreign_key_constraints", true);
     }
 
     protected function setUp(): void

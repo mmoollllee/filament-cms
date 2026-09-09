@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms;
 
 use Datlechin\FilamentMenuBuilder\Models\MenuItem;
 use Datlechin\FilamentMenuBuilder\Models\MenuLocation;
+use Filament\Resources\Events\RecordCreated;
 use Filament\Resources\Events\RecordUpdated;
 use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Console\Scheduling\Schedule;
@@ -24,6 +25,7 @@ use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Enums\TenantVisibility;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Providers\BasePanelProvider;
+use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Models\TenantInvitation;
@@ -322,6 +324,15 @@ class CmsServiceProvider extends ServiceProvider
             if ($page !== null && in_array(ManagesDrafts::class, class_uses_recursive($page), true)) {
                 $page->handleAppliedDraft($record);
             }
+
+            TenantScopedContentResource::releaseTakenOverAddress($record, $page);
+        });
+
+        // Same seam for a create: "Adresse übernehmen" is answered on the create form too,
+        // and the release must survive a page subclass overriding afterCreate() exactly as
+        // the draft clearing above survives an afterSave() override.
+        Event::listen(RecordCreated::class, function ($record, array $data = [], $page = null): void {
+            TenantScopedContentResource::releaseTakenOverAddress($record, $page);
         });
 
         // Daily pruning of stale, low-traffic 404 logs (runs only where a scheduler is configured).

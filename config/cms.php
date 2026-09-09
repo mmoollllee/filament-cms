@@ -41,6 +41,12 @@ return [
     |                    many times (anti-bot; the current visitor is still redirected).
     | auto_status        HTTP status for machine-created redirects (302 = temporary/revertible).
     | confirmed_status   status an automatic redirect is promoted to once an admin edits it.
+    | on_rename          'keep' leaves a permanent redirect behind whenever a page's path
+    |                    moves — from the panel, a revision restore, Duplizieren, a reorder,
+    |                    an import or the console alike, since the move is what costs the
+    |                    address and none of those can be asked. 'never' writes none.
+    |                    Taking an address BACK from a redirect is the editor's decision and
+    |                    is offered on the Pfad field itself.
     | prune_after_days   delete low-traffic 404 logs older than this many days.
     | prune_min_hits     404 logs with fewer hits than this are eligible for pruning.
     | ignore_extensions  request paths ending in these are never logged (bot/probe noise).
@@ -56,6 +62,7 @@ return [
         'min_hits' => 2,
         'auto_status' => 302,
         'confirmed_status' => 301,
+        'on_rename' => 'keep',
         'prune_after_days' => 90,
         'prune_min_hits' => 3,
         'ignore_extensions' => ['php', 'env', 'asp', 'aspx', 'cgi', 'jsp', 'sql', 'bak'],

@@ -19,8 +19,10 @@ use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Notifications\Notification;
 use Filament\Panel;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Actions as SchemaActions;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\FusedGroup;
 use Filament\Schemas\Components\Grid;
@@ -39,7 +41,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Unique;
+use Livewire\Component as LivewireComponent;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\CmsServiceProvider;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\ContentBlueprint;
 use Mmoollllee\Cms\Contracts\Tenant;
@@ -49,13 +53,16 @@ use Mmoollllee\Cms\Fields\PublishingFields;
 use Mmoollllee\Cms\Fields\SeoFields;
 use Mmoollllee\Cms\Filament\Forms\BlockBuilder;
 use Mmoollllee\Cms\Models\LayoutPreset;
+use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\Blocks\section\SectionBlock;
+use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Content\PathConflicts;
 use Mmoollllee\Cms\Support\Preview\Drafts;
+use Mmoollllee\Cms\Support\Routing\ContentRenameRedirects;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
@@ -749,7 +756,7 @@ abstract class TenantScopedContentResource extends Resource
                         })
                         ->successRedirectUrl(fn (Model $replica): string => static::getUrl('edit', ['record' => $replica]))
                         ->successNotificationTitle('Inhalt dupliziert'),
-                    DeleteAction::make(),
+                    static::warnAboutOrphans(DeleteAction::make()),
                 ]),
             ])
             ->toolbarActions([
@@ -757,6 +764,65 @@ abstract class TenantScopedContentResource extends Resource
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /** Form-state key holding the id of the redirect the editor agreed to remove. */
+    public const TAKEOVER_CONSENT_FIELD = 'release_redirect_id';
+
+    /**
+     * Say what a delete does to the pages underneath, before it happens.
+     *
+     * `parent_id` is `nullOnDelete`: the children survive at the root, and they KEEP their
+     * old address — PathGenerator's authored branch hands back a stored path in full once
+     * no prefix and no parent own any of it, so re-saving them changes nothing. That is
+     * the problem, not a rescue: the page goes on living under a namespace that no longer
+     * belongs to anything, `cms:paths:check` cannot see it because that path is a fixpoint
+     * of the generator, and whoever later creates a page at the vacated address becomes an
+     * unrelated stranger owning its prefix.
+     *
+     * Single deletes only. A DeleteBulkAction cannot be asked for its selection outside
+     * its own run without opting the action into accessSelectedRecords(), which also
+     * changes how the delete itself is executed — too much to pay for a modal sentence,
+     * and a multi-select is a deliberate gesture rather than the accident this warns about.
+     */
+    public static function warnAboutOrphans(DeleteAction $action): DeleteAction
+    {
+        return $action->modalDescription(fn (?Model $record): ?string => static::orphanWarning($record));
+    }
+
+    /**
+     * The confirmation copy for a delete that would strand pages, or null when it strands
+     * none — in which case Filament keeps its own wording.
+     */
+    protected static function orphanWarning(?Model $record): ?string
+    {
+        if ($record === null) {
+            return null;
+        }
+
+        $orphans = app(ContentTree::class)->orphansOf(
+            $record->getAttribute('tenant_id'),
+            [$record->getKey()],
+        );
+
+        if ($orphans->isEmpty()) {
+            return null;
+        }
+
+        $titles = $orphans->take(5)->map(fn (Model $orphan): string => sprintf('„%s“', $orphan->getAttribute('title')));
+
+        if ($orphans->count() > $titles->count()) {
+            $titles->push(sprintf('und %d weitere', $orphans->count() - $titles->count()));
+        }
+
+        $list = $titles->join(', ');
+
+        return $orphans->count() === 1
+            ? "Darunter liegt noch eine Seite: {$list}. Sie wird nicht mitgelöscht und behält ihre Adresse — "
+                .'die dann unter einem Pfad liegt, den es nicht mehr gibt. Möchten Sie das wirklich tun?'
+            : "Darunter liegen noch {$orphans->count()} Seiten: {$list}. Sie werden nicht mitgelöscht und "
+                .'behalten ihre Adressen — die dann unter einem Pfad liegen, den es nicht mehr gibt. '
+                .'Möchten Sie das wirklich tun?';
     }
 
     /**
@@ -1003,7 +1069,7 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
-     * The title/slug input with the content-type field: the type is a hidden field
+     * The title/slug row: the title/slug input with the content-type field: the type is a hidden field
      * pinned to the default type unless the type choice is enabled for the tenant's
      * site ({@see contentTypeSelectEnabled()}) — then the Seiten-Typ select sits
      * BESIDE the title input (right column).
@@ -1016,10 +1082,26 @@ abstract class TenantScopedContentResource extends Resource
         $typeComponents = static::getContentTypeFormComponents(static::getContentTypeOptions(), $currentType);
         $title = static::buildTitleWithSlugInput($tenant);
 
+        // Sits under the Pfad field, visible only while a redirect holds the address this
+        // form would store — the one address decision that is genuinely the editor's.
+        // The wrapper owns the visibility, not the action inside it: the probe behind the
+        // question costs a path composition plus a query, and every Livewire round-trip
+        // would otherwise pay for it twice.
+        $takeOver = SchemaActions::make([static::takeOverAddressAction($tenant)])
+            ->key('take-over-address')
+            ->visible(fn (Get $get, ?Model $record): bool => static::addressHeldByRedirect($get, $record, $tenant, (string) $get('path')) !== null)
+            ->columnSpanFull();
+
+        // Where the takeover records its consent until a save acts on it. Never dehydrated:
+        // it is not an attribute, and it must not travel into a draft stash either — an
+        // address freed weeks later, by a click nobody remembers, is worse than being asked
+        // again at the moment it happens.
+        $takeOverConsent = Hidden::make(static::TAKEOVER_CONSENT_FIELD)->dehydrated(false);
+
         $select = collect($typeComponents)->first(fn ($component): bool => $component instanceof Select);
 
         if ($select === null) {
-            return [...$typeComponents, $title];
+            return [...$typeComponents, $title, $takeOver, $takeOverConsent];
         }
 
         $hiddenComponents = collect($typeComponents)->reject(fn ($component): bool => $component === $select)->all();
@@ -1032,6 +1114,8 @@ abstract class TenantScopedContentResource extends Resource
                     $select->columnSpan(['default' => 1, 'lg' => 1]),
                 ])
                 ->columnSpanFull(),
+            $takeOver,
+            $takeOverConsent,
         ];
     }
 
@@ -1545,7 +1629,207 @@ abstract class TenantScopedContentResource extends Resource
      */
     protected static function getPathRules(?Tenant $tenant): array
     {
-        return ['required', static::storedPathIsFreeRule($tenant)];
+        return [
+            'required',
+            static::storedPathIsFreeRule($tenant),
+            static::addressIsFreeRule($tenant),
+            static::subtreeAddressIsFreeRule($tenant),
+        ];
+    }
+
+    /**
+     * Closure rule rejecting a path an active REDIRECT stands on.
+     *
+     * A redirect answers before the content lookup ever runs, so a page put on such an
+     * address would be unreachable there. The editor meets that the same way they meet a
+     * page already holding the address — an error on the Pfad field, with the takeover
+     * offered as a hint action beside it ({@see takeOverAddressAction()}) — rather than in
+     * a dialog between them and the save.
+     */
+    protected static function addressIsFreeRule(?Tenant $tenant): Closure
+    {
+        return static fn (Get $get, ?Model $record): Closure => static function (string $attribute, mixed $value, Closure $fail) use ($get, $record, $tenant): void {
+            $standing = static::addressHeldByRedirect($get, $record, $tenant, (string) $value);
+
+            if ($standing === null) {
+                return;
+            }
+
+            $fail(sprintf(
+                'Auf „%s“ zeigt eine Weiterleitung nach „%s“ — die Seite wäre dort nicht erreichbar. '
+                .'Über „Adresse übernehmen“ wird sie entfernt.',
+                $standing->from_path,
+                $standing->resolvedTarget() ?? '—',
+            ));
+        };
+    }
+
+    /**
+     * Closure rule rejecting a move that would drag a DESCENDANT under a redirect.
+     *
+     * Separate from {@see addressIsFreeRule()} because the takeover cannot answer it: the
+     * offending address belongs to another record, so there is nothing beside the Pfad
+     * field to press. The editor is told which page and which address, and decides.
+     */
+    protected static function subtreeAddressIsFreeRule(?Tenant $tenant): Closure
+    {
+        return static fn (Get $get, ?Model $record): Closure => static function (string $attribute, mixed $value, Closure $fail) use ($get, $record, $tenant): void {
+            $probe = static::pathProbeFor($get, $record, $tenant, (string) $value);
+
+            if (! $probe->exists || ! $probe->isDirty('path')) {
+                return;
+            }
+
+            $shadowed = app(ContentRenameRedirects::class)->firstShadowedInSubtree($probe);
+
+            if ($shadowed === null) {
+                return;
+            }
+
+            $fail(sprintf(
+                '„%s“ würde dadurch auf „%s“ verschoben, und dorthin zeigt bereits eine Weiterleitung '
+                .'nach „%s“ — die Seite wäre dort nicht erreichbar.',
+                $shadowed['record']->getAttribute('title'),
+                $shadowed['redirect']->from_path,
+                $shadowed['redirect']->resolvedTarget() ?? '—',
+            ));
+        };
+    }
+
+    /**
+     * The redirect that would shadow the address this form state would store, if any.
+     *
+     * Answered only for a save that newly puts the record there. A record ALREADY sitting
+     * on a shadowed address is a state the CMS supports on purpose — a redirect wins over
+     * content, which is documented redirection.me parity — and reporting it on every
+     * validation would make that page permanently unsaveable: an editor could not so much
+     * as fix its title without being told to delete somebody's curated redirect.
+     *
+     * {@see PathConflicts} draws the same line for content-versus-content, with the same
+     * `exists && ! isDirty('path')` test.
+     */
+    protected static function addressHeldByRedirect(Get $get, ?Model $record, ?Tenant $tenant, string $path): ?Redirect
+    {
+        $probe = static::pathProbeFor($get, $record, $tenant, $path);
+
+        if ($probe->exists && ! $probe->isDirty('path')) {
+            return null;
+        }
+
+        $standing = app(ContentRenameRedirects::class)->shadowing(
+            $tenant?->getKey() ?? $probe->getAttribute('tenant_id'),
+            $probe->getAttribute('path'),
+            $probe,
+        );
+
+        if ($standing === null) {
+            return null;
+        }
+
+        // Already answered: the save will remove this very row. Asking again on every
+        // round-trip would leave the error standing on a field the editor has finished
+        // with. Matched by id, so a DIFFERENT redirect appearing on the same address is
+        // still reported rather than silently covered by an old answer.
+        return (int) $get(static::TAKEOVER_CONSENT_FIELD) === (int) $standing->getKey() ? null : $standing;
+    }
+
+    /**
+     * "Adresse übernehmen" beside the Pfad field: records that the editor wants the
+     * redirect standing on their new address gone, so the page becomes reachable there.
+     *
+     * It records rather than releases. "Entwurf speichern" and "Vorschau" run the same
+     * form and the same validation as "Änderungen anwenden", but change nothing live —
+     * freeing the address there would kill a working URL for a move that may never happen,
+     * and a released row is a tombstone the 404 resolver will not offer back. The release
+     * happens where the move does ({@see releaseTakenOverAddress()}).
+     */
+    protected static function takeOverAddressAction(?Tenant $tenant): Action
+    {
+        return Action::make('takeOverAddress')
+            ->label('Adresse übernehmen')
+            ->icon(Heroicon::OutlinedArrowUturnLeft)
+            ->color('warning')
+            ->requiresConfirmation()
+            ->modalHeading('Weiterleitung entfernen')
+            ->modalDescription('Beim Speichern wird die Adresse freigegeben und nicht von selbst wieder vorgeschlagen.')
+            ->action(function (Get $get, Set $set, ?Model $record) use ($tenant): void {
+                $standing = static::addressHeldByRedirect($get, $record, $tenant, (string) $get('path'));
+
+                if ($standing === null) {
+                    return;
+                }
+
+                // The consent names the ROW it was given for, not just the address: the
+                // release then cannot reach a different redirect that appears there later.
+                $set(static::TAKEOVER_CONSENT_FIELD, $standing->getKey());
+
+                Notification::make()
+                    ->success()
+                    ->title('Adresse wird übernommen')
+                    ->body(sprintf('Die Weiterleitung von „%s“ wird beim Speichern entfernt.', $standing->from_path))
+                    ->send();
+            });
+    }
+
+    /**
+     * Carry out a takeover the editor consented to, once the record really sits on the
+     * address.
+     *
+     * Driven from Filament's RecordCreated/RecordUpdated events ({@see CmsServiceProvider}),
+     * not from afterSave()/afterCreate(): these pages exist to be extended, and a subclass
+     * overriding a common hook without calling the parent would leave the consent recorded
+     * and never executed — the editor sees the success toast and the page stays shadowed.
+     * The draft clearing next door is wired the same way for the same reason.
+     *
+     * Three things have to be true, and each of them is a real case:
+     * - the save was meant as an APPLY. "Vorschau" on an unpublished record runs the same
+     *   full save ({@see ManagesDrafts::saveForPreview()}), and destroying a working
+     *   redirect for a look at a page nobody can see yet is not what was asked.
+     * - the redirect is still the one the editor was shown. Matched by id, so an admin's
+     *   newly curated row on the same address is never what gets deleted.
+     * - the record really took that address. A consent given and then typed away from is
+     *   spent, not carried to wherever the record ended up.
+     *
+     * The consent is cleared either way: it authorises one release, not a standing licence
+     * that every later save of the same open form acts on.
+     */
+    public static function releaseTakenOverAddress(mixed $record, mixed $page = null): void
+    {
+        if (! $record instanceof Model || ! $page instanceof LivewireComponent) {
+            return;
+        }
+
+        $consentId = $page->data[static::TAKEOVER_CONSENT_FIELD] ?? null;
+
+        if (blank($consentId)) {
+            return;
+        }
+
+        if (method_exists($page, 'isSavingForPreview') && $page->isSavingForPreview()) {
+            return;
+        }
+
+        $page->data[static::TAKEOVER_CONSENT_FIELD] = null;
+
+        $redirects = app(ContentRenameRedirects::class);
+
+        $standing = $redirects->shadowing(
+            $record->getAttribute('tenant_id'),
+            $record->getAttribute('path'),
+            $record,
+        );
+
+        if ($standing === null || (int) $standing->getKey() !== (int) $consentId) {
+            return;
+        }
+
+        $redirects->release($standing);
+
+        Notification::make()
+            ->success()
+            ->title('Adresse übernommen')
+            ->body(sprintf('Die Weiterleitung von „%s“ wurde entfernt.', $standing->from_path))
+            ->send();
     }
 
     /**

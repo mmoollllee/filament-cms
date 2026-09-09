@@ -2,6 +2,7 @@
 
 namespace Mmoollllee\Cms\Filament\Resources\Contents\Pages;
 
+use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 use Filament\Support\Enums\Width;
 use Mmoollllee\Cms\Contracts\Content;
@@ -34,6 +35,7 @@ abstract class ContentEditPage extends EditRecord
     use LocksRecords;
     use ManagesDrafts {
         mergeDraftIntoFormData as protected mergeDraftIntoFormDataGeneric;
+        getDeleteFormAction as protected getDeleteFormActionGeneric;
     }
     use PastesBuilderBlocks;
     use TransfersBuilderItems;
@@ -82,6 +84,16 @@ abstract class ContentEditPage extends EditRecord
         $data['raw_payload'] = is_array($data['payload'] ?? null) ? $data['payload'] : [];
 
         return $data;
+    }
+
+    /**
+     * The footer's delete button, warned about the pages it would strand at the root
+     * ({@see TenantScopedContentResource::warnAboutOrphans()}) — the same wording the
+     * table's row action carries, so it does not depend on which button was reached for.
+     */
+    protected function getDeleteFormAction(): DeleteAction
+    {
+        return TenantScopedContentResource::warnAboutOrphans($this->getDeleteFormActionGeneric());
     }
 
     /**

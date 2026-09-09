@@ -11,8 +11,8 @@ use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Builder;
-use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Models\Redirect;
+use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 
 class RedirectForm
@@ -36,11 +36,7 @@ class RedirectForm
                         $tenant = Filament::getTenant();
                         $path = app(PathNormalizer::class)->normalize($get('from_path'));
 
-                        if ($tenant !== null && $path !== '/' && Cms::contentModel()::query()
-                            ->where('tenant_id', $tenant->getKey())
-                            ->where('path', $path)
-                            ->exists()
-                        ) {
+                        if ($path !== '/' && app(ContentTree::class)->ownerOf($tenant?->getKey(), $path) !== null) {
                             return '⚠︎ Es existiert bereits eine Live-Seite unter diesem Pfad — die Weiterleitung überschattet sie.';
                         }
 

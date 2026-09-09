@@ -10,9 +10,11 @@ use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\ContentEditPage;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
+use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Content\PathConflicts;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
+use Mmoollllee\Cms\Support\Routing\ContentRenameRedirects;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
@@ -87,10 +89,17 @@ trait GeneratesPathAndSlug
             app(PathConflicts::class)->forget();
         });
 
+        // A deleted page takes its address with it. `to_content_id` is nullOnDelete, so
+        // inbound redirects would otherwise survive as active rows pointing nowhere —
+        // shown as "Ziel fehlt" forever and pruned by nothing. Deactivated while the
+        // target is still readable, so an admin can repoint them instead of guessing.
+        static::deleting(function (Model $content): void {
+            app(ContentRenameRedirects::class)->deactivateInbound($content);
+        });
+
         // Renaming/moving a page moves its subtree: children re-save, which re-runs
         // the same parent-driven path composition per child (recursively down the
-        // tree). Old URLs fall through to the redirect/404 pipeline, which logs and
-        // auto-resolves them.
+        // tree).
         static::saved(function (Model $content): void {
             // Any write makes the request's cached collision answers claims about a table
             // that no longer exists in that shape.
@@ -100,18 +109,23 @@ trait GeneratesPathAndSlug
                 return;
             }
 
+            // Every row that moves keeps its old address, and it does so HERE rather than
+            // in the panel: a path moves from far more places than a form. A revision
+            // restore, the Duplizieren action, a table reorder, an import or a console
+            // command all run this hook, and none of them has anyone to ask. The cascade
+            // below re-saves each descendant, so every one of them writes its own.
+            app(ContentRenameRedirects::class)->followRename($content);
+
             // All or nothing. The saving guard above rejects a move whose subtree does not
             // fit, but a row written between that check and this cascade would still throw
             // here — and half a subtree left at the new prefix has to be repaired by hand.
             // The parent's own UPDATE joins this transaction wherever the caller opened
             // one; the panel does, via BasePanelProvider's databaseTransactions().
+            // childrenOf() is tenant-scoped: nothing validates parent_id against a tenant,
+            // so an adopted foreign row would otherwise be saved by THIS tenant's rename.
             DB::transaction(function () use ($content): void {
-                Cms::contentModel()::query()
-                    // Scoped: nothing validates parent_id against the tenant, so an
-                    // adopted foreign row would be saved by THIS tenant's rename.
-                    ->where('tenant_id', $content->getAttribute('tenant_id'))
-                    ->where('parent_id', $content->getKey())
-                    ->get()
+                app(ContentTree::class)
+                    ->childrenOf($content)
                     ->each(fn (Model $child) => $child->save());
             });
         });

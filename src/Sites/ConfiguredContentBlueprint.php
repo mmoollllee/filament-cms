@@ -159,6 +159,13 @@ class ConfiguredContentBlueprint implements ContentBlueprint
         return $this->navigationIcon;
     }
 
+    /**
+     * The namespace this type's records live under, whatever their place in the tree.
+     *
+     * Mutually exclusive with {@see allowedParentTypes()} — a type takes its address from
+     * one rule or the other, and declaring both is refused where blueprints are collected
+     * ({@see ContentBlueprintRegistry}).
+     */
     public function urlPathPrefix(): ?string
     {
         return $this->urlPathPrefix;

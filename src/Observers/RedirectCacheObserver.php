@@ -2,16 +2,20 @@
 
 namespace Mmoollllee\Cms\Observers;
 
-use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 
 /**
  * Keeps the per-tenant active-redirect map coherent when redirects change.
  *
- * Eagerly re-warms (forget + rebuild) rather than only forgetting, so the next visitor still
- * gets a cache hit and never pays a cold full-table query — matching the menu/tenant cache
- * observers. Registered via Redirect::observe() in CmsServiceProvider.
+ * Forgets rather than eagerly rebuilding, for the same reason ContentCacheObserver does: a
+ * rename cascades one redirect write per moved row, and re-warming per write rebuilds the
+ * whole tenant map N times in one request (each rebuild resolving every redirect's target).
+ * It also has to be forget: warm() writes through Cache::rememberForever, the panel wraps a
+ * save in a transaction, and a cache store is not transactional — an eager rebuild inside a
+ * save that later rolls back leaves the map holding redirects that no longer exist.
+ *
+ * Registered via Redirect::observe() in CmsServiceProvider.
  */
 class RedirectCacheObserver
 {
@@ -43,14 +47,8 @@ class RedirectCacheObserver
             return;
         }
 
-        $tenant = $redirect->tenant;
-
-        if ($tenant instanceof Tenant) {
-            $this->resolver->warm($tenant);
-
-            return;
-        }
-
-        $this->resolver->warmById($redirect->tenant_id);
+        // By id, not via the relation: reading $redirect->tenant lazy-loads a row per write,
+        // and the map is rebuilt lazily on the next request anyway.
+        $this->resolver->forgetById($redirect->tenant_id);
     }
 }
