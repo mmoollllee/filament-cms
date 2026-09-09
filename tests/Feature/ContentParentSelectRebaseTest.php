@@ -3,7 +3,7 @@
 /*
  * Picking an "Übergeordnete Seite" rewrites the Pfad field on the spot, so the editor
  * sees the resulting URL before saving. That preview is composed by
- * TenantScopedContentResource::rebasePathUnderParent(), which knows nothing about
+ * the form's own rebase helper, which knows nothing about
  * blueprints — while PathGenerator, which decides what is actually STORED, nests under
  * the parent only for types WITHOUT a urlPathPrefix.
  *

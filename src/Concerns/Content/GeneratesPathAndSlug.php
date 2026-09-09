@@ -13,6 +13,7 @@ use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Content\PathConflicts;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
+use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 /**
@@ -74,7 +75,7 @@ trait GeneratesPathAndSlug
 
             // Derive the slug from the path's last segment (path is the source of truth).
             if (filled($content->path) && $content->path !== '/') {
-                $lastSegment = Str::afterLast(trim($content->path, '/'), '/');
+                $lastSegment = app(PathNormalizer::class)->lastSegment($content->path);
 
                 if (filled($lastSegment)) {
                     $content->slug = $lastSegment;
@@ -82,11 +83,19 @@ trait GeneratesPathAndSlug
             }
         });
 
+        static::deleted(function (): void {
+            app(PathConflicts::class)->forget();
+        });
+
         // Renaming/moving a page moves its subtree: children re-save, which re-runs
         // the same parent-driven path composition per child (recursively down the
         // tree). Old URLs fall through to the redirect/404 pipeline, which logs and
         // auto-resolves them.
         static::saved(function (Model $content): void {
+            // Any write makes the request's cached collision answers claims about a table
+            // that no longer exists in that shape.
+            app(PathConflicts::class)->forget();
+
             if (! $content->wasChanged('path')) {
                 return;
             }
@@ -98,6 +107,9 @@ trait GeneratesPathAndSlug
             // one; the panel does, via BasePanelProvider's databaseTransactions().
             DB::transaction(function () use ($content): void {
                 Cms::contentModel()::query()
+                    // Scoped: nothing validates parent_id against the tenant, so an
+                    // adopted foreign row would be saved by THIS tenant's rename.
+                    ->where('tenant_id', $content->getAttribute('tenant_id'))
                     ->where('parent_id', $content->getKey())
                     ->get()
                     ->each(fn (Model $child) => $child->save());

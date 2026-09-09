@@ -131,6 +131,12 @@ class ConfiguredContentBlueprint implements ContentBlueprint
      * It does NOT re-check a stored path or re-apply the prefix over one — the generator
      * settled both before reaching here, and answering again from the stored string is what
      * used to let a drifted path outlive every save.
+     *
+     * The prefix is settled too, and re-applying it here would be unreachable anyway: the
+     * generator returns on the prefix the moment a record has a segment to hang under it,
+     * so anything arriving here has no segment — which means no path, no slug and no title
+     * to slugify, i.e. the null below. Composing a path from something OTHER than the slug
+     * is what an override is for.
      */
     public function generatePath(Content $content): ?string
     {
@@ -140,13 +146,7 @@ class ConfiguredContentBlueprint implements ContentBlueprint
 
         $slug = $content->slug ?: Str::slug($content->title);
 
-        if (blank($slug)) {
-            return null;
-        }
-
-        return $this->urlPathPrefix !== null
-            ? rtrim($this->urlPathPrefix, '/').'/'.$slug
-            : "/{$slug}";
+        return blank($slug) ? null : "/{$slug}";
     }
 
     public function navigationLabel(): ?string

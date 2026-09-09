@@ -4,7 +4,9 @@ namespace Mmoollllee\Cms\Filament\Concerns;
 
 use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Filament\Notifications\Notification;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\On;
+use Mmoollllee\Cms\Support\FormFieldValidation;
 use Mmoollllee\Cms\Support\Locking\Locks;
 
 /**
@@ -143,7 +145,14 @@ trait LocksRecords
             return;
         }
 
-        parent::save($shouldRedirect, $shouldSendSavedNotification);
+        try {
+            parent::save($shouldRedirect, $shouldSendSavedNotification);
+        } catch (ValidationException $exception) {
+            // A guard inside the model throws under the model's attribute name, and the
+            // form renders errors by state path. Left alone the message is never drawn:
+            // the write rolls back and the screen says nothing ({@see FormFieldValidation}).
+            throw FormFieldValidation::rekey($exception, FormFieldValidation::statePathOf($this));
+        }
 
         // Pages without ManagesDrafts (redirects, layout presets, menus) have
         // no rememberData() hook to re-stamp through.

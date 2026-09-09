@@ -43,6 +43,7 @@ use Mmoollllee\Cms\Support\Assets\ContentVersionedJs;
 use Mmoollllee\Cms\Support\ContactLinkShortcodes;
 use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
+use Mmoollllee\Cms\Support\Content\PathConflicts;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
 use Mmoollllee\Cms\Support\Locking\Locks;
@@ -92,6 +93,9 @@ class CmsServiceProvider extends ServiceProvider
         $this->app->singleton(RedirectResolver::class);
         $this->app->singleton(PathSuggestionResolver::class);
         $this->app->singleton(PathGenerator::class);
+        // Singleton so one request's conflict answers are shared between the form rule
+        // and the saving hook, which ask the same question about the same row.
+        $this->app->singleton(PathConflicts::class);
         $this->app->singleton(TemplateResolver::class);
         // Request-scoped preset cache: controllers preload() it, blocks resolve()
         // against it. Must be shared, or every resolve() hits an empty cache and

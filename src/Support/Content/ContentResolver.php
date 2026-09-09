@@ -5,7 +5,6 @@ namespace Mmoollllee\Cms\Support\Content;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
@@ -241,7 +240,7 @@ class ContentResolver
             return null;
         }
 
-        $pathSegment = Str::afterLast(trim($resolvedPath, '/'), '/');
+        $pathSegment = $this->normalizer->lastSegment($resolvedPath);
 
         return filled($pathSegment) ? $pathSegment : null;
     }

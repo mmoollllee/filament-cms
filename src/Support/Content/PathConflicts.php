@@ -24,12 +24,64 @@ use Mmoollllee\Cms\Contracts\Content;
 class PathConflicts
 {
     /**
+     * Answers already given this request, keyed by the state that produced them.
+     *
+     * A panel save asks the identical question twice about the identical row: once from
+     * the form rule, so the message lands on the Pfad field, and once from the saving hook,
+     * which is what covers every writer that never sees a form. Nothing writes between
+     * those two — validation finishes before the save begins — so the second answer has to
+     * agree with the first, and repeating the subtree walk to hear it again does not.
+     *
+     * Every write DOES invalidate them ({@see forget()}), because the answer is a claim
+     * about the table: two rows created in one request would otherwise share a key and the
+     * second would be told the first's path is still free.
+     *
+     * @var array<string, array{record: Content, path: string, owner: Content}|null>
+     */
+    protected array $answers = [];
+
+    /**
      * The first collision storing $content would cause: its own path, or a descendant the
      * cascade would move onto a path someone else holds. Null when the whole move fits.
      *
      * @return array{record: Content, path: string, owner: Content}|null
      */
     public function firstConflict(Content $content): ?array
+    {
+        $question = $this->questionKey($content);
+
+        if (array_key_exists($question, $this->answers)) {
+            return $this->answers[$question];
+        }
+
+        return $this->answers[$question] = $this->resolveConflict($content);
+    }
+
+    /** Drop every answer — the table has moved on. */
+    public function forget(): void
+    {
+        $this->answers = [];
+    }
+
+    /**
+     * Everything the answer depends on. A cascaded child differs in every part of it, so
+     * it asks its own question rather than reading the parent's answer.
+     */
+    protected function questionKey(Content $content): string
+    {
+        return implode('|', [
+            $content->getAttribute('tenant_id'),
+            $content->getKey() ?? 'new',
+            $content->getAttribute('parent_id') ?? 'root',
+            $content->getAttribute('path'),
+            $content->getOriginal('path'),
+        ]);
+    }
+
+    /**
+     * @return array{record: Content, path: string, owner: Content}|null
+     */
+    protected function resolveConflict(Content $content): ?array
     {
         $path = $content->getAttribute('path');
 
@@ -70,15 +122,25 @@ class PathConflicts
      *
      * @param  array<int, mixed>  $moving
      * @param  array<string, Content>  $claimed  paths already taken by this same move
+     * @param  array<int|string, true>  $seen  guards a malformed parent_id cycle
      * @return array{record: Content, path: string, owner: Content}|null
      */
-    protected function firstSubtreeConflict(Content $parent, array $moving, array &$claimed): ?array
+    protected function firstSubtreeConflict(Content $parent, array $moving, array &$claimed, array &$seen = []): ?array
     {
         $children = Cms::contentModel()::query()
+            ->where('tenant_id', $parent->getAttribute('tenant_id'))
             ->where('parent_id', $parent->getKey())
             ->get();
 
         foreach ($children as $child) {
+            // A cycle in parent_id would walk this forever; the tree is only a tree by
+            // convention, nothing in the schema enforces it.
+            if (isset($seen[$child->getKey()])) {
+                continue;
+            }
+
+            $seen[$child->getKey()] = true;
+
             // Compose against the parent as it will be stored, not as the database still
             // has it: seeding the relation is what makes PathGenerator (via resolvedPath)
             // use the NEW parent path instead of re-reading the old one.
@@ -101,7 +163,7 @@ class PathConflicts
 
             $probe->setAttribute('path', $path);
 
-            $conflict = $this->firstSubtreeConflict($probe, $moving, $claimed);
+            $conflict = $this->firstSubtreeConflict($probe, $moving, $claimed, $seen);
 
             if ($conflict !== null) {
                 return $conflict;
@@ -139,6 +201,7 @@ class PathConflicts
 
         while ($level !== []) {
             $level = Cms::contentModel()::query()
+                ->where('tenant_id', $content->getAttribute('tenant_id'))
                 ->whereIn('parent_id', $level)
                 ->whereKeyNot($keys)
                 ->pluck($content->getKeyName())

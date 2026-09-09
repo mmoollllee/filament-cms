@@ -127,11 +127,22 @@ final class ContentPathSuggestions
 
         return $query
             ->orderBy($valueColumn)
-            ->get(['title', 'path'])
-            ->map(fn (Content $content): SearchResult => SearchResult::make(
-                value: $content->{$valueColumn},
-                label: "{$content->title} — {$content->path}",
-            )->withData('title', $content->title)->withData('path', $content->path))
+            // The column is what the LIKE searches, but it is not what the href may be
+            // built from: a row written past the model hooks (an import, a migration, a
+            // saveQuietly) carries a stale path, and a link to it resolves nowhere — the
+            // frontend's fallback finds pages by their GENERATED path, not their old one.
+            // Ancestors are eager-loaded so asking the generator per row stays four
+            // queries for the page, not one per level per row.
+            ->with('parent.parent.parent.parent')
+            ->get(['id', 'tenant_id', 'parent_id', 'content_type', 'title', 'slug', 'path'])
+            ->map(function (Content $content) use ($valueColumn): SearchResult {
+                $path = $content->resolvedPath() ?? $content->path;
+
+                return SearchResult::make(
+                    value: $valueColumn === 'path' ? $path : $content->{$valueColumn},
+                    label: "{$content->title} — {$path}",
+                )->withData('title', $content->title)->withData('path', $path);
+            })
             ->all();
     }
 

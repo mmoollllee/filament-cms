@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Support\Content;
 
 use Illuminate\Support\Str;
 use Mmoollllee\Cms\Contracts\Content;
+use Mmoollllee\Cms\Contracts\ContentBlueprint;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 
@@ -20,7 +21,7 @@ use Mmoollllee\Cms\Support\Routing\PathNormalizer;
  *  2. the parent, for a type without a prefix that has one
  *  3. nobody — then, and only then, the stored path stands as authored
  *  4. nothing to compose from yet: the blueprint's own
- *     {@see \Mmoollllee\Cms\Contracts\ContentBlueprint::generatePath()}
+ *     {@see ContentBlueprint::generatePath()}
  *
  * Because lastSegment(compose(owner, segment)) === segment, steps 1 and 2 are idempotent
  * by construction: re-running them on their own output returns it unchanged, and running
@@ -30,6 +31,15 @@ use Mmoollllee\Cms\Support\Routing\PathNormalizer;
  */
 class PathGenerator
 {
+    /**
+     * Keys whose path is being composed right now. The ancestor walk recurses through
+     * the parent's own resolvedPath(), and `parent_id` carries no constraint that would
+     * stop it pointing back into the chain.
+     *
+     * @var array<int|string, true>
+     */
+    protected array $composing = [];
+
     public function __construct(
         protected ContentBlueprintRegistry $blueprints,
         protected PathNormalizer $normalizer,
@@ -41,6 +51,32 @@ class PathGenerator
      * Returns null for non-routable content types.
      */
     public function generate(Content $content): ?string
+    {
+        $key = $content->getKey();
+
+        // Already on the stack means the tree has a cycle. Composing again would recurse
+        // until the process dies — and ContentResolver falls back to a full scan that
+        // calls this once per row, so a single cyclic record would take the public site
+        // down, not just the panel. The stored path is the least wrong answer here; the
+        // cycle itself is a data repair, and cms:paths:check reports it.
+        if ($key !== null && isset($this->composing[$key])) {
+            return $this->normalize($content->path);
+        }
+
+        if ($key !== null) {
+            $this->composing[$key] = true;
+        }
+
+        try {
+            return $this->compose($content);
+        } finally {
+            if ($key !== null) {
+                unset($this->composing[$key]);
+            }
+        }
+    }
+
+    protected function compose(Content $content): ?string
     {
         $blueprint = $this->blueprints->find(
             $content->content_type,
@@ -97,7 +133,12 @@ class PathGenerator
             return null;
         }
 
-        $parent = $content->relationLoaded('parent') ? $content->parent : $content->parent()->first();
+        $parent = $content->relationLoaded('parent')
+            ? $content->parent
+            // Scoped: `parent_id` reaches the database unvalidated by anything but the
+            // Select's option list, so a crafted payload can name another tenant's row.
+            // Composing against it would hand this record that tenant's path structure.
+            : $content->parent()->where('tenant_id', $content->getAttribute('tenant_id'))->first();
 
         if (! $parent instanceof Content) {
             return null;
@@ -115,7 +156,7 @@ class PathGenerator
     protected function ownSegment(Content $content): ?string
     {
         if (filled($content->path)) {
-            return Str::afterLast(trim($content->path, '/'), '/');
+            return $this->normalizer->lastSegment($content->path);
         }
 
         if (filled($content->slug)) {

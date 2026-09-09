@@ -1531,9 +1531,9 @@ abstract class TenantScopedContentResource extends Resource
      * The rule therefore builds the record this form would save and hands it to
      * {@see PathConflicts} — the same service the model's saving hook uses as its backstop,
      * so the panel and every other writer answer the question identically. Re-deriving the
-     * composition here instead ({@see rebasePathUnderParent()} covers only the
-     * parent-driven branch) would reject legal saves for every blueprint the generator
-     * treats differently — a urlPathPrefix type, where the prefix wins over the hierarchy,
+     * composition here instead — the form's own rebase ({@see rebasePathOnParentChange()})
+     * covers only the parent-driven branch — would reject legal saves for every blueprint
+     * the generator treats differently — a urlPathPrefix type, where the prefix wins over the hierarchy,
      * or a record with no parent, whose typed path is kept in full.
      *
      * Doing it here as well as in the hook is what puts the message ON the Pfad field: a
