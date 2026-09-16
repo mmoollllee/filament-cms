@@ -34,6 +34,8 @@ providers:
   - ProtoneMedia\LaravelFFMpeg\Support\ServiceProvider
   - yannkuesthardt\SpamProtect\SpamprotectServiceProvider
   - Mmoollllee\FilamentBuilderTitle\FilamentBuilderTitleServiceProvider
+  # Membership, invitations and the access list; configured by CmsServiceProvider.
+  - Mmoollllee\FilamentTenantAccess\TenantAccessServiceProvider
   # Optional Umami analytics (require-dev here; consumers install it themselves).
   # Order is not load-bearing: all providers register before any boots, and the
   # CMS gates its wiring on Umami::installed(), which probes the registration.

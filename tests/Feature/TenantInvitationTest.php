@@ -10,7 +10,7 @@ use Mmoollllee\Cms\Filament\Pages\Auth\Register;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\ListUsers;
 use Mmoollllee\Cms\Mail\TenantInvitationMail;
 use Mmoollllee\Cms\Models\TenantInvitation;
-use Mmoollllee\Cms\Support\Tenancy\TenantInvitations;
+use Mmoollllee\FilamentTenantAccess\Support\TenantInvitations;
 use Workbench\App\Models\Tenant;
 use Workbench\App\Models\User;
 

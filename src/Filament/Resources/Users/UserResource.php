@@ -14,10 +14,10 @@ use Illuminate\Database\Eloquent\Builder;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\User as UserContract;
 use Mmoollllee\Cms\Enums\TenantUserRole;
-use Mmoollllee\Cms\Filament\Forms\MembershipFields;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\CreateUser;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\EditUser;
 use Mmoollllee\Cms\Filament\Resources\Users\Pages\ListUsers;
+use Mmoollllee\FilamentTenantAccess\Filament\Forms\MembershipFields;
 
 class UserResource extends Resource
 {

@@ -2,8 +2,22 @@
 
 namespace Mmoollllee\Cms\Enums;
 
-enum TenantUserRole: string
+use BackedEnum;
+use Filament\Support\Icons\Heroicon;
+use Mmoollllee\Cms\Policies\Concerns\AuthorizesTenantAdmins;
+use Mmoollllee\FilamentTenantAccess\Concerns\IsTenantRole;
+use Mmoollllee\FilamentTenantAccess\Contracts\TenantRole;
+
+/**
+ * A member's role within one site. Speaks the filament-tenant-access role
+ * contract, so the shared access list, role select and invitation flow render
+ * it the way they render the roles of every other application. `options()`
+ * comes with the contract's trait.
+ */
+enum TenantUserRole: string implements TenantRole
 {
+    use IsTenantRole;
+
     case Admin = 'admin';
     case Editor = 'editor';
 
@@ -33,13 +47,26 @@ enum TenantUserRole: string
         };
     }
 
-    /**
-     * @return array<string, string>
-     */
-    public static function options(): array
+    public function icon(): BackedEnum
     {
-        return collect(self::cases())
-            ->mapWithKeys(fn (self $case): array => [$case->value => $case->label()])
-            ->all();
+        return match ($this) {
+            self::Admin => Heroicon::OutlinedShieldCheck,
+            self::Editor => Heroicon::OutlinedPencilSquare,
+        };
+    }
+
+    /**
+     * The CMS authorizes by role ({@see AuthorizesTenantAdmins}),
+     * not by permission string; these mirror that rule for code that asks the
+     * shared contract instead.
+     *
+     * @return array<int, string>
+     */
+    public function permissions(): array
+    {
+        return match ($this) {
+            self::Admin => ['*'],
+            self::Editor => ['tenant:update', '*:view', '*:create', '*:update'],
+        };
     }
 }

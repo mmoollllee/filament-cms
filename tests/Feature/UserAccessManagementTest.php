@@ -24,7 +24,7 @@ it('lets a tenant admin end a membership without touching the account', function
     Livewire::test(ListUsers::class)
         // Rows are arrays keyed by type, not Eloquent records — members and
         // pending invitations share one table.
-        ->callAction(TestAction::make('detachFromTenant')->table('member-'.$member->getKey()));
+        ->callAction(TestAction::make('remove')->table('member-'.$member->getKey()));
 
     expect($tenant->fresh()->hasUser($member))->toBeFalse()
         ->and(User::query()->whereKey($member->getKey())->exists())->toBeTrue()
@@ -68,11 +68,11 @@ it('never offers either removal for the acting user', function () {
 it('offers direct assignment to superadmins only', function () {
     actingAsMarketingPanelUser('admin-a@example.test');
 
-    Livewire::test(ListUsers::class)->assertActionHidden('assignExisting');
+    Livewire::test(ListUsers::class)->assertActionHidden('assignDirectly');
 
     $this->actingAs(User::factory()->create(['is_superadmin' => true]));
 
-    Livewire::test(ListUsers::class)->assertActionVisible('assignExisting');
+    Livewire::test(ListUsers::class)->assertActionVisible('assignDirectly');
 });
 
 it('assigns an existing account to the tenant without a mail', function () {
@@ -82,7 +82,7 @@ it('assigns an existing account to the tenant without a mail', function () {
     $newcomer = User::factory()->create();
 
     Livewire::test(ListUsers::class)
-        ->callAction('assignExisting', [
+        ->callAction('assignDirectly', [
             'user_ids' => [$newcomer->getKey()],
             'role' => TenantUserRole::Admin->value,
         ]);

@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms;
 
 use Datlechin\FilamentMenuBuilder\Models\MenuItem;
 use Datlechin\FilamentMenuBuilder\Models\MenuLocation;
+use Filament\Facades\Filament;
 use Filament\Resources\Events\RecordCreated;
 use Filament\Resources\Events\RecordUpdated;
 use Filament\Support\Facades\FilamentAsset;
@@ -26,6 +27,7 @@ use Mmoollllee\Cms\Enums\TenantVisibility;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Providers\BasePanelProvider;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
+use Mmoollllee\Cms\Mail\TenantInvitationMail;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Models\TenantInvitation;
@@ -62,6 +64,7 @@ use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
+use Mmoollllee\FilamentTenantAccess\TenantAccess;
 use Mmoollllee\Filami\Filami;
 use RalphJSmit\Filament\MediaLibrary\ImageGenerators\MediaLibraryItemImageGenerator;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
@@ -118,6 +121,60 @@ class CmsServiceProvider extends ServiceProvider
 
             return $registry;
         });
+
+        $this->configureTenantAccess();
+    }
+
+    /**
+     * Membership, invitations and the access list come from
+     * filament-tenant-access; this is where the CMS tells it how a CMS install
+     * works.
+     *
+     * In register(), not boot(): the package registers its accept route while
+     * booting and reads the path and middleware then. Whole sub-arrays are set,
+     * because the package merges its defaults over the top level only — a
+     * partial `invitations` array would silently drop the keys it left out.
+     *
+     * - Models come from the Cms registry, resolved lazily: apps register them
+     *   in their own providers, which may run after this one.
+     * - Sites have members but no owner.
+     * - The accept link keeps its `/_invitation/{token}` path, so links already
+     *   sitting in inboxes stay valid, and is signed relative to the host
+     *   because every site answers on its own domain.
+     */
+    protected function configureTenantAccess(): void
+    {
+        TenantAccess::resolveTenantModelUsing(fn (): string => Cms::tenantModel());
+        TenantAccess::resolveUserModelUsing(fn (): string => Cms::userModel());
+
+        config([
+            'tenant-access.models' => [
+                'tenant' => null,
+                'user' => null,
+                'invitation' => TenantInvitation::class,
+            ],
+            'tenant-access.role' => TenantUserRole::class,
+            'tenant-access.default_role' => TenantUserRole::Editor->value,
+            'tenant-access.owner_column' => null,
+            'tenant-access.users' => [
+                'search_columns' => ['name', 'email'],
+                'order_by' => ['name'],
+            ],
+            'tenant-access.tables' => [
+                'pivot' => 'tenant_user',
+                'invitations' => 'tenant_invitations',
+            ],
+            'tenant-access.invitations' => [
+                'expires_after_days' => (int) config('cms.invitations.expires_after_days', 14),
+                'from' => ['address' => null, 'name' => null],
+                'path' => '_invitation/{token}',
+                'middleware' => ['web', 'signed:relative', 'throttle:30,1'],
+                'mailable' => TenantInvitationMail::class,
+                'queue' => true,
+            ],
+            'tenant-access.panels' => ['auth' => null],
+            'tenant-access.terms' => ['singular' => 'Seite', 'plural' => 'Seiten'],
+        ]);
     }
 
     public function boot(): void
@@ -402,6 +459,11 @@ class CmsServiceProvider extends ServiceProvider
         Gate::policy(Cms::tenantModel(), TenantPolicy::class);
         Gate::policy(Cms::userModel(), UserPolicy::class);
         Gate::policy(TenantInvitation::class, TenantInvitationPolicy::class);
+
+        // Accepting an invitation lands in the panel, on the site it was for.
+        TenantAccess::redirectAcceptedUsing(
+            fn (Model $invitation): string => Filament::getDefaultPanel()->getUrl($invitation->tenant),
+        );
 
         $this->registerLockingGates();
     }

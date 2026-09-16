@@ -15,7 +15,8 @@
         "ueberdosis/tiptap-php": "^2.1",
         "yannkuesthardt/laravel-spamprotect": "^2.0|^3.0",
         "mansoor/filament-versionable": "^5.1",
-        "blendbyte/filament-resource-lock": "^2.2"
+        "blendbyte/filament-resource-lock": "^2.2",
+        "mmoollllee/filament-tenant-access": "^0.1"
     },
     "require-dev": {
         "mmoollllee/filament-media-library-extensions": "^0.2",
@@ -79,6 +80,16 @@
         {
             "type": "vcs",
             "url": "https://github.com/mmoollllee/filami"
+        },
+        {
+            "type": "path",
+            "url": "../filament-tenant-access",
+            "options": {
+                "symlink": true,
+                "versions": {
+                    "mmoollllee/filament-tenant-access": "0.1.0"
+                }
+            }
         }
     ],
     "scripts": {

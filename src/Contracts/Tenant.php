@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Contracts;
 
 use Illuminate\Contracts\Auth\Authenticatable;
+use Mmoollllee\FilamentTenantAccess\Contracts\TenantOwner;
 
 /**
  * Contract implemented by an application's tenant model (the concrete class is
@@ -11,8 +12,11 @@ use Illuminate\Contracts\Auth\Authenticatable;
  * The engine reads the `site_key` attribute at runtime; this contract pins the
  * domain methods the engine/middleware/policies call explicitly. Auth-related
  * methods take the framework Authenticatable contract (not a concrete User).
+ *
+ * Membership is filament-tenant-access' TenantOwner, fulfilled by the
+ * HasTenantUsers trait every tenant model already uses.
  */
-interface Tenant
+interface Tenant extends TenantOwner
 {
     /** Human-readable brand/display name, used as a navigation fallback label. */
     public function displayName(): string;

@@ -430,36 +430,55 @@ post-login redirect), tenant branding (name/logo/primary color), the menu-builde
 
 ### Access management (users & invitations)
 
+Membership, invitations and the access list come from
+[`mmoollllee/filament-tenant-access`](https://github.com/mmoollllee/filament-tenant-access).
+`CmsServiceProvider::configureTenantAccess()` wires it to the CMS: models from the
+`Cms` registry, `TenantUserRole` as the role enum, sites without an owner, the branded
+`Mmoollllee\Cms\Mail\TenantInvitationMail`, and the accept link on each site's own
+domain. **Apps configure nothing** — do not publish `config/tenant-access.php`; the CMS
+sets it at register time.
+
 The Users list answers one question — who can get into this site — so it lists members
-**and** invitations that have not been accepted yet, in one table. (That is why it is built
-from `Table::records()` rather than the resource's Eloquent query: the rows come from
-`tenant_user` and `tenant_invitations` and are plain arrays, keyed `member-{id}` /
-`invitation-{id}`. `ListRecords` wires a row click and row URL that expect a Model, so both
-are cleared.) Access is granted in three ways: **einladen** (a signed mail link — the normal
-route), **direkt zuweisen** (attach an existing account without mail; superadmin only, since
-it needs a picker over the whole directory) and **anlegen** (admin picks the password).
-Removal follows the same split as `UserPolicy`:
+**and** invitations that have not been accepted yet, in one table
+(`InteractsWithTenantAccessTable`; rows are plain arrays keyed `member-{id}` /
+`invitation-{id}`). Access is granted in three ways: **Mitglied einladen** (a signed mail
+link — the normal route), **Direkt hinzufügen** (attach an existing account without mail;
+superadmin only, since it needs a picker over the whole directory) and **Benutzer anlegen**
+(admin picks the password). Removal follows the same split as `UserPolicy`:
 
 | Action | Who | Effect |
 |---|---|---|
-| Aus dieser Seite entfernen | tenant admin | ends the `tenant_user` membership; account and other tenants untouched |
+| Entfernen | tenant admin | ends the `tenant_user` membership; account and other tenants untouched |
 | Benutzerkonto löschen | superadmin | deletes the account — including its access to every other tenant |
 
-A pending invitation appears as its own row (address, role, "Eingeladen, gültig bis …")
-with **Neu senden** and **Zurückziehen**. It is a `tenant_invitations` row with a unique
-token, an expiry (`cms.invitations.expires_after_days`) and the role to grant. The accept link is a signed
-route (`cms.tenant-invitations.accept`, exempt from the tenant-visibility gate — a
-members-only site is precisely the one whose invitees have to get in). Signed in with the
-invited address it attaches immediately; signed out it routes to the login or, when no
-account exists, to `Filament\Pages\Auth\Register` — **not an open sign-up**: that page
-refuses any visit without a valid token and takes the e-mail from the invitation, never
-from the form.
+Neither is ever offered on the acting user's own row, and a tenant admin cannot demote or
+remove a superadmin (`UserPolicy::detach()`).
 
-**App-side work for this release:** publish and run the invitation migration
-(`php artisan vendor:publish --tag=cms-migrations` → `tenant_invitations`), and make sure
-the app's mail configuration can actually deliver — the invite action is useless without
-it. The invitation mail is queued (`ShouldQueue`), so it also needs a worker; without one
-it does not fail, it simply never goes out.
+A pending invitation appears as its own row (address, role, "Eingeladen, gültig bis …")
+with **Einladung neu senden** and **Einladung zurückziehen**. It is a `tenant_invitations`
+row with a unique token, an expiry (`cms.invitations.expires_after_days`) and the role to
+grant. The accept link is the package's signed route (`tenant-access.invitations.accept`,
+path `/_invitation/{token}` — unchanged, so links already sent keep working — exempt from
+the tenant-visibility gate: a members-only site is precisely the one whose invitees have to
+get in). Signed in with the invited address it attaches immediately; signed out it routes
+to the login or, when no account exists, to `Filament\Pages\Auth\Register` — **not an
+open sign-up**: that page refuses any visit without a valid token and takes the e-mail from
+the invitation, never from the form.
+
+The tenant policy answers the three abilities the access list asks: `inviteMembers` and
+`manageMembers` (admin of the site) and `assignMembers` (superadmin).
+
+**App-side work for this release:** filament-tenant-access is not on Packagist, so every
+app lists it next to the CMS's other private dependencies in `composer.json`:
+
+```json
+{ "type": "vcs", "url": "https://github.com/mmoollllee/filament-tenant-access" }
+```
+
+Nothing else — its migration is not needed (`tenant_invitations` comes from
+`cms-migrations`) and its config is set by the CMS. Mail still has to be deliverable, and
+the invitation mail is queued (`ShouldQueue`), so it needs a worker; without one it does
+not fail, it simply never goes out.
 
 **Every update:** `php artisan filament:assets`. The package's builder/revision CSS and
 the TipTap extensions are registered assets, not part of the app's vite build, and
