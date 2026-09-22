@@ -82,14 +82,8 @@
             "url": "https://github.com/mmoollllee/filami"
         },
         {
-            "type": "path",
-            "url": "../filament-tenant-access",
-            "options": {
-                "symlink": true,
-                "versions": {
-                    "mmoollllee/filament-tenant-access": "0.1.0"
-                }
-            }
+            "type": "vcs",
+            "url": "https://github.com/mmoollllee/filament-tenant-access"
         }
     ],
     "scripts": {
