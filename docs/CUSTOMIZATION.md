@@ -52,6 +52,8 @@ public function register(): void
 
     // Menu-builder locations — panel plugin + cache invalidation share this list.
     // Cms::useMenuLocations(['header' => 'Hauptmenü', 'footer' => 'Sekundär-Navigation']);
+    // Opt-in: child menu items as `children` in Menu::linksForLocation() + the flyout.
+    // Cms::enableNestedMenus();
 
     // Frontend fallback views: footer claim (see §5 for merge-tag labels).
     // Cms::useFooterTagline('…');

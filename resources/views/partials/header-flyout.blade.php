@@ -12,34 +12,48 @@
     <div class="flyout-group m-4">
         <div class="flyout-heading sr-only">{{ __('cms::frontend.main_menu') }}</div>
         <div class="flyout-list flex flex-col items-center gap-4 text-center">
-            @foreach ($sectionLinks as $item)
-                @php
-                    $target = $item['target'] ?? '_self';
+            @foreach ($sectionLinks as $sectionLink)
+                {{-- Child items (Cms::enableNestedMenus()) follow their parent as
+                     `.flyout-btn--child` siblings, so the list keeps one flat
+                     rhythm. A top-level entry is active for its whole section
+                     (root path), a child only on its own page. --}}
+                @foreach ([$sectionLink, ...($sectionLink['children'] ?? [])] as $item)
+                    @php
+                        $isChild = $loop->index > 0;
+                        $target = $item['target'] ?? '_self';
+                        $activePath = $isChild ? 'currentNavigationPath()' : 'currentNavigationRootPath()';
 
-                    // noopener is merged in, never replaced: `rel` is a free-text
-                    // field an editor can fill with anything, and a link leaving
-                    // the site in a new tab must not hand over window.opener.
-                    $rel = collect(preg_split('/\s+/', (string) ($item['rel'] ?? ''), -1, PREG_SPLIT_NO_EMPTY))
-                        ->push('noopener')
-                        ->unique()
-                        ->implode(' ');
-                @endphp
+                        // noopener is merged in, never replaced: `rel` is a free-text
+                        // field an editor can fill with anything, and a link leaving
+                        // the site in a new tab must not hand over window.opener.
+                        $rel = collect(preg_split('/\s+/', (string) ($item['rel'] ?? ''), -1, PREG_SPLIT_NO_EMPTY))
+                            ->push('noopener')
+                            ->unique()
+                            ->implode(' ');
+                    @endphp
 
-                <a
-                    href="{{ $item['href'] }}"
-                    class="{{ trim('flyout-btn '.($item['classes'] ?? '')) }}"
-                    @if ($target !== '_self')
-                        target="{{ $target }}"
-                        rel="{{ $rel }}"
-                    @endif
-                    x-bind:class="{ 'is-active': currentNavigationRootPath() === {{ \Illuminate\Support\Js::from($item['path']) }} }"
-                    x-bind:aria-current="currentNavigationRootPath() === {{ \Illuminate\Support\Js::from($item['path']) }} ? 'page' : 'false'"
-                >
-                    @if (filled($item['icon'] ?? null))
-                        <x-site.menu-icon :name="$item['icon']" class="size-4" />
-                    @endif
-                    {{ $item['label'] }}
-                </a>
+                    <a
+                        href="{{ $item['href'] }}"
+                        class="{{ trim('flyout-btn '.($isChild ? 'flyout-btn--child ' : '').($item['classes'] ?? '')) }}"
+                        @if ($target !== '_self')
+                            target="{{ $target }}"
+                            rel="{{ $rel }}"
+                        @endif
+                        x-bind:class="{ 'is-active': {{ $activePath }} === {{ \Illuminate\Support\Js::from($item['path']) }} }"
+                        @if (! $isChild && ($item['children'] ?? []) !== [])
+                            {{-- Only one entry may be the current page: on a child's page its
+                                 parent is the current section ("true"), not the page. --}}
+                            x-bind:aria-current="currentNavigationPath() === {{ \Illuminate\Support\Js::from($item['path']) }} ? 'page' : ({{ $activePath }} === {{ \Illuminate\Support\Js::from($item['path']) }} ? 'true' : 'false')"
+                        @else
+                            x-bind:aria-current="{{ $activePath }} === {{ \Illuminate\Support\Js::from($item['path']) }} ? 'page' : 'false'"
+                        @endif
+                    >
+                        @if (filled($item['icon'] ?? null))
+                            <x-site.menu-icon :name="$item['icon']" class="size-4" />
+                        @endif
+                        {{ $item['label'] }}
+                    </a>
+                @endforeach
             @endforeach
         </div>
     </div>

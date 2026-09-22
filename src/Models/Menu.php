@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Models;
 
 use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Datlechin\FilamentMenuBuilder\Models\Menu as BaseMenu;
+use Datlechin\FilamentMenuBuilder\Models\MenuItem;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
@@ -35,7 +36,7 @@ class Menu extends BaseMenu
             ->where('tenant_id', $tenant->getKey())
             ->where('is_visible', true)
             ->whereRelation('locations', 'location', $location)
-            ->with('menuItems.linkable')
+            ->with(Cms::hasNestedMenus() ? ['menuItems.linkable', 'menuItems.children.linkable'] : ['menuItems.linkable'])
             ->first();
     }
 
@@ -53,7 +54,11 @@ class Menu extends BaseMenu
      * render it via <x-site.menu-icon>, which drops an unknown name
      * instead of throwing SvgNotFound on every page holding the menu.
      *
-     * @return array<int, array{path: string, href: string, label: string, target: ?string, rel: ?string, classes: ?string, icon: ?string}>
+     * With Cms::enableNestedMenus() each top-level entry also carries
+     * `children`: its direct child items in the same shape (without their own
+     * `children` — one level deep, deeper items are dropped).
+     *
+     * @return array<int, array{path: string, href: string, label: string, target: ?string, rel: ?string, classes: ?string, icon: ?string, children?: list<array{path: string, href: string, label: string, target: ?string, rel: ?string, classes: ?string, icon: ?string}>}>
      */
     public static function linksForLocation(string $location, Tenant $tenant): array
     {
@@ -69,28 +74,42 @@ class Menu extends BaseMenu
                     return [];
                 }
 
-                // SECURITY: the menu-builder plugin stores `url` as a plain
-                // TextInput with no scheme validation, so a javascript:/data:
-                // value would land in the header, footer and flyout href of
-                // every page. Scheme-check here — one place covers all menu
-                // consumers — falling back to '/' so a rejected item still
-                // renders as a link instead of silently leaving the navigation.
+                $nested = Cms::hasNestedMenus();
+
                 return $menu->menuItems
-                    ->map(fn ($item): array => [
-                        'path' => PayloadLink::safeUrl($item->url) ?? '/',
-                        'href' => PayloadLink::safeUrl($item->url) ?? '/',
-                        'label' => $item->title,
-                        // Presentation metadata, editor-owned. `target` is cast to
-                        // the menu-builder's LinkTarget enum and carries that
-                        // plugin's column default ('_self') when the editor set
-                        // none — passed through rather than second-guessed here.
-                        'target' => $item->target?->value,
-                        'rel' => $item->rel,
-                        'classes' => $item->classes,
-                        'icon' => $item->icon,
-                    ])
+                    ->map(fn (MenuItem $item): array => $nested
+                        ? [...self::linkFor($item), 'children' => $item->children->map(fn (MenuItem $child): array => self::linkFor($child))->values()->all()]
+                        : self::linkFor($item))
                     ->all();
             }),
         );
+    }
+
+    /**
+     * @return array{path: string, href: string, label: string, target: ?string, rel: ?string, classes: ?string, icon: ?string}
+     */
+    protected static function linkFor(MenuItem $item): array
+    {
+        // SECURITY: the menu-builder plugin stores `url` as a plain
+        // TextInput with no scheme validation, so a javascript:/data:
+        // value would land in the header, footer and flyout href of
+        // every page. Scheme-check here — one place covers all menu
+        // consumers — falling back to '/' so a rejected item still
+        // renders as a link instead of silently leaving the navigation.
+        $url = PayloadLink::safeUrl($item->url) ?? '/';
+
+        return [
+            'path' => $url,
+            'href' => $url,
+            'label' => $item->title,
+            // Presentation metadata, editor-owned. `target` is cast to
+            // the menu-builder's LinkTarget enum and carries that
+            // plugin's column default ('_self') when the editor set
+            // none — passed through rather than second-guessed here.
+            'target' => $item->target?->value,
+            'rel' => $item->rel,
+            'classes' => $item->classes,
+            'icon' => $item->icon,
+        ];
     }
 }

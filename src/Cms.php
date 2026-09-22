@@ -463,6 +463,24 @@ class Cms
         ];
     }
 
+    protected static bool $nestedMenus = false;
+
+    /**
+     * Carry one level of child items into Menu::linksForLocation() (as each
+     * entry's `children`) and render them in the fallback flyout. Off by
+     * default: without it, items an editor nests in the menu builder are
+     * dropped and every link array keeps its flat shape.
+     */
+    public static function enableNestedMenus(bool $enabled = true): void
+    {
+        static::$nestedMenus = $enabled;
+    }
+
+    public static function hasNestedMenus(): bool
+    {
+        return static::$nestedMenus;
+    }
+
     // -------------------------------------------------------------------------
     //  Frontend
     // -------------------------------------------------------------------------
@@ -524,6 +542,7 @@ class Cms
         static::$sectionChildAllowlists = [];
         static::$rootBlockAllowlists = [];
         static::$menuLocations = null;
+        static::$nestedMenus = false;
         static::$footerTagline = null;
         static::$mediaLibraryDisabled = false;
         static::$mediaDriver = null;

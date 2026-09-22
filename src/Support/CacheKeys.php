@@ -2,6 +2,8 @@
 
 namespace Mmoollllee\Cms\Support;
 
+use Mmoollllee\Cms\Cms;
+
 /**
  * Single source for every cache key the engine reads or invalidates.
  *
@@ -65,7 +67,11 @@ class CacheKeys
     /** Link-ready menu entries per location ({@see \Mmoollllee\Cms\Models\Menu::linksForLocation()}). */
     public static function menu(int|string $tenantId, string $location): string
     {
-        return "tenant:{$tenantId}:menu:{$location}";
+        // The nested-menu opt-in changes the cached shape — a separate key keeps
+        // toggling it from serving the other shape until the next menu save.
+        $suffix = Cms::hasNestedMenus() ? ':nested' : '';
+
+        return "tenant:{$tenantId}:menu:{$location}{$suffix}";
     }
 
     /** Redirect hit-count throttle lock ({@see \Mmoollllee\Cms\Support\Routing\HitRecorder}). */

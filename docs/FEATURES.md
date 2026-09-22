@@ -570,6 +570,21 @@ the menu:
 </a>
 ```
 
+**Nested menus (opt-in).** Items an editor nests in the menu builder are dropped by
+default, so every existing theme keeps its flat link list. `Cms::enableNestedMenus()`
+adds `children` to each top-level entry — its direct child items in the same shape, one
+level deep (deeper items are dropped). The fallback flyout renders them right below
+their parent as `.flyout-btn.flyout-btn--child` (style hook, no default styling) and
+marks a child active only on its own page (`currentNavigationPath()`), while the parent
+stays active for its whole section. A desktop dropdown is app territory:
+
+```blade
+@foreach ($links as $item)
+    <a href="{{ $item['href'] }}">{{ $item['label'] }}</a>
+    @foreach ($item['children'] ?? [] as $child) … @endforeach
+@endforeach
+```
+
 Cache invalidation covers menu, item and location changes (`ContentCacheObserver`).
 
 ## SEO, sitemap, robots
