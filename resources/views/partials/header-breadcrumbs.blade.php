@@ -2,8 +2,7 @@
     Brand-agnostic breadcrumb fallback (an app view at
     resources/views/partials/header-breadcrumbs.blade.php takes precedence):
     home icon + ancestor links with plain CSS truncation, hidden below md.
-    Measured space fitting + logo-hover evade are app territory — see the
-    muench-tiefbau.de reference implementation.
+    Measured space fitting + logo-hover evade are app territory.
 --}}
 <nav
     class="relative z-10 items-center hidden h-12 min-w-0 gap-2 py-2 pl-4 text-sm text-white md:flex"

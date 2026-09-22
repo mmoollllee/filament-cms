@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
  *
  * The URL is generated on the CURRENT host, which is what every caller wants:
  * the panel is domain-scoped per tenant (`tenantDomain('{tenant:primary_domain}')`),
- * so a link built while editing on pernes-hebesysteme.de.test points at that
+ * so a link built while editing on acme.test points at that
  * site's frontend.
  *
  * Returns null when the app registers no `content.show` route (headless installs,

@@ -11,8 +11,7 @@ use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 /**
  * Media folders — counterpart to {@see MediaItemPolicy}. Root-folder creation
  * additionally requires a Filament tenant context: without it the new folder
- * would be stamped `tenant NULL` and be invisible to its own creator
- * (nest-proven rule).
+ * would be stamped `tenant NULL` and be invisible to its own creator.
  */
 class MediaFolderPolicy
 {

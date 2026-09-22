@@ -13,10 +13,9 @@ use Spatie\MediaLibrary\MediaCollections\MediaCollection;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 /**
- * The CMS default driver for the media library (architecture mirrors the
- * proven nest.kuckuck.cam integration): the driver is the one place that owns
- * behavior — tenancy, disk, conversions, model — so apps swap or extend a
- * single class via {@see Cms::useMediaDriver()}.
+ * The CMS default driver for the media library: the driver is the one place
+ * that owns behavior — tenancy, disk, conversions, model — so apps swap or
+ * extend a single class via {@see Cms::useMediaDriver()}.
  *
  * MUST NOT be autoloaded unless the plugin is installed
  * ({@see MediaLibrary::installed()}) — the parent class lives in the

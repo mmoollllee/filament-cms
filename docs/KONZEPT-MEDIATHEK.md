@@ -1,6 +1,6 @@
 # Konzept: Mediathek — Integration von Filament Media Library Pro
 
-**Stand:** 2026-07-22 · **Status:** Rev. 3 — **Kern umgesetzt** (P0–P3), an nest.kuckuck.cam ausgerichtet · **Paket:** `ralphjsmit/laravel-filament-media-library` **4.1.2**
+**Stand:** 2026-07-22 · **Status:** Rev. 3 — **Kern umgesetzt** (P0–P3), an einer Referenz-App ausgerichtet · **Paket:** `ralphjsmit/laravel-filament-media-library` **4.1.2**
 
 ## Umsetzungsstand (Rev. 3)
 
@@ -25,21 +25,21 @@ die Integration aktiviert sich selbst, sobald der Client das Plugin installiert
 | RichEditor am `MediaPlugin`: Picker statt Upload-Box, Uploads (auch Drop/Paste) werden Mediathek-Items | ✅ |
 | Offen: Video-Pipeline-Umzug an den Upload (P4), Galerie-/Downloads-Block, Tags, Private-Disk-Modul (P6) | ⏳ |
 
-**Erkenntnisse aus dem Consumer-Audit (pernes-hebesysteme.de, muench-tiefbau.de),
+**Erkenntnisse aus dem Audit zweier Consumer-Apps,
 die das Design geändert haben:**
 
-1. **Import ist wert-basiert, nicht key-basiert:** pernes referenziert ~250 Medien über
+1. **Import ist wert-basiert, nicht key-basiert:** Eine der Apps referenziert ~250 Medien über
    WordPress-Ära-Strukturen (`payload.galerie` als Array, `payload.masszeichnung`,
    `hero.thumbnail`, Pfade `2020/01/…` ohne `tenants/`-Prefix) — ein `media_path`-Scan
    hätte dort **null** Treffer. Der Import prüft jeden JSON-String gegen die Disk
    (`Storage::exists`), Tenant-Zuordnung über die referenzierende Row, nicht den Pfad.
 2. Beide Apps haben Vite-Themes (Plugin-CSS-Import sofort möglich), aber **keine
    satis-Credentials** (composer.json + auth.json + Server-Provisioning nötig, auth.json
-   ist gitignored). pernes hat vermutlich **keinen Queue-Worker** → `--sync`-Flag.
+   ist gitignored). Eine davon hat vermutlich **keinen Queue-Worker** → `--sync`-Flag.
 3. Ein `MediaItemObserver` für Cache-Invalidierung ist **unnötig** (Rev.-2-Irrtum):
    die Seiten-Caches speichern Model-Payloads, kein HTML — Media-URLs werden bei jedem
    Render über den Resolver aufgelöst, ein Datei-Ersetzen greift sofort.
-4. Inline-`<img>` in RichText (1 Vorkommen in pernes) und `meta.og_image_url` bleiben
+4. Inline-`<img>` in RichText (1 Vorkommen in einer der Apps) und `meta.og_image_url` bleiben
    bewusst Legacy-URLs (Resolver rendert sie weiter; kein riskantes HTML-Rewriting).
 
 Hinweis: Filament läuft inzwischen auf **5.7.1** — die vendored Builder-Views wurden
@@ -51,9 +51,9 @@ Ziel ist die vollständige, tiefe Integration als **WordPress-ähnlicher Media-P
 Bilder, Videos und Downloads — pro Tenant eine zentrale Mediathek statt verstreuter
 `FileUpload`-Felder mit Pfad-Strings.
 
-**Referenzarchitektur:** `~/Herd/nest.kuckuck.cam` betreibt dasselbe Plugin (4.1.2) bereits
+**Referenzarchitektur:** Eine Referenz-App betreibt dasselbe Plugin (4.1.2) bereits
 produktiv (custom Driver, Policies, Referenz-Tracking, private Disk, Preview-Action). Dieses
-Konzept übernimmt dessen bewährte Muster (§2.3) und hält die Tür offen, dass nest später
+Konzept übernimmt deren bewährte Muster (§2.3) und hält die Tür offen, dass die Referenz-App später
 selbst filament-cms als Engine einsetzen kann — mit **einer** gemeinsamen Mediathek (§7).
 
 ---
@@ -71,7 +71,7 @@ Leitsätze:
 3. **Legacy-Pfade bleiben für immer gültig** — der zentrale Resolver behandelt `int` → Mediathek, `string` → bisheriger Pfad. Kein Big-Bang, kein kaputtes Bestands-Frontend.
 4. **Zentrale Metadaten, lokale Overrides** — `alt_text`/`caption` leben am Item; Blöcke dürfen pro Verwendung überschreiben.
 5. **Frontend wird besser, nicht nur anders** — mit dem Umbau kommen `srcset`/`sizes`, `loading="lazy"` und Video-Poster automatisch (heute: nacktes `<img src>`, kein Responsive-Markup im gesamten Paket).
-6. **nest-Kompatibilität als Designregel** — jede Media-Entscheidung läuft über austauschbare Nahtstellen (Driver, Model, Disk, URL-Generator, Referenz-Contract), damit CMS-Paket und nest-Bestand später eine Mediathek teilen können.
+6. **Kompatibilität mit der Referenz-App als Designregel** — jede Media-Entscheidung läuft über austauschbare Nahtstellen (Driver, Model, Disk, URL-Generator, Referenz-Contract), damit CMS-Paket und Referenz-App später eine Mediathek teilen können.
 
 ---
 
@@ -102,7 +102,7 @@ Bekannte Lücken, die die Integration gleich mit schließt:
 
 - **Plugin:** `RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary` (extends `FilamentExplore`), Seite `MediaLibrary` (Slug `media-library`), komplette Browse-UI (Ordner, Suche, Filter, Sortierer, Bulk, File-Info-Panel, Bildeditor). JS wird automatisch via `FilamentAsset` registriert; **CSS muss in ein Filament-Custom-Theme importiert werden** (Tailwind-v4-`@source`).
 - **Formular:** `MediaPicker` (Field) mit `multiple()`, `reorderable()`, `acceptedFileTypes()`, `min/maxFiles()`, `defaultFolder()`, `scopedFolder()`, `circular()`, `fileActions()`, `modifyPreviewActionUsing()`; dazu `MediaColumn` (Tables), `MediaEntry` (Infolists), RichEditor-`MediaPlugin`.
-- **Datenmodell:** `MediaLibraryItem` (`filament_media_library`: `caption`, `alt_text`, Uploader-Morph, Tenant-Morph, `folder_id`) + `MediaLibraryFolder`; Dateien via **spatie/laravel-medialibrary**, Collection `library` (`singleFile`). Morph-Alias `filament_media_library_item`. Achtung: globaler `has_media`-Scope — Items ohne Spatie-Media-Row sind überall unsichtbar (Test-Fixture-Gotcha aus nest).
+- **Datenmodell:** `MediaLibraryItem` (`filament_media_library`: `caption`, `alt_text`, Uploader-Morph, Tenant-Morph, `folder_id`) + `MediaLibraryFolder`; Dateien via **spatie/laravel-medialibrary**, Collection `library` (`singleFile`). Morph-Alias `filament_media_library_item`. Achtung: globaler `has_media`-Scope — Items ohne Spatie-Media-Row sind überall unsichtbar (Test-Fixture-Gotcha aus der Referenz-App).
 - **Driver-Architektur:** Standard `MediaLibraryItemDriver` (Picker-State = **Item-ID(s)** — genau richtig für Block-JSON). Driver als Klasse pro Plugin-Registrierung austauschbar (`->driver(FQN::class)`), Modell-Swap via `mediaLibraryItemModel()`, eigene File-Info-Felder via `fileInfoEditComponents(merge: true)`, eigene Aktionen via `pushFileActions()` etc.
 - **Tenancy:** Driver-Trait `HasTenancy` — Tenant-Morph-Spalten auf Items **und** Ordnern, Stempeln beim Upload, Scoping jeder Query; Tenant-Quelle default `Filament::getTenant()` — passt exakt zu unserem `->tenant(Cms::tenantModel(), slugAttribute: 'primary_domain')` in `BasePanelProvider`.
 - **Bildableitungen:** wahlweise Spatie-**Conversions** (`responsive`, `800`, `400`, `thumb` — konfigurierbar via `conversions(true)`, `conversionMedium(width:…)`, `registerConversions()`) **oder** **Glide** on-the-fly (Standard, wenn GD/Imagick da ist).
@@ -111,22 +111,22 @@ Bekannte Lücken, die die Integration gleich mit schließt:
 
 **Harte Voraussetzung, aktuell fehlend:** `spatie/laravel-medialibrary` (`^11.0`) ist **nicht installiert** — der Standard-Driver wirft ohne es eine `LogicException`. Optional: `spatie/laravel-tags` (`^4.11`).
 
-### 2.3 Referenz-Integration nest.kuckuck.cam — was wir übernehmen
+### 2.3 Integration in der Referenz-App — was wir übernehmen
 
-nest kapselt das Plugin in eine eigene Schicht (`app/Support/Media/*`, Policies, Serve-Controller). Die Bausteine und ihr Schicksal im CMS:
+Die Referenz-App kapselt das Plugin in eine eigene Schicht (`app/Support/Media/*`, Policies, Serve-Controller). Die Bausteine und ihr Schicksal im CMS:
 
-| nest-Baustein | Verhalten dort | CMS |
+| Baustein der Referenz-App | Verhalten dort | CMS |
 |---|---|---|
 | `TenantScopedMediaLibraryDriver extends MediaLibraryItemDriver` | `hasTenancy()` auto-erkennt `Filament::getTenant()` (kein `->tenancy()`-Aufruf nötig); ersetzt die strikte `TenantModification` durch User-Scope (eigener Tenant ∪ referenzierte Items ∪ eigene Uploads); re-appliziert `LegacyPolicyAuthorization` in `setUp()` (feld-injizierte Driver umgehen sonst die Policies!); erzwingt Disk via `mediaCollection()`-Callback | **Übernehmen** als `CmsMediaLibraryDriver` (E2) — mit einfacherem Scope (nur aktueller Tenant), aber gleicher Struktur |
 | `MediaLibraryItemPolicy`/`MediaLibraryFolderPolicy` + `Gate::policy()` im Provider | `before()`-Bypass für Admins; Root-Ordner-Anlage nur mit Tenant-Kontext (sonst entstünde ein unsichtbarer `tenant NULL`-Ordner) | **Übernehmen** (E2), Superadmin-Bypass nur in Policies, nicht im Sichtbarkeits-Scope |
-| `HasMediaReferences`-Contract + `UserMediaScope`-Registry + Parity-Test | Models deklarieren `referencedMediaItemIdsForTenants(Collection $tenants): array`; Registry aggregiert; Test erzwingt Registrierung jedes Implementierers | **Übernehmen** mit **identischer Signatur** (E8) — Basis für Verwendungs-Anzeige, Lösch-Schutz, Import und nest-Interop |
+| `HasMediaReferences`-Contract + `UserMediaScope`-Registry + Parity-Test | Models deklarieren `referencedMediaItemIdsForTenants(Collection $tenants): array`; Registry aggregiert; Test erzwingt Registrierung jedes Implementierers | **Übernehmen** mit **identischer Signatur** (E8) — Basis für Verwendungs-Anzeige, Lösch-Schutz, Import und Interop mit der Referenz-App |
 | `MediaPickerPreviewAction` (+ PDF-iframe-View + lang-Keys), global via `MediaPicker::configureUsing()` → `modifyPreviewActionUsing()` | Vorschau-Modal mit Pfeiltasten-Navigation (zirkulär durch alle Picker-Dateien, Alpine `x-on:keydown`), PDF-Inline-Preview, „In neuem Tab öffnen", Direkt-URL via Spatie-`getUrl()` | **Übernehmen** ins Paket, 1:1-Port (E9) |
 | Private Disk `media-library` (ohne `url`-Key) + `MediaLibraryUrlGenerator` (Spatie-`url_generator`-Swap) + `MediaLibraryFileController` (public-Allow-List / Policy / Signed-URL, Cache-Control) + `PublicMediaReferences` | Auslieferung ausschließlich über policy-geprüfte Route `media-library.serve` | **Als Opt-in-Ausbaustufe** (E10): CMS-Default bleibt `public`-Disk (Marketing-Sites, statische Auslieferung); Architektur (URLs nur via Spatie-UrlGenerator) macht den Wechsel pro App möglich |
 | Spatie-Default-PathGenerator (`{media-id}/`) | Auch die Private-Disk-Migration verschiebt `{media-id}/`-Ordner | **Übernehmen** — der ursprünglich geplante tenant-eigene PathGenerator entfällt (E4) |
-| `CamHardwareMediaDriver` (Feld-Driver mit Ordner-Zwang), Duplicate-in-Root, All-Tenants-Sicht im Global-Panel | nest-Spezifika (Operator-Konsole, Cross-Tenant-Referenzen) | **Nicht übernehmen** — im CMS gibt es keine Cross-Tenant-Referenzen und nur ein tenant-gebundenes Panel; das Muster „Feld-Driver mit `->driver()`" bleibt als dokumentierte Option |
+| Feld-Driver mit Ordner-Zwang, Duplicate-in-Root, All-Tenants-Sicht im Global-Panel | Spezifika der Referenz-App (Operator-Konsole, Cross-Tenant-Referenzen) | **Nicht übernehmen** — im CMS gibt es keine Cross-Tenant-Referenzen und nur ein tenant-gebundenes Panel; das Muster „Feld-Driver mit `->driver()`" bleibt als dokumentierte Option |
 | Direktes `InteractsWithMedia` auf `Page` (Page-Builder-Bilder, public) parallel zur Library | Bewusst getrennte Systeme auf derselben `media`-Tabelle | Kein Konflikt — relevant für §7 |
 
-Für uns wichtige nest-Lektionen: (a) die Policy-Re-Bridge im Driver ist load-bearing, (b) Picker-State wird beim Speichern **geleert**, wenn das referenzierte Item für den User nicht auflösbar ist (`findFiles`) — im CMS entschärft, weil Referenzen nie tenant-fremd sind, aber der Grund, warum der Bestands-Import vor redaktioneller Arbeit laufen muss (§6.2), (c) `has_media`-Fixture-Gotcha in Tests.
+Für uns wichtige Lektionen aus der Referenz-App: (a) die Policy-Re-Bridge im Driver ist load-bearing, (b) Picker-State wird beim Speichern **geleert**, wenn das referenzierte Item für den User nicht auflösbar ist (`findFiles`) — im CMS entschärft, weil Referenzen nie tenant-fremd sind, aber der Grund, warum der Bestands-Import vor redaktioneller Arbeit laufen muss (§6.2), (c) `has_media`-Fixture-Gotcha in Tests.
 
 ---
 
@@ -134,25 +134,25 @@ Für uns wichtige nest-Lektionen: (a) die Policy-Re-Bridge im Driver ist load-be
 
 **E1 — Driver-Basis: `MediaLibraryItemDriver`, Zugriff über einen paket-eigenen Subclass.** Der Picker-State (Item-IDs) passt verlustfrei in Builder-JSON, `payload`, `meta` und Tenant-Spalten und ist draft-kompatibel. Der alternative `SpatieMediaLibraryDriver` wird nicht benötigt.
 
-**E2 — `CmsMediaLibraryDriver` nach nest-Muster.** `Mmoollllee\Cms\Support\Media\CmsMediaLibraryDriver extends MediaLibraryItemDriver`:
+**E2 — `CmsMediaLibraryDriver` nach dem Muster der Referenz-App.** `Mmoollllee\Cms\Support\Media\CmsMediaLibraryDriver extends MediaLibraryItemDriver`:
 
 - `hasTenancy()`-Override: aktiv, sobald `Filament::getTenant()` (oder explizit gesetzter Tenant) vorhanden — keine `->tenancy()`-Registrierungspflicht.
-- Sichtbarkeit: die Stock-`TenantModification` reicht (immer nur der aktuelle Tenant — WordPress-Metapher „eine Mediathek pro Site"). **Bewusste Abweichung von nest:** kein Scope-Bypass für Superadmins (die wechseln per Tenant-Switcher); Superadmin-Sonderrechte nur in den Policies.
-- `setUp()`: `LegacyPolicyAuthorization`-Re-Bridge (nest-Lektion, defensiv auch ohne Feld-Driver), Disk-Erzwingung via `mediaCollection()`-Callback aus `Cms::mediaDisk()` (Default `public`), Conversions-Set (E5) und akzeptierte Typen (`acceptImage/acceptVideo/acceptPdf/acceptZip/…`).
-- Registry: `Cms::useMediaDriver(FQN)` / `Cms::mediaDriver()` (Default: Paket-Driver, inkl. `flush()`-Reset) — **die** Austausch-Naht für nest (§7).
-- Policies `MediaItemPolicy`/`MediaFolderPolicy` im Paket (`Gate::policy()` in `CmsServiceProvider`, Vendor-Models werden nicht auto-discovered): Tenant-Mitglied → verwalten des aktuellen Tenants, `before()` für Superadmin; Root-Ordner-Regel aus nest übernehmen.
+- Sichtbarkeit: die Stock-`TenantModification` reicht (immer nur der aktuelle Tenant — WordPress-Metapher „eine Mediathek pro Site"). **Bewusste Abweichung von der Referenz-App:** kein Scope-Bypass für Superadmins (die wechseln per Tenant-Switcher); Superadmin-Sonderrechte nur in den Policies.
+- `setUp()`: `LegacyPolicyAuthorization`-Re-Bridge (Lektion aus der Referenz-App, defensiv auch ohne Feld-Driver), Disk-Erzwingung via `mediaCollection()`-Callback aus `Cms::mediaDisk()` (Default `public`), Conversions-Set (E5) und akzeptierte Typen (`acceptImage/acceptVideo/acceptPdf/acceptZip/…`).
+- Registry: `Cms::useMediaDriver(FQN)` / `Cms::mediaDriver()` (Default: Paket-Driver, inkl. `flush()`-Reset) — **die** Austausch-Naht für die Referenz-App (§7).
+- Policies `MediaItemPolicy`/`MediaFolderPolicy` im Paket (`Gate::policy()` in `CmsServiceProvider`, Vendor-Models werden nicht auto-discovered): Tenant-Mitglied → verwalten des aktuellen Tenants, `before()` für Superadmin; Root-Ordner-Regel aus der Referenz-App übernehmen.
 
 **E3 — Wertformat: IDs in den bestehenden Keys, ein zentraler Resolver.** Die JSON-Keys (`media_path`, `background_image`, `payload.hero.image`, `logo_path`, …) bleiben erhalten; neue Werte sind numerisch (Item-ID), alte bleiben Pfad-Strings. Ein neuer `Support\Media\MediaUrlResolver` ersetzt intern `AssetUrlResolver`-Aufrufe: numerisch → Item, sonst → bisherige Pfad-Logik. **Kein Datenformat-Bruch, kein Content-Migrationszwang fürs Frontend.**
 
-**E4 — Storage: Spatie-Default-PathGenerator (`{media-id}/`), Tenant-Isolation nur in der DB.** *(Revidiert — ursprünglich war ein `TenantAwarePathGenerator` unter `tenants/{site_key}/library/…` geplant.)* Spatie berechnet Pfade zur Laufzeit über den global konfigurierten Generator — ein CMS-eigener Generator würde in jeder App mit Bestands-Mediathek (nest!) sämtliche existierenden Dateipfade brechen und ist damit ein Adoptions-Blocker. nest fährt den Default; wir auch. Tenant-Zuordnung, DSGVO-Löschung und Export laufen über die `tenant`-Morph-Spalten (Items je Tenant abfragen → Spatie löscht die Dateien). Wer physische Trennung braucht, konfiguriert pro App eine eigene Disk(-Root) — nicht den Generator.
+**E4 — Storage: Spatie-Default-PathGenerator (`{media-id}/`), Tenant-Isolation nur in der DB.** *(Revidiert — ursprünglich war ein `TenantAwarePathGenerator` unter `tenants/{site_key}/library/…` geplant.)* Spatie berechnet Pfade zur Laufzeit über den global konfigurierten Generator — ein CMS-eigener Generator würde in jeder App mit Bestands-Mediathek (etwa der Referenz-App) sämtliche existierenden Dateipfade brechen und ist damit ein Adoptions-Blocker. Die Referenz-App fährt den Default; wir auch. Tenant-Zuordnung, DSGVO-Löschung und Export laufen über die `tenant`-Morph-Spalten (Items je Tenant abfragen → Spatie löscht die Dateien). Wer physische Trennung braucht, konfiguriert pro App eine eigene Disk(-Root) — nicht den Generator.
 
-**E5 — Conversions AN für den Frontend-Output, Glide nur als Admin-Preview.** `conversions(true)` + `conversionResponsive()` + benannte Breiten (Default: 2560/1600/800/400, per `Cms`-Hook je App änderbar) + `thumb` (600×600, nonQueued) + **`og`** (1200×630 Crop). Konfiguration lebt im Driver-`setUp()` (E2), nicht an der Plugin-Registrierung — der Driver ist die eine Stelle, die Verhalten besitzt (nest-Muster). Conversions laufen queued (Spatie-Default) → Ops-Hinweis §11.
+**E5 — Conversions AN für den Frontend-Output, Glide nur als Admin-Preview.** `conversions(true)` + `conversionResponsive()` + benannte Breiten (Default: 2560/1600/800/400, per `Cms`-Hook je App änderbar) + `thumb` (600×600, nonQueued) + **`og`** (1200×630 Crop). Konfiguration lebt im Driver-`setUp()` (E2), nicht an der Plugin-Registrierung — der Driver ist die eine Stelle, die Verhalten besitzt (Muster der Referenz-App). Conversions laufen queued (Spatie-Default) → Ops-Hinweis §11.
 
-**E6 — URL-Erzeugung ausschließlich über die Spatie-Media-API.** Resolver und Komponenten bauen **niemals** Storage-URLs von Hand, sondern gehen über `$media->getUrl($conversion)` / `getSrcset()` — damit greift ein pro App gesetzter `media-library.url_generator` (nest: Serve-Route für die private Disk) automatisch auch für alle CMS-Views. Konsequenz für `srcset`: Responsive-Image-URLs funktionieren nur auf direkt adressierbaren Disks; der Resolver liefert `srcset` daher nur, wenn die Disk eine Basis-URL hat, sonst fällt `<x-site.image>` auf ein einfaches `<img>` mit passender Conversion-URL zurück (die Serve-Route nimmt `{conversion?}` entgegen).
+**E6 — URL-Erzeugung ausschließlich über die Spatie-Media-API.** Resolver und Komponenten bauen **niemals** Storage-URLs von Hand, sondern gehen über `$media->getUrl($conversion)` / `getSrcset()` — damit greift ein pro App gesetzter `media-library.url_generator` (Referenz-App: Serve-Route für die private Disk) automatisch auch für alle CMS-Views. Konsequenz für `srcset`: Responsive-Image-URLs funktionieren nur auf direkt adressierbaren Disks; der Resolver liefert `srcset` daher nur, wenn die Disk eine Basis-URL hat, sonst fällt `<x-site.image>` auf ein einfaches `<img>` mit passender Conversion-URL zurück (die Serve-Route nimmt `{conversion?}` entgegen).
 
-**E7 — Video-Konvertierung wandert vom Content-Save an den Upload, als Observer statt Model-Vererbung.** Ein in `CmsServiceProvider` auf `Cms::mediaItemModel()` registrierter Observer (nicht hart im Model verdrahtet — überlebt Model-Swaps, §7) prüft beim Anlegen mit der bestehenden `VideoConversionHelper`-Policy (mov/avi/wmv immer, mp4 > 10 MB) und dispatcht `ConvertLibraryVideo` (ffmpeg-Parameter aus `ConvertVideoForWeb`). Ergebnis ersetzt die Originaldatei über die `singleFile`-Collection (Item-ID stabil). Poster/Thumbs von Videos liefert Spaties `Video`-ImageGenerator (php-ffmpeg ist bereits Dependency) → `thumb` funktioniert auch für Videos; `poster_path` im Block wird optionaler Override. Damit sind **Fragment-Videos** abgedeckt und Doppel-Konvertierungen weg. Qualität: Default `medium` (Re-Encode-Auswahl als Kür); Status in `video_status` (paket-eigene Ergänzungsmigration auf `filament_media_library`), sichtbar via `fileInfoInformationUsing()`. Das Item-Model selbst bleibt austauschbar: `Cms::useMediaItemModel()`, Default = Plugin-`MediaLibraryItem` (kein Zwangs-Subclass — nest nutzt das Stock-Model).
+**E7 — Video-Konvertierung wandert vom Content-Save an den Upload, als Observer statt Model-Vererbung.** Ein in `CmsServiceProvider` auf `Cms::mediaItemModel()` registrierter Observer (nicht hart im Model verdrahtet — überlebt Model-Swaps, §7) prüft beim Anlegen mit der bestehenden `VideoConversionHelper`-Policy (mov/avi/wmv immer, mp4 > 10 MB) und dispatcht `ConvertLibraryVideo` (ffmpeg-Parameter aus `ConvertVideoForWeb`). Ergebnis ersetzt die Originaldatei über die `singleFile`-Collection (Item-ID stabil). Poster/Thumbs von Videos liefert Spaties `Video`-ImageGenerator (php-ffmpeg ist bereits Dependency) → `thumb` funktioniert auch für Videos; `poster_path` im Block wird optionaler Override. Damit sind **Fragment-Videos** abgedeckt und Doppel-Konvertierungen weg. Qualität: Default `medium` (Re-Encode-Auswahl als Kür); Status in `video_status` (paket-eigene Ergänzungsmigration auf `filament_media_library`), sichtbar via `fileInfoInformationUsing()`. Das Item-Model selbst bleibt austauschbar: `Cms::useMediaItemModel()`, Default = Plugin-`MediaLibraryItem` (kein Zwangs-Subclass — die Referenz-App nutzt das Stock-Model).
 
-**E8 — Referenz-Tracking nach nest-Contract.** Neuer Paket-Contract mit **exakt nests Signatur**:
+**E8 — Referenz-Tracking nach dem Contract der Referenz-App.** Neuer Paket-Contract mit **exakt derselben Signatur**:
 
 ```php
 interface HasMediaReferences
@@ -162,18 +162,18 @@ interface HasMediaReferences
 }
 ```
 
-Implementiert von Content (scannt `blocks`/`payload`/`meta` **+ `draft`**), Fragment (`blocks` + `draft`) und Tenant (`*_path`-Spalten, numerische Werte); Registry `Support\Media\MediaReferences::$sources` + **Parity-Test** (globbt Models nach dem Interface — nest-Muster). Verwendet für: (a) „Wird verwendet auf …"-Anzeige im File-Info-Panel, (b) Lösch-Schutz (Policy/Aktion warnt bzw. blockt bei referenzierten Items), (c) den Bestands-Import §6.2 (dieselbe Scan-Logik), (d) künftig nests `UserMediaScope`/`PublicMediaReferences`, die CMS-Models dann ohne Adapter aggregieren können.
+Implementiert von Content (scannt `blocks`/`payload`/`meta` **+ `draft`**), Fragment (`blocks` + `draft`) und Tenant (`*_path`-Spalten, numerische Werte); Registry `Support\Media\MediaReferences::$sources` + **Parity-Test** (globbt Models nach dem Interface — Muster der Referenz-App). Verwendet für: (a) „Wird verwendet auf …"-Anzeige im File-Info-Panel, (b) Lösch-Schutz (Policy/Aktion warnt bzw. blockt bei referenzierten Items), (c) den Bestands-Import §6.2 (dieselbe Scan-Logik), (d) künftig `UserMediaScope`/`PublicMediaReferences` der Referenz-App, die CMS-Models dann ohne Adapter aggregieren können.
 
-**E9 — `MediaPickerPreviewAction` ins Paket portieren.** 1:1-Port von nest (`extends PreviewAction`): Modal mit Datei-Titel, **Pfeiltasten-Navigation** zirkulär durch die Dateien des Pickers (Alpine `x-on:keydown` + `replaceMountedAction`), PDF-Inline-Preview (iframe-View, `h-[75vh]`), Bilder über den ImageGenerator (2×848 px), Footer „In neuem Tab öffnen" + Zurück/Weiter, Direkt-URL via Spatie-`getUrl()` (damit private Disks die Serve-Route liefern). Global aktiviert nach nest-Muster in `CmsServiceProvider::boot()`:
+**E9 — `MediaPickerPreviewAction` ins Paket portieren.** 1:1-Port aus der Referenz-App (`extends PreviewAction`): Modal mit Datei-Titel, **Pfeiltasten-Navigation** zirkulär durch die Dateien des Pickers (Alpine `x-on:keydown` + `replaceMountedAction`), PDF-Inline-Preview (iframe-View, `h-[75vh]`), Bilder über den ImageGenerator (2×848 px), Footer „In neuem Tab öffnen" + Zurück/Weiter, Direkt-URL via Spatie-`getUrl()` (damit private Disks die Serve-Route liefern). Global aktiviert nach dem Muster der Referenz-App in `CmsServiceProvider::boot()`:
 
 ```php
 MediaPicker::configureUsing(fn (MediaPicker $picker) => $picker
     ->modifyPreviewActionUsing(fn (): MediaPickerPreviewAction => MediaPickerPreviewAction::make()));
 ```
 
-App-Provider booten nach dem Paket → eine App (nest) kann mit eigenem `configureUsing` überstimmen. View `cms::filament.media-library.pdf-preview` + lang-Keys (`de`/`en`: Zurück/Weiter) wandern mit.
+App-Provider booten nach dem Paket → eine App (etwa die Referenz-App) kann mit eigenem `configureUsing` überstimmen. View `cms::filament.media-library.pdf-preview` + lang-Keys (`de`/`en`: Zurück/Weiter) wandern mit.
 
-**E10 — Disk-Strategie: `public` als Default, private Mediathek als Opt-in-Modul.** CMS-Sites sind öffentliche Marketing-Auftritte — Bilder müssen statisch/CDN-fähig ausgeliefert werden, nicht durch PHP. Default also `public`-Disk mit direkten URLs. Das nest-Muster (private Disk ohne `url`-Key, `url_generator`-Swap, Serve-Controller mit public-Allow-List/Policy/Signed-URL, Cache-Control) wird als **Opt-in** vorgesehen: `Cms::useMediaDisk('media-library')` + dokumentiertes Rezept; eine spätere Paket-Ausbaustufe kann Generator + Serve-Controller mitliefern (Story: **Als Betreiber eines Members-Tenants möchte ich Medien nur eingeloggt ausliefern, um interne Dokumente zu schützen** — heute gated `TenantVisibility::Members` nur HTML, nicht Dateien). Durch E6 ist das Frontend darauf vorbereitet.
+**E10 — Disk-Strategie: `public` als Default, private Mediathek als Opt-in-Modul.** CMS-Sites sind öffentliche Marketing-Auftritte — Bilder müssen statisch/CDN-fähig ausgeliefert werden, nicht durch PHP. Default also `public`-Disk mit direkten URLs. Das Muster der Referenz-App (private Disk ohne `url`-Key, `url_generator`-Swap, Serve-Controller mit public-Allow-List/Policy/Signed-URL, Cache-Control) wird als **Opt-in** vorgesehen: `Cms::useMediaDisk('media-library')` + dokumentiertes Rezept; eine spätere Paket-Ausbaustufe kann Generator + Serve-Controller mitliefern (Story: **Als Betreiber eines Members-Tenants möchte ich Medien nur eingeloggt ausliefern, um interne Dokumente zu schützen** — heute gated `TenantVisibility::Members` nur HTML, nicht Dateien). Durch E6 ist das Frontend darauf vorbereitet.
 
 **E11 — Verdrahtung nach Hauskonvention.** `BasePanelProvider::panel()` registriert `->plugin($this->mediaLibraryPlugin())`, überschreibbar pro App (Muster Menu-Builder):
 
@@ -205,7 +205,7 @@ MediaPicker::make('media_path')                 // Key bleibt! Wert wird Item-ID
     ->live(),
 ```
 
-- Kein `->driver()` am Feld — Felder erben den Panel-Plugin-Driver (nest setzt Feld-Driver nur für den Cam-Sonderfall; das CMS braucht keinen).
+- Kein `->driver()` am Feld — Felder erben den Panel-Plugin-Driver (die Referenz-App setzt Feld-Driver nur für einen Hardware-Sonderfall; das CMS braucht keinen).
 - `is_video`-Erkennung übers Item (`mime_type`), Endungs-Fallback für Legacy-Pfade bleibt.
 - `video_quality`/`video_keep_audio` entfallen im Block (Konvertierung am Upload, E7); `poster_path` → MediaPicker image-only, Default = Auto-Thumb.
 - `media_alt` bleibt als **Override**; leer → `alt_text` des Items → Blocktitel.
@@ -216,7 +216,7 @@ MediaPicker::make('media_path')                 // Key bleibt! Wert wird Item-ID
 
 ### 4.3 Tenant-Branding (inkl. Favicon-Gap)
 
-`EditTenantProfilePage`: vier `FileUpload` → `MediaPicker` (Mail-Logo raster-only, Favicon-Typen wie nest: ico/svg/png), **plus neues Favicon-Feld** (`favicon_path` in `$fillable` ergänzen — Workbench + Starter + Apps). `InheritsBranding::resolved*Url()` delegiert an den Resolver; die Vererbungskaskade bleibt unverändert. Frontend-Auflösung tenant-fremder (geerbter) IDs ist unkritisch: gerendert wird per Model-Query ohne Filament-Scope.
+`EditTenantProfilePage`: vier `FileUpload` → `MediaPicker` (Mail-Logo raster-only, Favicon-Typen wie in der Referenz-App: ico/svg/png), **plus neues Favicon-Feld** (`favicon_path` in `$fillable` ergänzen — Workbench + Starter + Apps). `InheritsBranding::resolved*Url()` delegiert an den Resolver; die Vererbungskaskade bleibt unverändert. Frontend-Auflösung tenant-fremder (geerbter) IDs ist unkritisch: gerendert wird per Model-Query ohne Filament-Scope.
 
 ### 4.4 SEO / OG-Bild
 
@@ -239,7 +239,7 @@ Siehe E7. Übergang: `ConvertsUploadedVideos`/`ConvertVideoForWeb` bleiben für 
 - **`Support\Media\MediaUrlResolver`** — `url(mixed $ref, ?string $conversion = null): ?string`, `srcset()` (nur bei direkt adressierbarer Disk, E6), `mime()`, `alt()`; nimmt `int|string|array` (FileUpload-Array-Altlast), Request-Cache + **Batch-Preload**: `<x-site.content-blocks>` sammelt vor dem Rendern alle numerischen Refs eines Inhalts und lädt sie mit einem `whereIn` (kein N+1).
 - **`<x-site.image :media="$ref" :sizes="…">`** — `<img src srcset sizes width height alt loading="lazy" decoding="async">`; Legacy-Pfad → schlichtes `<img>` wie heute.
 - **`<x-site.media-item>`** — Video-Zweig nutzt Item-MIME + Auto-Poster.
-- Panel-Polish (optional): `MediaColumn` als Thumbnail-Spalte in der Content-Tabelle (nest-Muster `->square()` im LogoResource).
+- Panel-Polish (optional): `MediaColumn` als Thumbnail-Spalte in der Content-Tabelle (Muster der Referenz-App: `->square()` in einer Logo-Tabelle).
 
 ### 4.8 Preview-Action & File-Info
 
@@ -283,9 +283,9 @@ Idempotenter Befehl (`--dry-run`, `--tenant=`, `--all`, Report/Mapping-Log):
 3. **Rewriten:** Pfad → ID (via `saveQuietly`).
 4. Originaldateien bleiben liegen (Rollback-Sicherheit); Aufräumen später via `cms:media:prune-legacy`.
 
-**Pflichtschritt vor redaktioneller Arbeit** nach dem Update: ein MediaPicker mit nicht auflösbarem State zeigt leer und würde beim Speichern den Altwert verwerfen (nest-Lektion `findFiles`, §2.3). Das Frontend ist durch den Resolver-Fallback unabhängig davon.
+**Pflichtschritt vor redaktioneller Arbeit** nach dem Update: ein MediaPicker mit nicht auflösbarem State zeigt leer und würde beim Speichern den Altwert verwerfen (Lektion aus der Referenz-App: `findFiles`, §2.3). Das Frontend ist durch den Resolver-Fallback unabhängig davon.
 
-### 6.3 Consumer-Apps (Starter, muench-tiefbau.de, pernes-hebesysteme.de)
+### 6.3 Consumer-Apps (Starter und bestehende Sites)
 
 Pro App: satis-Repo + `auth.json`-Lizenz, `composer update`, `php artisan migrate`, Theme-Import (Starter fertig; sonst `make:filament-theme`), ggf. `media-library.php` publishen (`max_file_size` — Videos!), Queue-Worker für Conversions. (Der Bestands-Import entfiel mit §6.2.) Apps mit eigenem `configureRichEditor()` ziehen den neuen Toolbar-Button nach.
 
@@ -295,18 +295,18 @@ Resolver-Fallback hält nicht migrierte Frontends am Leben; `AssetUrlResolver`-A
 
 ---
 
-## 7. Kompatibilität: filament-cms in nest.kuckuck.cam
+## 7. Kompatibilität: filament-cms in der Referenz-App
 
-Damit nest später die CMS-Engine einsetzen kann und beide **eine** Mediathek teilen, gelten diese Regeln (alle oben bereits eingearbeitet):
+Damit die Referenz-App später die CMS-Engine einsetzen kann und beide **eine** Mediathek teilen, gelten diese Regeln (alle oben bereits eingearbeitet):
 
-1. **Driver austauschbar:** nest registriert `Cms::useMediaDriver(TenantScopedMediaLibraryDriver::class)` — CMS-Felder tragen keinen Feld-Driver und erben nests Scoping (inkl. User-Scope/Referenz-Erweiterung) automatisch.
-2. **Model austauschbar:** `Cms::useMediaItemModel()` — Default ist das Stock-`MediaLibraryItem`, das nest ebenfalls nutzt; Morph-Alias `filament_media_library_item` bleibt identisch. Der Video-Observer (E7) hängt am konfigurierten Model, nicht an einer Vererbungslinie.
-3. **Kein eigener PathGenerator, keine handgebauten URLs:** E4 + E6 stellen sicher, dass nests private Disk, `MediaLibraryUrlGenerator` und Serve-Route für alle CMS-Views transparent funktionieren (`srcset` degradiert kontrolliert).
-4. **Referenz-Contract signaturgleich:** CMS-Models (Content/Fragment/Tenant) liefern `referencedMediaItemIdsForTenants()` — nests `UserMediaScope`/`PublicMediaReferences` können sie als zusätzliche Quellen registrieren; der Parity-Test existiert in beiden Welten. CMS-Inhalte öffentlicher Tenants werden so in nests public-Allow-List integrierbar.
-5. **Preview-Action kollisionsfrei:** beide registrieren via `configureUsing`; App-Provider booten nach dem Paket → nests Variante gewinnt, bzw. nest löscht seine lokale Kopie zugunsten der Paket-Klasse (gleicher Code).
-6. **Wertformate kompatibel:** nest speichert IDs in JSON-Spalten/FKs (`belongsToJson`), CMS speichert IDs in Block-/Payload-JSON — dieselben Items, dieselbe Tabelle, keine Format-Übersetzung nötig.
-7. **Koexistenz mit nests Page-Builder-Media** (direktes `InteractsWithMedia` auf `Page`, public Disk): unberührt — getrennte Rows derselben `media`-Tabelle; ein späterer Umzug auf CMS-Blöcke wäre ein Import wie §6.2.
-8. **Migrationen idempotent:** nests Tabellen existieren bereits (inkl. Tenancy-Morphs, teils Legacy-`uploaded_by_user_id` → polymorpher Uploader via Plugin-Migration) — CMS-seitige Migrationen müssen `hasTable`/`hasColumn`-guarded sein und beide Uploader-Schemata tolerieren (Plugin-API statt Roh-Spalten nutzen).
+1. **Driver austauschbar:** Die Referenz-App registriert `Cms::useMediaDriver(TenantScopedMediaLibraryDriver::class)` — CMS-Felder tragen keinen Feld-Driver und erben ihr Scoping (inkl. User-Scope/Referenz-Erweiterung) automatisch.
+2. **Model austauschbar:** `Cms::useMediaItemModel()` — Default ist das Stock-`MediaLibraryItem`, das die Referenz-App ebenfalls nutzt; Morph-Alias `filament_media_library_item` bleibt identisch. Der Video-Observer (E7) hängt am konfigurierten Model, nicht an einer Vererbungslinie.
+3. **Kein eigener PathGenerator, keine handgebauten URLs:** E4 + E6 stellen sicher, dass die private Disk der Referenz-App, `MediaLibraryUrlGenerator` und Serve-Route für alle CMS-Views transparent funktionieren (`srcset` degradiert kontrolliert).
+4. **Referenz-Contract signaturgleich:** CMS-Models (Content/Fragment/Tenant) liefern `referencedMediaItemIdsForTenants()` — `UserMediaScope`/`PublicMediaReferences` der Referenz-App können sie als zusätzliche Quellen registrieren; der Parity-Test existiert in beiden Welten. CMS-Inhalte öffentlicher Tenants werden so in die public-Allow-List der Referenz-App integrierbar.
+5. **Preview-Action kollisionsfrei:** beide registrieren via `configureUsing`; App-Provider booten nach dem Paket → die Variante der Referenz-App gewinnt, bzw. die Referenz-App löscht ihre lokale Kopie zugunsten der Paket-Klasse (gleicher Code).
+6. **Wertformate kompatibel:** Die Referenz-App speichert IDs in JSON-Spalten/FKs (`belongsToJson`), CMS speichert IDs in Block-/Payload-JSON — dieselben Items, dieselbe Tabelle, keine Format-Übersetzung nötig.
+7. **Koexistenz mit Page-Builder-Media der Referenz-App** (direktes `InteractsWithMedia` auf `Page`, public Disk): unberührt — getrennte Rows derselben `media`-Tabelle; ein späterer Umzug auf CMS-Blöcke wäre ein Import wie §6.2.
+8. **Migrationen idempotent:** Die Tabellen der Referenz-App existieren bereits (inkl. Tenancy-Morphs, teils Legacy-`uploaded_by_user_id` → polymorpher Uploader via Plugin-Migration) — CMS-seitige Migrationen müssen `hasTable`/`hasColumn`-guarded sein und beide Uploader-Schemata tolerieren (Plugin-API statt Roh-Spalten nutzen).
 
 ---
 
@@ -315,22 +315,22 @@ Damit nest später die CMS-Engine einsetzen kann und beide **eine** Mediathek te
 - ~~`MediaItemObserver`~~ **entfällt** (Rev. 3): Die Seiten-Caches speichern
   Model-Payloads, kein gerendertes HTML — Media-URLs entstehen bei jedem Render über den
   Resolver, ein Ersetzen/Löschen greift ohne Invalidierung sofort.
-- Resolver: request-statischer Cache + Batch-Preload (§4.7). Referenz-Scans (`MediaReferences`) im Hot-Path per `once()` memoizen (nest-Muster).
+- Resolver: request-statischer Cache + Batch-Preload (§4.7). Referenz-Scans (`MediaReferences`) im Hot-Path per `once()` memoizen (Muster der Referenz-App).
 
 ---
 
-## 9. Tests (Pest; `Storage::fake` + `CurrentTenant`; Fixtures brauchen eine Spatie-Media-Row in Collection `library`, sonst greift der `has_media`-Scope — nest-Gotcha)
+## 9. Tests (Pest; `Storage::fake` + `CurrentTenant`; Fixtures brauchen eine Spatie-Media-Row in Collection `library`, sonst greift der `has_media`-Scope — Gotcha aus der Referenz-App)
 
-1. Scope-Spec nach nest-Vorbild (`MediaLibraryScopeTest`): Items/Ordner des aktuellen Tenants sichtbar, fremde nicht; Upload stempelt Tenant + Uploader; Root-Ordner-Policy; Superadmin via Policy, nicht via Scope.
+1. Scope-Spec nach Vorbild der Referenz-App (`MediaLibraryScopeTest`): Items/Ordner des aktuellen Tenants sichtbar, fremde nicht; Upload stempelt Tenant + Uploader; Root-Ordner-Policy; Superadmin via Policy, nicht via Scope.
 2. **Parity-Test:** jedes `HasMediaReferences`-Model ist in `MediaReferences::$sources` registriert (und umgekehrt).
 3. Resolver: ID → URL/Conversion/srcset; srcset-Degradation auf disk ohne Basis-URL; Legacy-Pfad; Array-Altlast; unbekannte ID → `null`.
 4. Branding-Kaskade mit ID-Werten inkl. Satelliten-Vererbung; Favicon-Feld.
 5. `<x-site.image>`: srcset/lazy-Markup; Legacy-Fallback.
-6. Import: dry-run, Idempotenz, Draft-Spalten-Rewrite, Mehrfachreferenz → eine ID; Save-Roundtrip nach Import verliert keine Referenzen (nest-Regression `findFiles`).
+6. Import: dry-run, Idempotenz, Draft-Spalten-Rewrite, Mehrfachreferenz → eine ID; Save-Roundtrip nach Import verliert keine Referenzen (Regression aus der Referenz-App: `findFiles`).
 7. Video: Observer dispatcht nur bei Bedarf; Fragment-Upload konvertiert; `video_status`-Verlauf.
 8. OG: `meta.og_image` → absolute `og`-URL; Fallback-Kette.
 9. Draft-Roundtrip mit Media-IDs (speichern/anwenden/Preview).
-10. Preview-Action: Navigation (zirkulär, disabled bei <2 Dateien), PDF-Zweig, lang-Keys de/en (nest testet genau das).
+10. Preview-Action: Navigation (zirkulär, disabled bei <2 Dateien), PDF-Zweig, lang-Keys de/en (die Referenz-App testet genau das).
 11. Conversions in Tests deaktivieren bzw. nonQueued.
 
 ---
@@ -341,7 +341,7 @@ Damit nest später die CMS-Engine einsetzen kann und beide **eine** Mediathek te
 |---|---|---|
 | **P0 Fundament** | Als Betreiber möchte ich die Mediathek pro Tenant im Panel haben, um Medien zentral zu browsen und hochzuladen. | spatie-Require, Migrationen, `CmsMediaLibraryDriver` + Policies + Registry (`useMediaDriver/useMediaItemModel/useMediaDisk`), `mediaLibraryPlugin()`, Workbench-Theme, de-Labels |
 | **P1 Resolver & Frontend** | Als Besucher möchte ich responsive, lazy geladene Bilder, um schnelle Seiten zu bekommen. | `MediaUrlResolver` (+Batch, srcset-Degradation), `<x-site.image>`, `media-item`-Umbau, Conversion-Set inkl. `og` |
-| **P2 Picker-UX & Felder** | Als Redakteur möchte ich überall aus der Mediathek wählen statt hochzuladen — mit Vorschau wie in nest. | **`MediaPickerPreviewAction`-Port (+ View + lang)**, MediaBlock, Sektions-BG, `PageHeaderFields`, Tenant-Branding + Favicon, `SeoFields.og_image` |
+| **P2 Picker-UX & Felder** | Als Redakteur möchte ich überall aus der Mediathek wählen statt hochzuladen — mit Vorschau wie in der Referenz-App. | **`MediaPickerPreviewAction`-Port (+ View + lang)**, MediaBlock, Sektions-BG, `PageHeaderFields`, Tenant-Branding + Favicon, `SeoFields.og_image` |
 | **P3 Referenzen & Bestandsmigration** | Als Betreiber möchte ich Bestandsdateien verlustfrei überführen und sehen, wo Medien verwendet werden. | `HasMediaReferences` + `MediaReferences` + Parity-Test, „Wird verwendet"-Info, Lösch-Schutz, `cms:media:import` (+ Log), Rollout-Doku, Starter/`cms:install` |
 | **P4 Video** | Als Redakteur möchte ich, dass Videos beim Upload einmalig weboptimiert werden. | Observer + `ConvertLibraryVideo`, `video_status`, Auto-Poster, Deprecation alte Pipeline |
 | **P5 RichEditor** ✅ | Als Redakteur möchte ich Mediathek-Bilder im Fließtext einfügen. | `MediaPlugin`-Wiring (§4.5), `MediaLibraryFileAttachmentProvider`, Node-Mapping über `MediaUrlResolver::normalize()` |

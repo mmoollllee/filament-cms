@@ -647,7 +647,7 @@ flyout render outside that shell:
 
 ```css
 /* the greyed-out active entry is this site's design decision, not a fix */
-[data-site='muench-tiefbau'] .flyout-btn.is-active { … }
+[data-site='acme'] .flyout-btn.is-active { … }
 ```
 
 Reach for it only for *design* differences. A fix belongs in the shared layer, and every
@@ -735,9 +735,9 @@ registerCmsFrontend(window.Alpine, {
 
 Compose multiple mixins into ONE override object per component — the merge is a flat
 member set, so `updateViewportState`/`onResize` must be defined exactly once (by the
-composing module, not the mixins). The muench-tiefbau.de repo is the reference
-implementation: `resources/js/site/{onepager,scroll-hints,hero-logo,header-bar,scroll-store}.js`
-plus its `resources/views/frontend/onepager.blade.php` and
+composing module, not the mixins). A typical app keeps one module per behavior in
+`resources/js/site/` (`onepager`, `scroll-hints`, `hero-logo`, `header-bar`, `scroll-store`),
+next to its own `resources/views/frontend/onepager.blade.php` and
 `resources/views/partials/` header copies.
 
 View contract of the fallback onepager shell (`frontend/onepager.blade.php`):
@@ -862,7 +862,7 @@ tenant-scoped `FileUpload`. All wiring gates on
 ```php
 Cms::disableMediaLibrary();                      // classic uploads even when installed
 Cms::useMediaDriver(MyDriver::class);            // extend CmsMediaLibraryDriver: scope, disk,
-                                                 // conversions, accepted types (nest-style)
+                                                 // conversions, accepted types
 Cms::useMediaItemModel(MyItem::class);           // must extend the plugin's MediaLibraryItem
 Cms::useMediaDisk('media-library');              // e.g. a private disk with an own
                                                  // media-library.url_generator (policy-gated serving)

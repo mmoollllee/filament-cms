@@ -6,8 +6,7 @@
     siteOnepager/siteChildNavigation (no measuring, no Alpine-store
     bindings), so a consumer app without JS overrides renders it error-free.
     Brand behavior (progress bar, depth meter, measured breadcrumb fitting,
-    logo evade) is app territory; the muench-tiefbau.de repo is the
-    reference implementation.
+    logo evade) is app territory.
 --}}
 @php
     $logoUrl = $tenant->resolvedMainLogoUrl();

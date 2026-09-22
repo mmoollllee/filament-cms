@@ -29,7 +29,7 @@
  *
  * Compose multiple mixins into ONE override object and define collision-prone
  * hooks (updateViewportState/onResize) exactly once — the merge is a flat
- * member set. Reference implementation: muench-tiefbau.de `resources/js/site/`.
+ * member set.
  */
 import siteOnepager from './site-onepager';
 import siteChildNavigation from './site-child-navigation';

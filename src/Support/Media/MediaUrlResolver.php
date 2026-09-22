@@ -18,8 +18,8 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  * (its UNSAVED state, see {@see itemIdFromPickerKey()}), a legacy storage path
  * (pre-media-library uploads), an absolute URL, or the FileUpload array-state
  * quirk. Numeric refs resolve through the Spatie Media API — never hand-built
- * disk URLs — so app-level UrlGenerator swaps (private-disk serve routes à la
- * nest) apply everywhere automatically.
+ * disk URLs — so app-level UrlGenerator swaps (private-disk serve routes, for
+ * example) apply everywhere automatically.
  *
  * Lookups are request-cached; {@see preload()} batches a whole content's refs
  * into one query before block rendering.

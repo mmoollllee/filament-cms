@@ -4,7 +4,7 @@
     Demonstrates the sections feature: every root `default.section` content is one
     scroll section of a single page; each section's own path serves this same shell
     (see OnepagerShellController). This demo shell renders all sections statically —
-    a production app (like the münch jobs site) would add the Alpine `siteOnepager`
+    a production app would add the Alpine `siteOnepager`
     component for lazy loading + scroll-synced navigation on top.
 --}}
 @php

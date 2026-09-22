@@ -398,7 +398,7 @@ class Cms
     /**
      * The disk media-library uploads are stored on. Defaults to `public` —
      * CMS sites serve media statically. Apps with a private library (policy-
-     * gated serving à la nest) point this at their own disk.
+     * gated serving) point this at their own disk.
      */
     public static function useMediaDisk(string $disk): void
     {

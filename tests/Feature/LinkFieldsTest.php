@@ -3,7 +3,7 @@
 /*
  * LinkFields (resource-form link group) mirrors the link-picker modal's
  * options; PayloadLink renders the stored group as anchor attributes. The
- * derived field names are contract — pernes/münch payloads store them.
+ * derived field names are contract — payloads stored by consuming apps use them.
  */
 
 use DefStudio\SearchableInput\Forms\Components\SearchableInput;

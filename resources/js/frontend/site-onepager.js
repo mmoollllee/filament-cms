@@ -30,8 +30,8 @@ import {
  * Visual behavior (scroll hints, hero fades, header measuring, …) is NOT
  * part of this core: apps layer it on top via `registerCmsFrontend(Alpine,
  * overrides)` (see index.js) using the extension hooks `updateViewportState()`,
- * `showLogo()` and `onResize()` — the muench-tiefbau.de repo
- * (`resources/js/site/`) is the reference implementation.
+ * `showLogo()` and `onResize()`, typically from the app's own
+ * `resources/js/site/`.
  */
 export default (rootElement) => ({
     rootElement,
@@ -203,7 +203,7 @@ export default (rootElement) => ({
         return resolveNavigationHomePath(this.currentNavigationContext());
     },
     /** Extension hook: default header logo always visible. Apps override this
-     *  for content-driven fades (e.g. Münch's `.hero-logo` visibility). */
+     *  for content-driven fades (e.g. while a `.hero-logo` is in view). */
     showLogo() {
         return true;
     },

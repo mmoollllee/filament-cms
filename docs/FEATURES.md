@@ -170,7 +170,7 @@ via `/_content` (Alpine `siteOnepager`, shipped in `resources/js/frontend/` — 
 scroll-synced URL/menu state and per-section teasers (`payload.has_teaser` + teaser
 blocks). Sections are min-100vh with vertically centered content. The shell exposes
 viewport-state extension hooks (`updateViewportState()`, `showLogo()`, `onResize()`)
-so consuming apps can layer visual behavior — e.g. Münch's scroll-hint pills — on top
+so consuming apps can layer visual behavior — e.g. scroll-hint pills — on top
 via override factories without forking the engine. The demo's second tenant
 (localhost) is a live mini-onepager. The Seite/Sektion choice on the content form
 is a BLUEPRINT flag (`$offeredInTypeSelect`): `default.section` ships with it off, and an
@@ -182,8 +182,7 @@ offered types appear, rendered beside the title input.
 (ancestor trail in one query), block anchors and sibling/child navigation for the
 header partials; `backButton()` on the blueprint drives the "back to parent" pill.
 The fallback header renders the trail with plain CSS truncation; richer behavior
-(measured space fitting, logo-hover evade — see the muench-tiefbau.de reference
-implementation) lives in app view/JS copies
+(measured space fitting, logo-hover evade) lives in app view/JS copies
 ([CUSTOMIZATION.md §10](CUSTOMIZATION.md#10-frontend-views--js)).
 
 ## Drafts & preview

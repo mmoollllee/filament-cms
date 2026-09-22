@@ -1,6 +1,6 @@
 {{-- The optional Umami block, as one tag.
 
-     Apps that replace <x-site.layout> with their own shell (pernes' standalone
+     Apps that replace <x-site.layout> with their own shell (a standalone
      view) still need this in their <head>, and having them repeat it is how the
      two drifted: the copy there had no Umami::installed() guard, so removing
      filami from composer.json took the whole frontend down at Blade compile
