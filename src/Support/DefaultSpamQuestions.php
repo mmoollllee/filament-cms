@@ -21,6 +21,6 @@ final class DefaultSpamQuestions
         ['question' => 'Welche Farbe hat der Himmel bei klarem Wetter?', 'answer' => 'blau'],
         ['question' => 'Wie viele Beine hat eine Katze?', 'answer' => '4, vier'],
         ['question' => 'Was ergibt zwei mal drei?', 'answer' => '6, sechs'],
-        ['question' => 'Nennen Sie die Jahreszeit nach dem Winter.', 'answer' => 'Frühling'],
+        ['question' => 'Welche Jahreszeit kommt nach dem Winter?', 'answer' => 'Frühling'],
     ];
 }
