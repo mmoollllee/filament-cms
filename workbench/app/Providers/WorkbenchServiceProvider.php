@@ -5,6 +5,7 @@ namespace Workbench\App\Providers;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Support\Content\Blocks\fragment\FragmentBlock;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Fragment;
 use Workbench\App\Models\Tenant;
@@ -28,9 +29,9 @@ class WorkbenchServiceProvider extends ServiceProvider
         // The workbench's Sites live outside app_path().
         Cms::discoverSitesIn(dirname(__DIR__, 2).'/app/Sites', 'Workbench\\App\\Sites');
 
-        // The four core blocks + the demo's own HintBlock — the complete
-        // "register a custom block" recipe (see /howto/custom-blocks).
-        Cms::registerBlocks([...Cms::defaultBlocks(), HintBlock::class]);
+        // The core blocks + the opt-in FragmentBlock + the demo's own HintBlock —
+        // the complete "register a custom block" recipe (see /howto/custom-blocks).
+        Cms::registerBlocks([...Cms::defaultBlocks(), FragmentBlock::class, HintBlock::class]);
 
         // Opt-in "Titelbereich" page header on the catch-all content form.
         Cms::enableContentPageHeader();

@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Support\Content;
 
 use Illuminate\Contracts\View\Factory as ViewFactory;
+use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
@@ -33,8 +34,18 @@ class TemplateResolver
      */
     public function resolve(Content $content, Tenant $tenant): string
     {
-        $blueprint = $this->blueprints->find($content->content_type, $tenant->site_key);
-        $template = $content->template ?: $blueprint?->defaultTemplate() ?: 'content.page';
+        return $this->resolveName((string) $content->content_type, $content->template, $tenant);
+    }
+
+    /**
+     * The same resolution from the two values it depends on — for callers that
+     * hold form state rather than a saved record (the content form's "Außerdem
+     * auf dieser Seite" box, {@see Cms::templateEmbeds()}).
+     */
+    public function resolveName(string $contentType, ?string $template, Tenant $tenant): string
+    {
+        $blueprint = $this->blueprints->find($contentType, $tenant->site_key);
+        $template = $template ?: $blueprint?->defaultTemplate() ?: 'content.page';
 
         $candidates = [
             "{$tenant->site_key}.{$template}",

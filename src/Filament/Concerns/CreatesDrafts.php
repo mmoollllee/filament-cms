@@ -28,13 +28,19 @@ use Mmoollllee\Cms\Support\Preview\Drafts;
  * On a model that supports neither variant the button hides and the page keeps
  * the classic create-only flow ({@see draftsSupportedForCreation()}).
  *
+ * A manage link that leads away from the half-filled form asks first
+ * ({@see ConfirmsLeaving}) and offers the held-back create — the record then
+ * exists without changing the website.
+ *
  * NOTE for subclasses: this trait implements handleRecordCreation(),
- * getCreatedNotification(), getFormActions() and getHeaderActions(). Overrides
- * shadow the trait — call the parent implementation to keep draft creation
- * working.
+ * getCreatedNotification(), getFormActions(), getHeaderActions() and
+ * rememberData(). Overrides shadow the trait — call the parent implementation
+ * to keep draft creation and the leave question working.
  */
 trait CreatesDrafts
 {
+    use ConfirmsLeaving;
+
     /** Whether the running create() was started via createAsDraft(). */
     protected bool $creatingAsDraft = false;
 
@@ -60,6 +66,18 @@ trait CreatesDrafts
     // -------------------------------------------------------------------------
     //  Create pipeline
     // -------------------------------------------------------------------------
+
+    /**
+     * Mount (after the form is filled) and a successful create both run through
+     * here — the moments the form holds nothing to lose. Stamped UNCONDITIONALLY:
+     * the parent is a no-op unless the panel enables unsavedChangesAlerts().
+     */
+    protected function rememberData(): void
+    {
+        parent::rememberData();
+
+        $this->stampPristineFormHash();
+    }
 
     /**
      * Held-back creation: persist the neutralized state as the applied row —
@@ -194,6 +212,41 @@ trait CreatesDrafts
         return Action::make('createHeader')
             ->label(__('filament-panels::resources/pages/create-record.form.actions.create.label'))
             ->action('create');
+    }
+
+    // -------------------------------------------------------------------------
+    //  Leaving via a manage link
+    // -------------------------------------------------------------------------
+
+    /**
+     * Create before leaving — held back where the page can ("Unveröffentlicht
+     * anlegen", "Als Entwurf anlegen"), so answering the question never changes
+     * the website. create() swallows a halting hook; only a create that went
+     * through re-stamps the form as pristine.
+     */
+    protected function persistBeforeLeaving(): bool
+    {
+        if ($this->draftsSupportedForCreation()) {
+            $this->createAsDraft();
+        } else {
+            $this->create();
+        }
+
+        return $this->formIsPristine();
+    }
+
+    protected function leaveQuestion(): string
+    {
+        return $this->draftsSupportedForCreation()
+            ? 'Die Eingaben sind noch nicht gespeichert. Vorher anlegen? Die Website bleibt dabei unverändert.'
+            : 'Die Eingaben sind noch nicht gespeichert. Vorher anlegen?';
+    }
+
+    protected function leaveSaveLabel(): string
+    {
+        return $this->draftsSupportedForCreation()
+            ? $this->createDraftActionLabel()
+            : __('filament-panels::resources/pages/create-record.form.actions.create.label');
     }
 
     // -------------------------------------------------------------------------

@@ -31,6 +31,7 @@ use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
+use Filament\Schemas\Components\View;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
@@ -52,6 +53,7 @@ use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Fields\PublishingFields;
 use Mmoollllee\Cms\Fields\SeoFields;
 use Mmoollllee\Cms\Filament\Forms\BlockBuilder;
+use Mmoollllee\Cms\Filament\Support\ManagementLinks;
 use Mmoollllee\Cms\Models\LayoutPreset;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
@@ -61,6 +63,7 @@ use Mmoollllee\Cms\Support\Content\Blocks\section\SectionBlock;
 use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Content\PathConflicts;
+use Mmoollllee\Cms\Support\Content\TemplateResolver;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Routing\ContentRenameRedirects;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
@@ -247,6 +250,7 @@ abstract class TenantScopedContentResource extends Resource
                     ...($pageHeader !== null ? [$pageHeader] : []),
                     ...$detailSections,
                     ...static::stackedStructureFields($tenant),
+                    static::embeddedContentSection($tenant),
                     static::contentTabMetaSection(),
                 ]);
         }
@@ -340,8 +344,57 @@ abstract class TenantScopedContentResource extends Resource
             ->columnSpan(['default' => 1, 'xl' => 1])
             ->schema([
                 ...static::sidebarFields($tenant),
+                static::embeddedContentSection($tenant),
                 static::contentTabMetaSection(),
             ]);
+    }
+
+    /**
+     * "Außerdem auf dieser Seite": links to the fragments and record lists the
+     * page's template renders besides its blocks ({@see Cms::templateEmbeds()}) —
+     * content an editor sees on the page but finds nowhere in its builder. Hidden
+     * when the template declares none.
+     */
+    protected static function embeddedContentSection(?Tenant $tenant): Section
+    {
+        return Section::make('Außerdem auf dieser Seite')
+            ->description('Bindet die Vorlage ein – gepflegt wird es hier:')
+            ->schema([
+                View::make('cms::filament.embedded-content-links')
+                    ->viewData(fn (Get $get, ?Model $record): array => [
+                        'links' => static::embeddedContentLinks($tenant, $get, $record),
+                    ]),
+            ])
+            ->visible(fn (Get $get, ?Model $record): bool => static::embeddedContentLinks($tenant, $get, $record) !== []);
+    }
+
+    /**
+     * One link per fragment / content type the page's template embeds — only those
+     * the user can open.
+     *
+     * @return array<int, array{url: string, label: string, icon: string|BackedEnum}>
+     */
+    protected static function embeddedContentLinks(?Tenant $tenant, Get $get, ?Model $record): array
+    {
+        $contentType = static::resolveSelectedContentType($get);
+
+        if ($tenant === null || blank($contentType) || ! Cms::hasTemplateEmbeds()) {
+            return [];
+        }
+
+        $view = app(TemplateResolver::class)->resolveName(
+            $contentType,
+            $get('template') ?? $record?->getAttribute('template'),
+            $tenant,
+        );
+
+        // `*` stands for every PAGE: a type without a page of its own has none of it.
+        $embeds = Cms::embedsForTemplate($view, includeEveryPage: static::formIsRoutable()($get));
+
+        return array_values(array_filter([
+            ...array_map(fn (string $slug): ?array => ManagementLinks::forFragmentSlug($slug, $tenant), $embeds['fragments']),
+            ...array_map(fn (string $type): ?array => ManagementLinks::forContentType($type, $tenant), $embeds['contentTypes']),
+        ]));
     }
 
     /**

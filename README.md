@@ -116,7 +116,9 @@ on the tenant's domain.
 - **Project blocks:** register your block classes via
   `Cms::registerBlocks([...Cms::defaultBlocks(), MyBlock::class])` — the
   registry, the pickers and the section allowlists pick them up
-  ([§8](docs/CUSTOMIZATION.md#8-blocks)).
+  ([§8](docs/CUSTOMIZATION.md#8-blocks)). The package's opt-in `FragmentBlock`
+  joins the same way; `Cms::templateEmbeds()` links what a template renders
+  outside the builder (fragments, record lists) from the page editor.
 - **Views:** the package ships brand-agnostic fallbacks for every frontend view
   (shells, content template, error pages, `<x-site.*>` components, block views) —
   your app overrides any of them by shipping the same view path, or publishes
@@ -375,7 +377,8 @@ composer serve                       # http://127.0.0.1:8000
 ## Update-safety
 
 Two Filament builder views are vendored (cross-builder drag & drop, inline preview
-editing, inactive-block UI, clipboard paste — no extension points exist for these).
+editing, inactive-block UI, clipboard paste, block-option badges — no extension points
+exist for these).
 `tests/Feature/FilamentViewOverrideDriftTest.php` hashes the vendor originals and fails
 with re-vendoring instructions whenever a Filament update touches them — see
 [`docs/CUSTOMIZATION.md` §11](docs/CUSTOMIZATION.md#11-vendored-filament-view-overrides).

@@ -47,6 +47,17 @@ trait ResolvesFragmentWithCascade
     }
 
     /**
+     * The record the panel should point an editor at for a slug: the tenant's own
+     * fragment — also while it is still empty, which is exactly when an editor
+     * needs the way in — else the one the frontend cascade inherits
+     * ({@see resolveFragment()}). Null when neither exists.
+     */
+    public static function findForEditing(Tenant $tenant, string $slug): ?static
+    {
+        return static::allForTenant($tenant)->get($slug) ?? static::resolveFragment($tenant, $slug);
+    }
+
+    /**
      * Load all fragments for a tenant, keyed by slug, cached per request cycle.
      *
      * @return Collection<string, static>

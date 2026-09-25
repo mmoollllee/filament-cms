@@ -12,6 +12,7 @@ use Illuminate\Support\Js;
 use Livewire\Attributes\Locked;
 use Mansoor\FilamentVersionable\Page\RevisionsAction;
 use Mmoollllee\Cms\Concerns\HasDraft;
+use Mmoollllee\Cms\Filament\Support\UnsavedChanges;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
@@ -56,20 +57,14 @@ use Mmoollllee\Cms\Support\Versioning\Versions;
  */
 trait ManagesDrafts
 {
+    // The pristine hash ("Entwurf speichern" disables itself on a clean form)
+    // and the question a manage link asks before leaving a changed one.
+    use ConfirmsLeaving;
+
     // The draft stash writes the `draft` column directly, outside the save
     // pipeline — so the write guards have to be enforced here too, or the one
     // slot two editors (or two tabs of one) share would stay last-write-wins.
     use GuardsRecordWrites;
-
-    /**
-     * Hash of the form data at its last pristine moment (fill, stash, apply).
-     * The client compares it against the live form data (same formula as
-     * Filament's unsaved-changes alert) to disable "Entwurf speichern" while
-     * there is nothing to stash. Maintained independently of the panel's
-     * optional unsavedChangesAlerts() feature, so the buttons work in every panel.
-     */
-    #[Locked]
-    public ?string $draftSavedDataHash = null;
 
     /**
      * Unix timestamp of the draft revision THIS page loaded (null = none).
@@ -137,37 +132,13 @@ trait ManagesDrafts
     }
 
     /**
-     * "Vorschau" persistence: stash the form state while the draft workflow is
-     * active; otherwise (nothing live to protect — unpublished record, or a
-     * model without HasDraft) apply it via the normal save. Returns true once
-     * the state is persisted — a validation failure throws before the return,
-     * so the preview click handler keeps its tab closed.
+     * "Vorschau" persistence ({@see persistFormState()}). Returns true once the
+     * state is persisted — a validation failure throws before the return, so the
+     * preview click handler keeps its tab closed.
      */
     public function saveForPreview(): bool
     {
-        // Only the save() branch needs the guard here — the draft branch runs
-        // it inside saveDraft(). save() returns void, so a refused write would
-        // otherwise still report success and open the preview tab.
-        if ($this->draftWorkflowActive()) {
-            return $this->saveDraft();
-        }
-
-        if (! $this->assertSafeToWrite()) {
-            return false;
-        }
-
-        // Flagged for the duration: this branch runs the full save pipeline, so anything
-        // listening for "the editor applied their changes" would otherwise fire for a
-        // click that only asked to LOOK at the page.
-        $this->savingForPreview = true;
-
-        try {
-            $this->save();
-        } finally {
-            $this->savingForPreview = false;
-        }
-
-        return true;
+        return $this->persistFormState(forPreview: true);
     }
 
     /**
@@ -262,7 +233,7 @@ trait ManagesDrafts
     {
         parent::rememberData();
 
-        $this->draftSavedDataHash = md5((string) str(json_encode($this->data, JSON_UNESCAPED_UNICODE))->replace('\\', ''));
+        $this->stampPristineFormHash();
 
         $this->stampRecordFingerprint();
     }
@@ -482,6 +453,27 @@ trait ManagesDrafts
             });
     }
 
+    /**
+     * Leaving via a manage link with unsaved changes ({@see ConfirmsLeaving}):
+     * the same persistence as "Vorschau" — a draft while the page is live.
+     */
+    protected function persistBeforeLeaving(): bool
+    {
+        return $this->persistFormState();
+    }
+
+    protected function leaveQuestion(): string
+    {
+        return $this->draftWorkflowActive()
+            ? 'Diese Seite hat Änderungen, die noch nicht gespeichert sind. Vorher als Entwurf speichern? Die Website bleibt dabei unverändert.'
+            : 'Diese Seite hat Änderungen, die noch nicht gespeichert sind. Vorher speichern?';
+    }
+
+    protected function leaveSaveLabel(): string
+    {
+        return $this->draftWorkflowActive() ? 'Entwurf speichern' : 'Speichern';
+    }
+
     // -------------------------------------------------------------------------
     //  Support
     // -------------------------------------------------------------------------
@@ -489,6 +481,41 @@ trait ManagesDrafts
     protected function draftsSupported(): bool
     {
         return Drafts::supported($this->getRecord());
+    }
+
+    /**
+     * Persist the current form state without leaving the page: stash it while
+     * the draft workflow is active; otherwise (nothing live to protect —
+     * unpublished record, or a model without HasDraft) apply it via the normal
+     * save. True once it is persisted; false when a write guard refused or a
+     * save hook halted. A validation failure throws.
+     */
+    protected function persistFormState(bool $forPreview = false): bool
+    {
+        // Only the save() branch needs the guard here — the draft branch runs
+        // it inside saveDraft().
+        if ($this->draftWorkflowActive()) {
+            return $this->saveDraft();
+        }
+
+        if (! $this->assertSafeToWrite()) {
+            return false;
+        }
+
+        // Flagged for the duration: this branch runs the full save pipeline, so anything
+        // listening for "the editor applied their changes" would otherwise fire for a
+        // click that only asked to LOOK at the page.
+        $this->savingForPreview = $forPreview;
+
+        try {
+            $this->save(shouldRedirect: false);
+        } finally {
+            $this->savingForPreview = false;
+        }
+
+        // save() returns void and swallows a halting hook — only a save that went
+        // through re-stamps the form as pristine (rememberData()).
+        return $this->formIsPristine();
     }
 
     /**
@@ -520,7 +547,7 @@ trait ManagesDrafts
     {
         return 'const draftData = JSON.stringify($wire.data); const draftHash = $wire.draftSavedDataHash; '
             .'clearTimeout(draftPristineTimer); '
-            ."draftPristineTimer = setTimeout(() => { draftPristine = window.jsMd5(draftData.replace(/\\\\/g, '')) === draftHash; }, 250);";
+            .'draftPristineTimer = setTimeout(() => { draftPristine = '.UnsavedChanges::pristineJs('draftData', 'draftHash').'; }, 250);';
     }
 
     /**

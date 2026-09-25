@@ -42,6 +42,11 @@ abstract class BaseBuilderBlock implements BuilderBlock
      *
      * HtmlPreservePlugin (registered globally) ensures custom div/span HTML
      * survives the HTML→JSON→HTML roundtrip inside TipTap.
+     *
+     * The tab switch renders as a small icon control in the editor's top-right
+     * corner (`fi-cms-editor-tabs` in builder.css) rather than a row of its own. It
+     * stays a real Tabs component: both fields must remain in the form, since a
+     * hidden field is not saved and the HTML tab holds the persisted value.
      */
     protected static function richEditorWithSource(string $name = 'content'): Tabs
     {
@@ -49,6 +54,7 @@ abstract class BaseBuilderBlock implements BuilderBlock
 
         return Tabs::make('editor')
             ->contained(false)
+            ->extraAttributes(['class' => 'fi-cms-editor-tabs'])
             ->tabs([
                 Tab::make('Editor')
                     ->icon(Heroicon::OutlinedPencilSquare)
@@ -66,7 +72,7 @@ abstract class BaseBuilderBlock implements BuilderBlock
                             ->afterStateUpdated(fn (?string $state, Set $set) => $set($name, $state))
                             ->live(onBlur: true),
                     ]),
-                Tab::make('HTML')
+                Tab::make('HTML-Quelltext')
                     ->icon(Heroicon::OutlinedCodeBracket)
                     ->schema([
                         CodeEditor::make($name)
@@ -83,12 +89,15 @@ abstract class BaseBuilderBlock implements BuilderBlock
 
     /**
      * Extra item action that opens a modal with common block options
-     * (active toggle, layout preset, anchor ID, heading level).
+     * (active toggle, layout preset, heading level, anchor ID).
      *
      * Scope-aware per item: a `section` item gets `section`-scoped presets plus the
-     * background-image upload (and any $sectionExtraSchema); every other block type
-     * gets `section-child`-scoped presets. One action serves mixed builders (e.g. a
-     * fragment holding sections AND plain blocks at its root).
+     * header layout and the background-image upload (and any $sectionExtraSchema);
+     * every other block type gets `section-child`-scoped presets. One action serves
+     * mixed builders (e.g. a fragment holding sections AND plain blocks at its root).
+     *
+     * Ordered by use: the layout preset first (set on nearly every block), the
+     * rarely touched anchor and background image last.
      *
      * @param  array<int, Component>  $sectionExtraSchema  extra option fields shown for section items only
      */
@@ -97,18 +106,19 @@ abstract class BaseBuilderBlock implements BuilderBlock
         array $sectionExtraSchema = [],
     ): Action {
         $sectionSchema = fn (): array => [
-            static::sectionBackgroundImageField($tenant),
+            static::sectionBackgroundImageField($tenant)
+                ->columnSpanFull(),
             ...$sectionExtraSchema,
         ];
 
         $isSection = fn (array $arguments, Builder $component): bool => ($component->getRawState()[$arguments['item']]['type'] ?? null) === 'section';
 
         $optionKeys = function (array $arguments, Builder $component) use ($isSection, $sectionSchema): array {
-            $extraKeys = $isSection($arguments, $component)
-                ? collect($sectionSchema())->map(fn ($field) => $field->getName())->all()
+            $sectionKeys = $isSection($arguments, $component)
+                ? ['header_preset_ids', ...collect($sectionSchema())->map(fn ($field) => $field->getName())->all()]
                 : [];
 
-            return [...$extraKeys, 'active', 'layout_preset_ids', 'anchor_id', 'heading'];
+            return [...$sectionKeys, 'active', 'layout_preset_ids', 'anchor_id', 'heading'];
         };
 
         return Action::make('blockOptions')
@@ -121,7 +131,6 @@ abstract class BaseBuilderBlock implements BuilderBlock
                             ->label('Aktiv')
                             ->default(true)
                             ->columnSpanFull(),
-                        ...($isSection($arguments, $component) ? $sectionSchema() : []),
                         static::layoutPresetField($isSection($arguments, $component) ? 'section' : 'section-child', $tenant)
                             ->columnSpanFull(),
                         Select::make('heading')
@@ -134,9 +143,11 @@ abstract class BaseBuilderBlock implements BuilderBlock
                             ])
                             ->selectablePlaceholder(false)
                             ->default('h2'),
+                        ...($isSection($arguments, $component) ? [static::sectionHeaderPresetField($tenant)] : []),
                         TextInput::make('anchor_id')
                             ->label('Anker-ID (für #-Links)')
                             ->maxLength(255),
+                        ...($isSection($arguments, $component) ? $sectionSchema() : []),
                     ]),
             ])
             ->fillForm(function (array $arguments, Builder $component) use ($optionKeys): array {
@@ -184,6 +195,22 @@ abstract class BaseBuilderBlock implements BuilderBlock
                     new FilamentNotification().title('Block kopiert').success().send();
                     JS;
             });
+    }
+
+    /**
+     * The header-layout picker in the block options of section items: it styles
+     * the section header (width, alignment) and is set once, if at all — so it
+     * lives beside the other layout options instead of in every section's form.
+     *
+     * Named explicitly: selectField() names its field `layout_preset_ids`, which
+     * would collide with the section's own layout field in the same dialog.
+     */
+    protected static function sectionHeaderPresetField(?Tenant $tenant): Select
+    {
+        return LayoutPreset::selectField('section-header', $tenant)
+            ->name('header_preset_ids')
+            ->statePath('header_preset_ids')
+            ->label('Header-Layout');
     }
 
     /**

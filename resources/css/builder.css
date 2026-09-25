@@ -120,11 +120,11 @@
     pointer-events: none;
 }
 
-/* …EXCEPT the listing block's "… verwalten" deep-link, a genuine navigation
-   target rendered below the preview. Selector must beat the rule above (0,4,1 vs
-   0,3,1) so pointer events reach it; its x-on:click.stop keeps the same click
-   from also opening the inline editor. */
-.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) a.fi-cms-listing-manage {
+/* …EXCEPT the deep-links of <x-cms::manage-link> ("Fragment bearbeiten",
+   "Services verwalten", …), genuine navigation targets inside a preview. Selector
+   must beat the rule above (0,4,1 vs 0,3,1) so pointer events reach them; their
+   x-on:click.stop keeps the same click from also opening the inline editor. */
+.fi-fo-builder-item .fi-fo-builder-item-preview:not(.fi-interactive) a.fi-cms-manage-link {
     pointer-events: auto;
 }
 
@@ -139,15 +139,13 @@
     pointer-events: auto;
 }
 
-/* Compact secondary-button look for that deep-link (styled here, not with Tailwind
+/* Compact secondary-button look for those deep-links (styled here, not with Tailwind
    utilities, so it renders regardless of the consuming app's content scanning). */
-.fi-cms-listing-manage {
+.fi-cms-manage-link {
     display: inline-flex;
     align-items: center;
-    justify-self: start;
     gap: 0.375rem;
     padding: 0.375rem 0.75rem;
-    margin-top: 1rem;
     border-radius: 0.5rem;
     font-size: 0.875rem;
     line-height: 1.25rem;
@@ -160,23 +158,216 @@
     transition: background-color 75ms ease;
 }
 
-.fi-cms-listing-manage:hover {
+.fi-cms-manage-link:hover {
     background-color: var(--gray-100, #f3f4f6);
 }
 
-.fi-cms-listing-manage svg {
+.fi-cms-manage-link svg {
     width: 1rem;
     height: 1rem;
+    flex-shrink: 0;
 }
 
-.dark .fi-cms-listing-manage {
+.dark .fi-cms-manage-link {
     color: var(--gray-200, #e5e7eb);
     background-color: rgb(255 255 255 / 0.05);
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.1);
 }
 
-.dark .fi-cms-listing-manage:hover {
+.dark .fi-cms-manage-link:hover {
     background-color: rgb(255 255 255 / 0.1);
+}
+
+/* The row of such links below a preview. */
+.fi-cms-manage-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+/* The section form's "Kopfbereich hinzufügen" link: centered and faded, so it
+   reads as an offer rather than as one more field — full strength on hover or
+   keyboard focus. */
+.fi-cms-section-header-toggle {
+    opacity: 0.45;
+    transition: opacity 0.15s ease;
+}
+
+.fi-cms-section-header-toggle:hover,
+.fi-cms-section-header-toggle:focus-within {
+    opacity: 1;
+}
+
+/* <x-cms::block-placeholder>: the dashed stand-in card of a block whose
+   real output does not render in the panel (a live form, a consent-gated map, a
+   fragment, a record edited elsewhere). */
+.fi-cms-block-placeholder-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px dashed var(--gray-300, #d1d5db);
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: var(--gray-500, #6b7280);
+}
+
+.fi-cms-block-placeholder-card .fi-cms-block-placeholder-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    flex-shrink: 0;
+    color: var(--gray-400, #9ca3af);
+}
+
+.fi-cms-block-placeholder-label {
+    font-weight: 500;
+    color: var(--gray-700, #374151);
+}
+
+.fi-cms-block-placeholder-arrow {
+    margin-inline: 0.25rem;
+    color: var(--gray-400, #9ca3af);
+}
+
+.fi-cms-block-placeholder-muted {
+    color: var(--gray-400, #9ca3af);
+}
+
+.dark .fi-cms-block-placeholder-card {
+    border-color: var(--gray-600, #4b5563);
+    color: var(--gray-400, #9ca3af);
+}
+
+.dark .fi-cms-block-placeholder-label {
+    color: var(--gray-200, #e5e7eb);
+}
+
+/* Block-option badges in a builder row header (builder override, feature 5): what
+   the "Block-Optionen" dialog holds — layout presets, header layout, background
+   image, anchor — readable without opening it. They sit before the end actions,
+   never wrap the row, and give way to the title on narrow screens. */
+.fi-cms-block-option-badges {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    min-width: 0;
+    max-width: 45%;
+    margin-inline-start: auto;
+    overflow: hidden;
+}
+
+/* Filament pushes the end actions right with an auto margin of their own; two auto
+   margins would split the free space and park the badges mid-row whenever the
+   title does not grow (a plain label instead of an inline title input). Only while
+   the badges show — hidden on narrow screens, they must leave the auto margin be. */
+@media (min-width: 640px) {
+    .fi-cms-block-option-badges + .fi-fo-builder-item-header-end-actions {
+        margin-inline-start: 0.5rem;
+    }
+}
+
+.fi-cms-block-option-badge {
+    flex-shrink: 0;
+    padding: 0 0.375rem;
+    border-radius: 0.375rem;
+    font-size: 0.6875rem;
+    line-height: 1.125rem;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--gray-500, #6b7280);
+    background-color: rgb(0 0 0 / 0.04);
+}
+
+.dark .fi-cms-block-option-badge {
+    color: var(--gray-400, #9ca3af);
+    background-color: rgb(255 255 255 / 0.06);
+}
+
+@media (max-width: 639px) {
+    .fi-cms-block-option-badges {
+        display: none;
+    }
+}
+
+/* The Editor/HTML switch of BaseBuilderBlock::richEditorWithSource(): a small
+   segmented control in the editor's top-right corner instead of a centered row of
+   its own above it. Both tabs stay rendered (the HTML tab carries the persisted
+   value, and a hidden field would not be saved), only the switch moves. The
+   toolbar keeps its buttons clear of it; the code editor, which has no toolbar,
+   gets a strip of top padding instead. */
+.fi-cms-editor-tabs {
+    position: relative;
+}
+
+.fi-cms-editor-tabs > .fi-tabs {
+    position: absolute;
+    z-index: 2;
+    top: 0.375rem;
+    right: 0.375rem;
+    gap: 0.125rem;
+    margin: 0;
+    padding: 0.125rem;
+    border-radius: 0.5rem;
+    /* Two icons never scroll — and Filament's overflow-x: auto would clip the tooltips. */
+    overflow: visible;
+}
+
+.fi-cms-editor-tabs > .fi-tabs .fi-tabs-item {
+    position: relative;
+    padding: 0.25rem 0.375rem;
+}
+
+.fi-cms-editor-tabs > .fi-tabs .fi-tabs-item .fi-icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Icon-only: the label stays for screen readers and doubles as the tooltip on
+   hover and keyboard focus. (Not a title attribute: Filament puts a tab's extra
+   attributes on its panel too, and the panel is the whole editor.) */
+.fi-cms-editor-tabs > .fi-tabs .fi-tabs-item-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.fi-cms-editor-tabs > .fi-tabs .fi-tabs-item:hover .fi-tabs-item-label,
+.fi-cms-editor-tabs > .fi-tabs .fi-tabs-item:focus-visible .fi-tabs-item-label {
+    top: calc(100% + 0.25rem);
+    right: 0;
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 0.125rem 0.375rem;
+    overflow: visible;
+    clip: auto;
+    border-radius: 0.25rem;
+    background-color: var(--gray-900, #111827);
+    color: #fff;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 400;
+    pointer-events: none;
+}
+
+.fi-cms-editor-tabs > .fi-sc-tabs-tab {
+    margin-top: 0;
+}
+
+.fi-cms-editor-tabs .fi-fo-rich-editor-toolbar {
+    padding-inline-end: 4.5rem;
+}
+
+.fi-cms-editor-tabs .fi-fo-code-editor {
+    padding-top: 2.5rem;
 }
 
 /* Inline editing (the builder override swaps preview ↔ form in place). */
@@ -536,4 +727,12 @@
 
 .dark .fi-fo-rich-editor .tiptap :is(p, h1, h2, h3, h4, h5, h6, li, td, th, blockquote) button {
     border-color: var(--gray-600);
+}
+
+/* The content form's "Außerdem auf dieser Seite" box: one manage link per line. */
+.fi-cms-embedded-links {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
 }

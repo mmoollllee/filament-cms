@@ -17,6 +17,9 @@ class LayoutPresetResolver
     /** @var array<int, string> Preset ID → CSS classes */
     protected array $cache = [];
 
+    /** @var array<int, string>|null Preset ID → title, loaded once on first use */
+    protected ?array $titles = null;
+
     /**
      * Collect all preset IDs from a block tree and load them in one query.
      *
@@ -53,6 +56,28 @@ class LayoutPresetResolver
             ->map(fn (int $id): string => $this->cache[$id] ?? '')
             ->filter()
             ->implode(' ');
+    }
+
+    /**
+     * Preset titles for the given IDs, in the given order; unknown IDs are skipped.
+     * For the panel's option badges: every builder row asks, so the (small) preset
+     * table is read once per request instead of once per row.
+     *
+     * @param  array<int, int>  $ids
+     * @return array<int, string>
+     */
+    public function titles(array $ids): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $this->titles ??= LayoutPreset::query()->pluck('title', 'id')->all();
+
+        return array_values(array_filter(array_map(
+            fn (int $id): ?string => $this->titles[$id] ?? null,
+            $ids,
+        )));
     }
 
     /**

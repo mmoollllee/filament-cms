@@ -24,6 +24,9 @@
          header that reactivates them on click (state half: BaseBuilderBlock::optionHiddenFields()).
       4. block-picker paste — the state path is passed through to the block picker so its
          "Aus Zwischenablage einfügen" entry can target this builder (see block-picker.blade.php).
+      5. option badges — the row header shows what the "Block-Optionen" dialog holds
+         (layout presets, header layout, background image, anchor) as small badges, so
+         options that live in the dialog stay visible (Filament\Support\BlockOptionBadges).
 --}}
 @php
     use Filament\Actions\Action;
@@ -278,6 +281,20 @@
                                         <span class="fi-fo-builder-item-inactive-pill-inactive">inaktiv</span>
                                         <span class="fi-fo-builder-item-inactive-pill-activate">aktivieren</span>
                                     </button>
+                                @endif
+                                {{-- cms:end --}}
+
+                                {{-- cms:start (5) option badges — right-aligned before the end actions --}}
+                                @php
+                                    $optionBadges = \Mmoollllee\Cms\Filament\Support\BlockOptionBadges::for((array) $item->getRawState());
+                                @endphp
+
+                                @if ($optionBadges !== [])
+                                    <span class="fi-cms-block-option-badges">
+                                        @foreach ($optionBadges as $optionBadge)
+                                            <span class="fi-cms-block-option-badge" title="{{ $optionBadge['title'] }}">{{ $optionBadge['label'] }}</span>
+                                        @endforeach
+                                    </span>
                                 @endif
                                 {{-- cms:end --}}
 

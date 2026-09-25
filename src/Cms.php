@@ -320,6 +320,69 @@ class Cms
     }
 
     // -------------------------------------------------------------------------
+    //  Template embeds
+    // -------------------------------------------------------------------------
+
+    /** @var array<string, array{fragments: array<int, string>, contentTypes: array<int, string>}> */
+    protected static array $templateEmbeds = [];
+
+    /**
+     * Declare what a template renders besides the page's own blocks — fragments it
+     * pulls in by slug, records of content types it lists — so the content form can
+     * point editors to where that content is maintained (the "Außerdem auf dieser
+     * Seite" box beside the builder). Content a template composes itself is
+     * otherwise invisible in the builder:
+     *
+     *     Cms::templateEmbeds('content.machine', fragments: ['contact-box'], contentTypes: ['shop.offer']);
+     *     Cms::templateEmbeds('*', fragments: ['opening-hours']); // e.g. the footer
+     *
+     * Keyed by the RESOLVED view name (`TemplateResolver`:
+     * site-specific view first, then the shared one) — exactly the view that
+     * renders the page. `*` matches every page of a type that has one
+     * ({@see embedsForTemplate()}). Repeated calls add up.
+     *
+     * @param  string|array<int, string>  $views
+     * @param  array<int, string>  $fragments  fragment slugs
+     * @param  array<int, string>  $contentTypes  content type keys
+     */
+    public static function templateEmbeds(string|array $views, array $fragments = [], array $contentTypes = []): void
+    {
+        foreach ((array) $views as $view) {
+            $declared = static::$templateEmbeds[$view] ?? ['fragments' => [], 'contentTypes' => []];
+
+            static::$templateEmbeds[$view] = [
+                'fragments' => array_values(array_unique([...$declared['fragments'], ...$fragments])),
+                'contentTypes' => array_values(array_unique([...$declared['contentTypes'], ...$contentTypes])),
+            ];
+        }
+    }
+
+    /** Whether any template declares embeds — without, there is nothing to look up. */
+    public static function hasTemplateEmbeds(): bool
+    {
+        return static::$templateEmbeds !== [];
+    }
+
+    /**
+     * What a view embeds: its own declaration plus the `*` one — unless the
+     * record has no page of its own (a notice rendered elsewhere), which no
+     * every-page part (a footer) is ever embedded into.
+     *
+     * @return array{fragments: array<int, string>, contentTypes: array<int, string>}
+     */
+    public static function embedsForTemplate(string $view, bool $includeEveryPage = true): array
+    {
+        $none = ['fragments' => [], 'contentTypes' => []];
+        $own = static::$templateEmbeds[$view] ?? $none;
+        $everyPage = $includeEveryPage ? (static::$templateEmbeds['*'] ?? $none) : $none;
+
+        return [
+            'fragments' => array_values(array_unique([...$own['fragments'], ...$everyPage['fragments']])),
+            'contentTypes' => array_values(array_unique([...$own['contentTypes'], ...$everyPage['contentTypes']])),
+        ];
+    }
+
+    // -------------------------------------------------------------------------
     //  Media library (optional ralphjsmit/laravel-filament-media-library)
     // -------------------------------------------------------------------------
 
@@ -541,6 +604,7 @@ class Cms
         static::$blocks = null;
         static::$sectionChildAllowlists = [];
         static::$rootBlockAllowlists = [];
+        static::$templateEmbeds = [];
         static::$menuLocations = null;
         static::$nestedMenus = false;
         static::$footerTagline = null;

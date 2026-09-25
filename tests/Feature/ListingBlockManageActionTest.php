@@ -62,7 +62,7 @@ it('renders the "… verwalten" button under a listing block preview', function 
 
     Livewire::test(EditContent::class, ['record' => $blocksPage->getKey()])
         ->assertOk()
-        ->assertSeeHtml('fi-cms-listing-manage')
+        ->assertSeeHtml('fi-cms-manage-link')
         ->assertSee('Services verwalten')
         // The deep-link scopes the destination list to the listed type.
         ->assertSeeHtml('type=marketing.service');

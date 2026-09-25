@@ -358,16 +358,30 @@ BlockBuilder::make('blocks', $tenant, $blocks, previews: false);         // open
 BlockBuilder::make('blocks', $tenant, $blocks, sortableGroup: 'section-blocks');
 ```
 
-**Core blocks** — `section` (container: header w/ eyebrow + layout preset + intro text +
-child blocks), `text` (rich text with HTML source tab), `media` (image/video upload with
-alt text, poster frame, quality preset), `listing` (renders all visible records of a
-content type as cards, e.g. services). Views ship in the package
-(`blocks::…` previews, `<x-block::…>` frontend) and are `vendor:publish`-overridable.
+**Core blocks** — `section` (container: child blocks plus an optional header — title in
+the row, eyebrow + intro text on demand), `text` (rich text with HTML source tab), `media`
+(image/video upload with alt text, poster frame, quality preset), `listing` (renders all
+visible records of a content type as cards, e.g. services), `note` (editor-only). Views
+ship in the package (`blocks::…` previews, `<x-block::…>` frontend) and are
+`vendor:publish`-overridable.
+
+**Section header on demand** — most sections never carry an eyebrow or intro text, so
+the section form shows a faded, centered "Kopfbereich hinzufügen" link instead of an
+empty editor; the fields appear on click, and on their own once they hold content. The
+header layout lives in the block options. Only a truly blank value counts as empty
+(`RichText::isBlank()`: an image-only intro is content), because a hidden field is not
+saved.
+
+**Fragment block (opt-in)** — `FragmentBlock` embeds a fragment by slug (resolved through
+the branding cascade). Editors pick it from a list of the tenant's own and inherited
+fragments; the row title names it, the preview says whether the page will show anything
+and links to the fragment's edit page (or to the fragment list while the slug matches
+nothing). Register it next to the core blocks; it needs a fragment model.
 
 **Block registration** — the package binds the `BuilderBlockRegistry` from
-`Cms::blocks()` (defaults to the four core blocks). Add project blocks via
-`Cms::registerBlocks([...Cms::defaultBlocks(), MyBlock::class])` in a service
-provider — see the demo's "Custom blocks" HowTo.
+`Cms::blocks()` (defaults to the core blocks). Add project blocks via
+`Cms::registerBlocks([...Cms::defaultBlocks(), FragmentBlock::class, MyBlock::class])`
+in a service provider — see the demo's "Custom blocks" HowTo.
 
 **Inline preview editing** — with previews on, a block renders as a live preview card;
 clicking it swaps to the edit form in place, "Fertig" returns to the preview. No modals.
@@ -385,8 +399,25 @@ toggle; inactive blocks stay in the builder dimmed, with an "inaktiv → aktivie
 in the row header, and simply don't render on the site.
 
 **Block options** — the gear action also carries the layout preset (scope-aware:
-sections get `section` presets + a background-image upload, other blocks get
-`section-child` presets), the heading level (h1–h3/none) and an anchor id for #-links.
+sections get `section` presets plus the header layout and a background-image upload,
+other blocks get `section-child` presets), the heading level (h1–h3/none) and an anchor
+id for #-links — ordered by use, the rarely set anchor and background image last.
+
+**Option badges** — what the gear dialog holds shows in the block's row as small badges
+(layout presets, `Kopf:` header layout, background image, `#anchor`), so an option that
+lives in a dialog is never invisible.
+
+**Previews that link to the source** — a block that stands in for content maintained
+elsewhere links there from its preview: the listing to its type's list ("Services
+verwalten"), the fragment block to its fragment. App blocks get the same two pieces:
+`<x-cms::block-placeholder>` (the dashed stand-in card) and `<x-cms::manage-link>` fed by
+`Filament\Support\ManagementLinks` (`forContentType()`, `forFragment()`,
+`forFragmentSlug()`, `forFragmentList()` — each null unless the user may open the
+target). Following such a link from a content or fragment form with unsaved changes asks
+first — "Entwurf speichern" (a normal save where no draft workflow applies; on a create
+page the held-back create), "Nicht speichern" or "Abbrechen" — instead of silently
+dropping them (`ConfirmsLeaving`, used by `ManagesDrafts` and `CreatesDrafts`). The
+question only follows targets inside the panel.
 
 **Editable block titles** — `->title('title', placeholder: 'Titel', suffix: 'Sektion')`
 (from the bundled `mmoollllee/filament-builder-title`) renders an inline text input in
@@ -432,6 +463,20 @@ tenant's:
     <x-dynamic-component :component="'block::'.$block['type']" :data="$block['data']" />
 @endforeach
 ```
+
+Editors place fragments with the opt-in `FragmentBlock` (see [Block builder](#block-builder)).
+A fragment a TEMPLATE renders (a contact box under every product page, opening hours in
+the footer) never appears in any builder — declare it, and the content form links to it
+in an "Außerdem auf dieser Seite" box beside the builder:
+
+```php
+Cms::templateEmbeds('content.product', fragments: ['contact-box'], contentTypes: ['shop.offer']);
+Cms::templateEmbeds('*', fragments: ['opening-hours']); // every page, e.g. the footer
+```
+
+Keys are the resolved view names (`TemplateResolver`); content types link to their
+list, fragments to their edit page (or to the fragment list while missing). `*` skips
+types without a page of their own.
 
 ## RichEditor
 
@@ -494,7 +539,7 @@ through `<x-site.rich-editor.*>` views you can override per app.
 class-carrying `<div>`/`<span>` markup — and `<button>` elements — intact through TipTap's
 HTML→JSON→HTML roundtrip; without it, TipTap strips unknown markup. This powers the blocks'
 **HTML source tab** (`BaseBuilderBlock::richEditorWithSource()`): Editor and raw-HTML tabs,
-two-way synced. Buttons keep only `class` and `type` (default `button`), so editorial markup
+two-way synced, switched by a small icon control in the editor's top-right corner. Buttons keep only `class` and `type` (default `button`), so editorial markup
 like the consent banner's `<button type="button" class="consent-control--open">` survives
 while inline handlers do not.
 

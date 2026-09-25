@@ -1,20 +1,20 @@
 <?php
 
 /*
- * The "Entwurf speichern" disabled-state couples to two Filament INTERNALS:
- * the window.jsMd5 global (set by filament/support's JS bundle) and the exact
- * unsaved-changes hash formula, mirrored server-side in
- * ManagesDrafts::rememberData() and client-side in the buttons' Alpine effect.
+ * The "Entwurf speichern" disabled-state and the manage links' leave question
+ * couple to two Filament INTERNALS: the window.jsMd5 global (set by
+ * filament/support's JS bundle) and the exact unsaved-changes hash formula,
+ * mirrored in UnsavedChanges — hash() server-side, pristineJs() client-side.
  * Filament maintains its own pair atomically — our copy would drift silently
  * (buttons permanently disabled/enabled, no server error). Same convention as
  * FilamentViewOverrideDriftTest: fail loudly on the vendor change, with
  * instructions.
  */
 
-use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
+use Mmoollllee\Cms\Filament\Support\UnsavedChanges;
 
 // On failure: Filament stopped exposing window.jsMd5 — update
-// ManagesDrafts::draftPristineEffectJs() to the new global (and this test).
+// UnsavedChanges::pristineJs() to the new global (and this test).
 it('pins the vendor jsMd5 global the draft buttons depend on', function () {
     $supportBundle = file_get_contents(base_path('vendor/filament/support/resources/js/index.js'));
 
@@ -32,11 +32,11 @@ it('pins the vendor hash formula mirrored by the draft pristine tracking', funct
 
     expect($vendorTrait)->toContain("md5((string) str(json_encode(\$this->data, JSON_UNESCAPED_UNICODE))->replace('\\\\', ''))");
 
-    // And our mirror still matches that recipe verbatim.
-    $ourTrait = file_get_contents((new ReflectionClass(ManagesDrafts::class))->getFileName());
+    // And our mirror still matches both halves verbatim.
+    $ourMirror = file_get_contents((new ReflectionClass(UnsavedChanges::class))->getFileName());
 
-    expect($ourTrait)->toContain("md5((string) str(json_encode(\$this->data, JSON_UNESCAPED_UNICODE))->replace('\\\\', ''))");
+    expect($ourMirror)->toContain("md5((string) str(json_encode(\$data, JSON_UNESCAPED_UNICODE))->replace('\\\\', ''))")
+        ->and(UnsavedChanges::pristineJs())->toContain("window.jsMd5(JSON.stringify(\$wire.data).replace(/\\\\/g, ''))");
 });
 // On failure: Filament changed its unsaved-changes hash formula — mirror the
-// new recipe in ManagesDrafts::rememberData() + draftPristineEffectJs()
-// (and this test).
+// new recipe in UnsavedChanges::hash() + pristineJs() (and this test).

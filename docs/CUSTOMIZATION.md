@@ -41,10 +41,14 @@ public function register(): void
     // Site-extension discovery (see §3). Default: app_path('Sites') → App\Sites.
     // Cms::discoverSitesIn(app_path('Sites'), 'App\\Sites');
 
-    // Builder blocks + allowlists (see §8). Default: the four core blocks.
-    // Cms::registerBlocks([...Cms::defaultBlocks(), MyBlock::class]);
+    // Builder blocks + allowlists (see §8). Default: the core blocks.
+    // Cms::registerBlocks([...Cms::defaultBlocks(), FragmentBlock::class, MyBlock::class]);
     // Cms::allowSectionChildren('my-site-key', ['text', 'media', 'listing']);
     // Cms::allowRootBlocks('my-site-key', ['section', 'hero']);
+
+    // Content templates render besides the page blocks — linked from the content
+    // form's "Außerdem auf dieser Seite" box (see §8).
+    // Cms::templateEmbeds('content.product', fragments: ['contact-box'], contentTypes: ['shop.offer']);
 
     // Catch-all resource + opt-in "Titelbereich" on its form (see §9).
     // Cms::useContentResource(CatchAllContentResource::class);
@@ -388,6 +392,54 @@ Add your own by registering a block and shipping only its `preview` view.
 **Previews are per block, not per builder.** A block that declares `->preview(...)` renders
 as a click-to-edit card; one that does not renders its form open. That holds in the page
 builder too, so a top-level block gets whichever of the two suits it.
+
+**The fragment block is opt-in** — `Support\Content\Blocks\fragment\FragmentBlock` (key
+`fragment`, data `slug`) needs a fragment model and a place in `Cms::registerBlocks()`.
+An app that carried its own copy of such a block (same key, same `slug` field) deletes it
+and registers the package's: stored content stays as it is, so no migration is needed.
+The package views win the `blocks::`/`<x-block::…>` lookup anyway — a stale app copy of
+the views is silently shadowed.
+
+**App blocks that stand in for something** (a live form, a consent-gated map, records
+maintained elsewhere) build their preview from two package components, styled in
+`builder.css` so no app theme is needed:
+
+```blade
+@php
+    // A preview receives only the block's data — resolve the tenant yourself.
+    $tenant = app(\Mmoollllee\Cms\Support\Tenancy\CurrentTenant::class)->get();
+@endphp
+
+<x-cms::block-placeholder icon="heroicon-o-tag" label="Wochenangebot">
+    zeigt das neueste veröffentlichte Angebot
+    <x-slot:actions>
+        <x-cms::manage-link :link="\Mmoollllee\Cms\Filament\Support\ManagementLinks::forContentType('shop.offer', $tenant)" />
+    </x-slot:actions>
+</x-cms::block-placeholder>
+```
+
+`ManagementLinks::forContentType()` / `forFragment()` / `forFragmentSlug()` /
+`forFragmentList()` return `url`/`label`/`icon` — or null when nothing manages the
+target or the user may not open it (an inherited fragment is edited in its owner's
+panel, so that tenant must be one the user may enter), and `<x-cms::manage-link>`
+renders nothing then. It is click-through inside the otherwise click-dead preview
+(`.fi-cms-manage-link`, formerly `.fi-cms-listing-manage`), and on a content or fragment
+form with unsaved changes it asks before leaving (save first / don't save / stay) — any
+page using `ManagesDrafts` or `CreatesDrafts` gets that for free (`ConfirmsLeaving`).
+Only targets inside the panel are followed: a path on the current host or a tenant
+domain the user may enter.
+
+**Template embeds** — content a template renders besides the page's blocks is invisible
+in the builder. Declare it per resolved view name (`*` = every page) and the content
+form lists links to it beside the builder:
+
+```php
+Cms::templateEmbeds(['site.content.home', 'site.content.contact'], contentTypes: ['site.notice']);
+Cms::templateEmbeds('*', fragments: ['opening-hours']);
+```
+
+`*` covers every type with a page of its own — a non-routable type (a notice shown
+elsewhere) has no footer to embed anything in, so it only gets its own view's entries.
 
 **Builders are built by one factory** — `Filament\Forms\BlockBuilder::make($statePath,
 $tenant, $blocks, previews: …, sortableGroup: …, extraItemActions: …)` configures every
@@ -832,10 +884,11 @@ publish tag `cms-lang`); the app locale (`APP_LOCALE`) picks the language.
 
 The package replaces Filament's builder rendering with two vendored views
 (`resources/overrides/filament-forms/`): `filament-forms::components.builder` and
-`…builder.block-picker`. They carry the four builder UX features that have no Filament
+`…builder.block-picker`. They carry the five builder UX features that have no Filament
 extension point: cross-builder drag & drop, inline preview editing, the inactive-block
-UI, and the clipboard-paste picker entry. Everything else (copy action, options gear,
-headings) lives in PHP and survives Filament updates.
+UI, the clipboard-paste picker entry, and the block-option badges in the row header.
+Everything else (copy action, options gear, headings) lives in PHP and survives Filament
+updates.
 
 Since Filament 5.7 the builder has **no vendor Blade view** — it renders PHP-side via
 `Builder::toEmbeddedHtml()`. The package re-enters the classic view path by pinning the
