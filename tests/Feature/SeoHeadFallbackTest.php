@@ -17,6 +17,12 @@ function seoHeadFallbackTenant(): Tenant
     $tenant = Tenant::factory()->create([
         'primary_domain' => 'localhost',
         'site_key' => 'default',
+        // Fixed branding instead of faker names: the head HTML-escapes meta
+        // values, so a name like "D'Amore" renders as D&#039;Amore and the
+        // raw-string title assertions would fail intermittently.
+        'name' => 'Acme',
+        'brand_name' => 'Acme',
+        'brand_claim' => 'Fresh every day',
     ]);
 
     app(CurrentTenant::class)->set($tenant);
