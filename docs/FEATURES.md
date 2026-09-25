@@ -129,6 +129,16 @@ extension (`default.page`, `default.section`) — a new app has pages with zero 
 slug, keeps `path` null and hides the type from routing/sitemap. For embedded-but-
 referenceable records (FAQ entries, team members, services listed by a listing block).
 
+**Notices ("Hinweise", opt-in)** — `Cms::enableNotices(on: [...])` adds the package's
+`default.notice` type (a title and a rich text with a publishing window, `$expiresByDesign`)
+with its own "Hinweise" resource. `<x-cms::notices />` renders the live notices, the latest
+window first (all of them in a member's preview) — on the homepage in the package's
+fallback page template (an onepager's start section included), wherever an app's own
+templates place it otherwise; the `on:` templates list them under "Außerdem auf dieser
+Seite". The component emits the shared classes `notices`,
+`notice`, `notice-title` and `richtext`, which the app styles; `Notices::shown($tenant, request()->user())`
+serves an app's own markup.
+
 **Page hierarchy** — pages nest under pages (`default.page` allows `default.page`
 parents): the form offers an "Übergeordnete Seite" select (cycle-safe — a page can
 never become its own descendant), the parent's edit page gets a "Seiten verwalten"
@@ -149,7 +159,12 @@ paths from title/prefix on save.
 **Publishing** — `publish_from` / `publish_until` + `ContentStatus`
 (Draft/Scheduled/Published/Expired). Guests only ever see published, public content
 (`scopeVisibleTo`); superadmins and tenant members see everything (live preview of
-drafts on the real site).
+drafts on the real site). The content tables show the planned window under the status
+badge ("01.10.2026 10:00 – 15.10.2026 18:00", "ab 01.10.2026 10:00") wherever one is
+planned. The dashboard's to-do list flags expired records unless their blueprint
+declares the expiry as the plan (`$expiresByDesign`, e.g. site notices). Editors enter
+and read every time in the site's local time (the tenant's `timezone`, Europe/Berlin by
+default) while the database stays on UTC — `TenantTimezone` + `FilamentTimezone`.
 
 **Visibility** — `ContentVisibility` Public/Members per record: members-only pages 404
 for guests.
@@ -214,6 +229,9 @@ state as the draft (same validation as "Entwurf speichern"; on failure the tab c
 and the form shows the errors), then opens the record's frontend URL with `?preview=1`
 in a new tab — the preview always shows exactly what the form shows. Fragments/
 non-routable types open the homepage/parent — they preview wherever they are embedded.
+A record without a page of its own is named in that URL (`?preview_focus=ID`), and
+`previewFocusFirst()` lets it win a slot that shows one entry of several ("the newest
+offer") — lists show every entry in a preview anyway. Request-scoped, never for guests.
 The sticky session flag is scoped PER TENANT (shared-cookie multi-site installs don't
 leak the mode across sites), never activates on panel or Livewire request paths (an
 overlay there would corrupt admin write flows), and every guest-facing cache builder
@@ -857,7 +875,9 @@ show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
 - **Spam quiz for forms** — tenants manage question/answer pairs in their profile
   (`HasSpamQuestions` tenant trait, seeded defaults in `DefaultSpamQuestions`); Livewire
   forms `use WithSpamQuiz` to render + validate a random question
-  (`AbstractTenantAwareForm` is the tenant-aware Livewire form base to build on).
+  (`AbstractTenantAwareForm` is the tenant-aware Livewire form base to build on — it
+  also owns the operator mail's facts: the locked `$sourceUrl` via
+  `captureSourceUrl()` in `mount()`, and `submittedAt()` in the site's local time).
 
 ## Analytics events (optional, with `mmoollllee/filami`)
 

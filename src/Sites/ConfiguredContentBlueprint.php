@@ -65,6 +65,13 @@ class ConfiguredContentBlueprint implements ContentBlueprint
      */
     protected bool $offeredInTypeSelect = true;
 
+    /**
+     * Whether an expired record is the planned end of its life (a notice, a
+     * time-boxed offer) rather than content that silently fell offline — see
+     * {@see ContentBlueprint::expiresByDesign()}.
+     */
+    protected bool $expiresByDesign = false;
+
     /** @var array<int, string>|null */
     protected ?array $allowedBlocks = null;
 
@@ -184,6 +191,11 @@ class ConfiguredContentBlueprint implements ContentBlueprint
     public function showsPayloadEditor(): bool
     {
         return $this->showsPayloadEditor;
+    }
+
+    public function expiresByDesign(): bool
+    {
+        return $this->expiresByDesign;
     }
 
     public function allowedBlocks(): ?array

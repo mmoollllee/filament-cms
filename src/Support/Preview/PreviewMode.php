@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Support\Preview;
 
 use Illuminate\Http\Request;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Concerns\Content\HasPublishingStatus;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Contracts\User;
 
@@ -26,6 +27,13 @@ use Mmoollllee\Cms\Contracts\User;
  * write flows. activateFromRequest() therefore hard-skips panel and Livewire
  * URIs. Cache builders that produce guest-facing data wrap themselves in
  * {@see bypass()} for the same reason.
+ *
+ * The FOCUS names the record a "Vorschau" was opened from when it has no page of
+ * its own (a notice, a weekly offer, a team member): `?preview_focus=ID`. Lists
+ * show every entry in a preview anyway; a template that shows ONE entry of
+ * several orders the focused one first
+ * ({@see HasPublishingStatus::scopePreviewFocusFirst()}), so the "Vorschau" of an
+ * older or a scheduled offer shows that offer. Request-scoped, never sticky.
  */
 class PreviewMode
 {
@@ -33,11 +41,16 @@ class PreviewMode
 
     public const QUERY_PARAM = 'preview';
 
+    public const FOCUS_PARAM = 'preview_focus';
+
     protected bool $active = false;
+
+    protected ?int $focusedContentId = null;
 
     public function activateFromRequest(Request $request, Tenant $tenant): void
     {
         $this->active = false;
+        $this->focusedContentId = null;
 
         if (! $request->hasSession() || $this->isPanelOrLivewireRequest($request)) {
             return;
@@ -70,6 +83,12 @@ class PreviewMode
         }
 
         $this->active = (bool) $session->get($sessionKey, false);
+
+        if ($this->active) {
+            $focus = filter_var($request->query(self::FOCUS_PARAM), FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+
+            $this->focusedContentId = $focus === false ? null : $focus;
+        }
     }
 
     public function active(): bool
@@ -77,10 +96,26 @@ class PreviewMode
         return $this->active;
     }
 
+    /**
+     * The content record the preview was opened for, if it named one. Null
+     * whenever the preview is inactive — including inside {@see bypass()}, so a
+     * guest-facing cache can never pick up the focused record.
+     */
+    public function focusedContentId(): ?int
+    {
+        return $this->active ? $this->focusedContentId : null;
+    }
+
     /** Force-activate without a request cycle (tests, artisan tinkering). */
     public function activate(): void
     {
         $this->active = true;
+    }
+
+    /** Focus a record without a request cycle (tests, artisan tinkering). */
+    public function focus(?int $contentId): void
+    {
+        $this->focusedContentId = $contentId;
     }
 
     public function deactivate(): void

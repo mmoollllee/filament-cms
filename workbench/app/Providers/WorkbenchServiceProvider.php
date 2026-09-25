@@ -35,6 +35,10 @@ class WorkbenchServiceProvider extends ServiceProvider
 
         // Opt-in "Titelbereich" page header on the catch-all content form.
         Cms::enableContentPageHeader();
+
+        // Opt-in notice banners, placed above every demo page's blocks. No `on:` —
+        // TemplateEmbedsTest pins the workbench's embeds to none.
+        Cms::enableNotices();
     }
 
     public function boot(): void

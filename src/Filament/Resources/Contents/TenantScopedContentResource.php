@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Filament\Resources\Contents;
 
 use BackedEnum;
 use Blendbyte\FilamentTitleWithSlug\TitleWithSlugInput;
+use Carbon\CarbonInterface;
 use Closure;
 use Filament\Actions\Action;
 use Filament\Actions\ActionGroup;
@@ -68,6 +69,7 @@ use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Routing\ContentRenameRedirects;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 abstract class TenantScopedContentResource extends Resource
 {
@@ -748,7 +750,8 @@ abstract class TenantScopedContentResource extends Resource
                     ->label('Status')
                     ->badge()
                     ->formatStateUsing(fn ($state): string => ContentStatus::tryFrom((string) $state)?->label() ?? (string) $state)
-                    ->color(fn ($state): string => ContentStatus::tryFrom((string) $state)?->color() ?? 'gray'),
+                    ->color(fn ($state): string => ContentStatus::tryFrom((string) $state)?->color() ?? 'gray')
+                    ->description(fn (Model $record): ?string => static::publishingWindowDescription($record)),
                 Drafts::tableBadgeColumn(Cms::contentModel()),
             ])
             ->filters(static::tableFilters())
@@ -817,6 +820,29 @@ abstract class TenantScopedContentResource extends Resource
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * The planned visibility under the status badge — "01.10.2026 10:00 – 15.10.2026 18:00",
+     * or "ab 01.10.2026 10:00" for an open end still ahead — so the list says WHEN a record
+     * is (or was) visible, not only whether it is right now. Nothing for unpublished records
+     * and for live ones without an end: nothing is planned there, and on page lists a start
+     * date in every row would be pure noise.
+     */
+    protected static function publishingWindowDescription(Model $record): ?string
+    {
+        $from = $record->getAttribute('publish_from');
+        $until = $record->getAttribute('publish_until');
+
+        if (! $from instanceof CarbonInterface) {
+            return null;
+        }
+
+        if ($until instanceof CarbonInterface) {
+            return TenantTimezone::format($from).' – '.TenantTimezone::format($until);
+        }
+
+        return $from->isFuture() ? 'ab '.TenantTimezone::format($from) : null;
     }
 
     /** Form-state key holding the id of the redirect the editor agreed to remove. */

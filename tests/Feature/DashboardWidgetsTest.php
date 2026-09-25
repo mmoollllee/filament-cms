@@ -8,7 +8,9 @@
  *   summarises publication states in ContentStatus vocabulary — "unveröffentlicht",
  *   never "Entwurf", which belongs to the draft stash alone.
  * - PendingContentWidget is the to-do list: draft stashes, scheduled and expired
- *   content, and nothing else. It hides itself when there is nothing to do.
+ *   content, and nothing else — expired records only where the expiry was not the
+ *   plan (ContentBlueprint::expiresByDesign()). It hides itself when there is
+ *   nothing to do.
  */
 
 use Livewire\Livewire;
@@ -128,6 +130,32 @@ it('lists drafts, scheduled and expired content in the to-do widget', function (
     Livewire::test(PendingContentWidget::class)
         ->assertOk()
         ->assertCanSeeTableRecords([$scheduled, $expired, $stashed]);
+});
+
+it('leaves expired records of a type that expires by design out of the to-do widget', function () {
+    // marketing.note declares expiresByDesign: an expired note is history, not a task —
+    // but the other two states still need an editor's eye.
+    $note = fn (string $slug, array $window): Content => dashboardPage($this->tenant, [
+        'content_type' => 'marketing.note',
+        'path' => null,
+        'slug' => $slug,
+        ...$window,
+    ]);
+
+    $expiredNote = $note('abgelaufene-notiz', ['publish_from' => now()->subMonth(), 'publish_until' => now()->subDay()]);
+    $scheduledNote = $note('geplante-notiz', ['publish_from' => now()->addWeek()]);
+    $stashedNote = $note('geparkte-notiz', ['publish_from' => now()->subMonth(), 'publish_until' => now()->subDay()]);
+    $stashedNote->stashDraft(['title' => 'Geparkte Änderung']);
+
+    $expiredPage = dashboardPage($this->tenant, [
+        'publish_from' => now()->subMonth(),
+        'publish_until' => now()->subDay(),
+    ]);
+
+    Livewire::test(PendingContentWidget::class)
+        ->assertOk()
+        ->assertCanSeeTableRecords([$scheduledNote, $stashedNote, $expiredPage])
+        ->assertCanNotSeeTableRecords([$expiredNote]);
 });
 
 it('keeps settled content out of the to-do widget', function () {

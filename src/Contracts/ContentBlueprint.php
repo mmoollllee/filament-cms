@@ -97,6 +97,13 @@ interface ContentBlueprint
     public function showsPayloadEditor(): bool;
 
     /**
+     * Whether records of this type are MEANT to run out (site notices, time-boxed
+     * offers): an expired record is the planned end of its life, not a page that
+     * silently fell offline — so the dashboard's to-do list leaves it out.
+     */
+    public function expiresByDesign(): bool;
+
+    /**
      * Builder block keys allowed for this content type. Null means all blocks are available.
      *
      * @return array<int, string>|null

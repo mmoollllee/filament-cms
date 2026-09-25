@@ -23,4 +23,8 @@ class Blueprint extends ConfiguredContentBlueprint
     // Demo for the opt-in raw payload editor (and its delete-persistence
     // contract, pinned by ContentRawPayloadEditorTest).
     protected bool $showsPayloadEditor = true;
+
+    // Demo for expiresByDesign: like a site notice, a note ends when its window
+    // does — expired notes stay off the dashboard's to-do list (DashboardWidgetsTest).
+    protected bool $expiresByDesign = true;
 }

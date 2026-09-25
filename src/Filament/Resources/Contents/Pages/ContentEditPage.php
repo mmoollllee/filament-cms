@@ -11,6 +11,7 @@ use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
 use Mmoollllee\Cms\Filament\Concerns\TransfersBuilderItems;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
+use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
  * Base edit page for every content resource (catch-all AND site-extension types).
@@ -36,6 +37,7 @@ abstract class ContentEditPage extends EditRecord
     use ManagesDrafts {
         mergeDraftIntoFormData as protected mergeDraftIntoFormDataGeneric;
         getDeleteFormAction as protected getDeleteFormActionGeneric;
+        previewQuery as protected previewQueryGeneric;
     }
     use PastesBuilderBlocks;
     use TransfersBuilderItems;
@@ -108,5 +110,24 @@ abstract class ContentEditPage extends EditRecord
         // Same path the topbar "Öffnen" button targets ({@see FrontendLinkResolver}),
         // so preview and public link never point at different pages.
         return $record->frontendPath() ?? '/';
+    }
+
+    /**
+     * A record without a page of its own previews on the page that embeds it —
+     * so the URL names it ({@see PreviewMode::FOCUS_PARAM}): lists show every
+     * entry in a preview anyway, a slot for ONE entry puts this record first.
+     *
+     * @return array<string, int|string>
+     */
+    protected function previewQuery(): array
+    {
+        /** @var Content $record */
+        $record = $this->getRecord();
+
+        if ($record->resolvedPath() !== null) {
+            return $this->previewQueryGeneric();
+        }
+
+        return [...$this->previewQueryGeneric(), PreviewMode::FOCUS_PARAM => $record->getKey()];
     }
 }

@@ -117,4 +117,21 @@ trait HasPublishingStatus
             ->where('visibility', ContentVisibility::Public->value)
             ->published();
     }
+
+    /**
+     * Put the previewed record first ({@see PreviewMode::focusedContentId()}) —
+     * for templates that show ONE entry of several ("the newest offer wins"):
+     * in a preview every entry is visible, but the slot must show the one the
+     * "Vorschau" was opened for. A no-op outside a focused preview.
+     */
+    public function scopePreviewFocusFirst(Builder $query): Builder
+    {
+        $focus = app(PreviewMode::class)->focusedContentId();
+
+        if ($focus === null) {
+            return $query;
+        }
+
+        return $query->orderByRaw($query->getModel()->getQualifiedKeyName().' = ? desc', [$focus]);
+    }
 }

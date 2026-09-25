@@ -6,6 +6,7 @@ use Filament\Exceptions\NoDefaultPanelSetException;
 use Filament\Facades\Filament;
 use Mmoollllee\Cms\Filament\Resources\Contents\CatchAllContentResource;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
+use Mmoollllee\Cms\Sites\Notice\Blueprint as NoticeBlueprint;
 use Mmoollllee\Cms\Support\Content\Blocks\Contracts\BuilderBlock;
 use Mmoollllee\Cms\Support\Content\Blocks\listing\ListingBlock;
 use Mmoollllee\Cms\Support\Content\Blocks\media\MediaBlock;
@@ -383,6 +384,40 @@ class Cms
     }
 
     // -------------------------------------------------------------------------
+    //  Notices (optional)
+    // -------------------------------------------------------------------------
+
+    protected static bool $notices = false;
+
+    /**
+     * Notice banners ("Hinweise"): the `default.notice` content type — a rich
+     * text with a publishing window that disappears on its own, e.g. for
+     * company holidays — plus its panel resource. Templates place the live ones
+     * with <x-cms::notices />; name those templates in `$on`, and their pages
+     * list the notices under "Außerdem auf dieser Seite" ({@see templateEmbeds()}):
+     *
+     *     Cms::enableNotices(on: ['acme.content.home', 'acme.content.kontakt']);
+     *
+     * Call it in a service provider's register(): the panel collects its
+     * resources, and the blueprint registry its types, once per request.
+     *
+     * @param  string|array<int, string>  $on  resolved view names that render <x-cms::notices />
+     */
+    public static function enableNotices(string|array $on = []): void
+    {
+        static::$notices = true;
+
+        if ($on !== []) {
+            static::templateEmbeds($on, contentTypes: [NoticeBlueprint::KEY]);
+        }
+    }
+
+    public static function hasNotices(): bool
+    {
+        return static::$notices;
+    }
+
+    // -------------------------------------------------------------------------
     //  Media library (optional ralphjsmit/laravel-filament-media-library)
     // -------------------------------------------------------------------------
 
@@ -607,6 +642,7 @@ class Cms
         static::$templateEmbeds = [];
         static::$menuLocations = null;
         static::$nestedMenus = false;
+        static::$notices = false;
         static::$footerTagline = null;
         static::$mediaLibraryDisabled = false;
         static::$mediaDriver = null;

@@ -18,6 +18,7 @@ use Filament\Panel;
 use Filament\PanelProvider as FilamentPanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\Width;
+use Filament\Support\Facades\FilamentTimezone;
 use Filament\Support\Icons\Heroicon;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Contracts\View\View;
@@ -64,6 +65,7 @@ use Mmoollllee\Cms\Support\Branding\SiteTokens;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider;
 use Mmoollllee\Cms\Support\Shortcodes;
+use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 use Mmoollllee\FilamentConsentControl\Filament\ConsentIframePlugin;
 use Mmoollllee\Filami\Filament\Pages\UmamiStatistics;
 use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
@@ -80,7 +82,8 @@ use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
  * and panel options (vite theme, path, page discovery, plugins) fluently on the
  * Panel in configurePanel(). The standard RichEditor configuration (awcodes
  * plugins, custom blocks, toolbar) is provided here and overridable via
- * configureRichEditor().
+ * configureRichEditor(), the tenant's local time for every date the panel shows
+ * via configureTimezone().
  */
 abstract class BasePanelProvider extends FilamentPanelProvider
 {
@@ -276,6 +279,18 @@ abstract class BasePanelProvider extends FilamentPanelProvider
     public function boot(): void
     {
         $this->configureRichEditor();
+        $this->configureTimezone();
+    }
+
+    /**
+     * Panel times in the site's local time: the date pickers, table date columns and
+     * the engine's own time sentences follow the current tenant's timezone
+     * ({@see TenantTimezone}), while the database and PHP stay on UTC. Evaluated per
+     * call, so it follows the tenant of the request. Override to pin one zone.
+     */
+    protected function configureTimezone(): void
+    {
+        FilamentTimezone::set(fn (): string => TenantTimezone::current());
     }
 
     /**

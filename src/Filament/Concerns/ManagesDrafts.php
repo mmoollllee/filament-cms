@@ -16,6 +16,7 @@ use Mmoollllee\Cms\Filament\Support\UnsavedChanges;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 use Mmoollllee\Cms\Support\Versioning\Versions;
 
 /**
@@ -243,7 +244,7 @@ trait ManagesDrafts
         $record = $this->getRecord();
 
         if (Drafts::pending($record)) {
-            $savedAt = $record->draftSavedAt()?->format('d.m.Y H:i');
+            $savedAt = TenantTimezone::format($record->draftSavedAt());
 
             return $savedAt !== null
                 ? "Entwurf vom {$savedAt} Uhr geladen — noch nicht angewendet."
@@ -560,10 +561,22 @@ trait ManagesDrafts
         return '/';
     }
 
+    /**
+     * The query the "Vorschau" URL carries: the preview switch, plus whatever
+     * the page needs the frontend to know ({@see ContentEditPage} names records
+     * without a page of their own).
+     *
+     * @return array<string, int|string>
+     */
+    protected function previewQuery(): array
+    {
+        return [PreviewMode::QUERY_PARAM => 1];
+    }
+
     protected function previewUrl(): ?string
     {
         // Same URL builder as the "Öffnen" affordances ({@see FrontendUrl}), so
         // preview and public link can never diverge on how a path becomes a URL.
-        return FrontendUrl::forPath($this->previewPath(), [PreviewMode::QUERY_PARAM => 1]);
+        return FrontendUrl::forPath($this->previewPath(), $this->previewQuery());
     }
 }

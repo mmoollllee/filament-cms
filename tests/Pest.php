@@ -166,6 +166,18 @@ function tenantFormHost(): object
         {
             return $this->resolveContactRecipient($override);
         }
+
+        public function stamp(): string
+        {
+            return $this->submittedAt();
+        }
+
+        public function captureUrl(?string $sourceUrl): ?string
+        {
+            $this->captureSourceUrl($sourceUrl);
+
+            return $this->sourceUrl;
+        }
     };
 }
 

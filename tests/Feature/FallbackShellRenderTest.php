@@ -1,5 +1,6 @@
 <?php
 
+use Mmoollllee\Cms\Sites\Notice\Blueprint as NoticeBlueprint;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
@@ -87,6 +88,43 @@ it('renders the onepager fallback shell with the section protocol and without ap
         ->not->toContain('indicatorMeasure')
         ->not->toContain('breadcrumbMeasure')
         ->not->toContain('headerBar.');
+});
+
+it('puts the notice banners above the homepage content of the fallback page template', function () {
+    $tenant = fallbackShellTenant();
+
+    $page = fn (string $path, string $title): Content => Content::factory()->create([
+        'tenant_id' => $tenant->id,
+        'content_type' => 'default.page',
+        'title' => $title,
+        'path' => $path,
+    ]);
+
+    $home = $page('/', 'Start');
+    $about = $page('/ueber-uns', 'Über uns');
+
+    $render = fn (Content $content): string => view('cms::content.page', [
+        'content' => $content,
+        'navigationContext' => null,
+    ])->render();
+
+    expect($render($home))->not->toContain('role="status"');
+
+    Content::factory()->create([
+        'tenant_id' => $tenant->id,
+        'content_type' => NoticeBlueprint::KEY,
+        'title' => 'Betriebsurlaub',
+        'path' => null,
+        'publish_from' => now()->subDay(),
+        'payload' => ['content' => '<p>Wir sind im Urlaub.</p>'],
+    ]);
+
+    expect($render($home))
+        ->toContain('role="status"')
+        ->toContain('Wir sind im Urlaub.')
+        // Every onepager section renders this template — only the start section
+        // may carry the banner.
+        ->and($render($about))->not->toContain('Wir sind im Urlaub.');
 });
 
 it('renders the standalone floating header fallback with the child navigation binding', function () {

@@ -10,10 +10,14 @@ use Filament\Widgets\TableWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Contracts\ContentBlueprint;
+use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Enums\ContentStatus;
 use Mmoollllee\Cms\Filament\Widgets\Concerns\ResolvesContentResourceUrls;
+use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 /**
  * The dashboard's to-do list: content that is waiting on someone.
@@ -25,7 +29,10 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  * - **Geplant** — a future publish_from. Not a task, but time-bound, and an
  *   editor should be able to see what is queued without hunting through lists.
  * - **Abgelaufen** — publish_until has passed, so the page silently fell offline.
- *   Almost always unintentional.
+ *   Almost always unintentional — except for types whose blueprint declares
+ *   expiry as the plan ({@see ContentBlueprint::expiresByDesign()}: notices,
+ *   time-boxed offers). Their expired records are history, not a task, and would
+ *   otherwise stay on the list forever, one per past notice.
  *
  * "Unveröffentlicht" (never published) is deliberately EXCLUDED: it is a stable,
  * intentional state, and on sites with many parked records it would bury the
@@ -108,13 +115,14 @@ class PendingContentWidget extends TableWidget
         }
 
         $supportsDrafts = Drafts::supported($model);
+        $typesExpiringByDesign = static::typesExpiringByDesign($tenant);
 
         return $model::query()
             ->where('tenant_id', $tenant->getKey())
-            ->where(function (Builder $query) use ($supportsDrafts): void {
+            ->where(function (Builder $query) use ($supportsDrafts, $typesExpiringByDesign): void {
                 $query
                     ->where(fn (Builder $sub) => $sub->scheduled())
-                    ->orWhere(fn (Builder $sub) => $sub->expired());
+                    ->orWhere(fn (Builder $sub) => $sub->expired()->whereNotIn('content_type', $typesExpiringByDesign));
 
                 if ($supportsDrafts) {
                     $query->orWhere(fn (Builder $sub) => $sub->withDraft());
@@ -123,6 +131,23 @@ class PendingContentWidget extends TableWidget
             ->orderByRaw('publish_from IS NULL DESC')
             ->orderBy('publish_from')
             ->orderByDesc('id');
+    }
+
+    /**
+     * The tenant's content types whose expired records are no task
+     * ({@see ContentBlueprint::expiresByDesign()}). Scheduled records and draft
+     * stashes of these types still qualify — only the expiry is expected.
+     *
+     * @return list<string>
+     */
+    protected static function typesExpiringByDesign(Tenant $tenant): array
+    {
+        $blueprints = array_filter(
+            app(ContentBlueprintRegistry::class)->forSite($tenant->site_key),
+            fn (ContentBlueprint $blueprint): bool => $blueprint->expiresByDesign(),
+        );
+
+        return array_values(array_map(fn (ContentBlueprint $blueprint): string => $blueprint->key(), $blueprints));
     }
 
     /**
@@ -151,12 +176,12 @@ class PendingContentWidget extends TableWidget
     protected function deadlineFor(Model $record): ?string
     {
         if (Drafts::pending($record)) {
-            return $record->draftSavedAt()?->format('d.m.Y H:i');
+            return TenantTimezone::format($record->draftSavedAt());
         }
 
         return match ($record->status()) {
-            ContentStatus::Scheduled => 'ab '.$record->publish_from?->format('d.m.Y H:i'),
-            ContentStatus::Expired => 'seit '.$record->publish_until?->format('d.m.Y H:i'),
+            ContentStatus::Scheduled => 'ab '.TenantTimezone::format($record->publish_from),
+            ContentStatus::Expired => 'seit '.TenantTimezone::format($record->publish_until),
             default => null,
         };
     }

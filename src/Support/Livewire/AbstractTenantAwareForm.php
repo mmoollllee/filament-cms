@@ -5,10 +5,12 @@ namespace Mmoollllee\Cms\Support\Livewire;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\HtmlString;
 use Illuminate\Validation\ValidationException;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 /**
  * Base for public, tenant-aware Livewire forms (contact, job application, …).
@@ -17,6 +19,9 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  * the current-tenant resolver, contact-recipient resolution and rate limiting — so a
  * concrete form only declares its own fields, validation rules and submit/mail logic.
  * Pair with {@see Concerns\WithSpamQuiz} for a rotating, tenant-defined security question.
+ *
+ * The operator mail's facts about a submission come from here too: the page it was
+ * sent from ({@see captureSourceUrl()}) and when it arrived ({@see submittedAt()}).
  *
  * Analytics: name the form via {@see analyticsName()} and it reports a start and a
  * completion to Umami — see {@see trackConversion()} for the two halves and what
@@ -30,7 +35,34 @@ abstract class AbstractTenantAwareForm extends Component
     /** Honeypot — must stay empty; bots fill it. */
     public string $website = '';
 
+    /**
+     * Absolute URL of the page the form lives on, for the operator mail. Locked:
+     * it is rendered into mails, and a public property is otherwise rewritable
+     * from the browser snapshot — by any anonymous visitor on a public form.
+     */
+    #[Locked]
+    public ?string $sourceUrl = null;
+
     abstract public function submit(): void;
+
+    /**
+     * Remember the page the form renders on — call it from mount(), where the
+     * request is still the page itself. An explicit URL (handed in by the
+     * embedding block) wins.
+     */
+    protected function captureSourceUrl(?string $sourceUrl = null): void
+    {
+        $this->sourceUrl = $sourceUrl ?: request()->url();
+    }
+
+    /**
+     * When the submission arrived, in the site's local time — the server runs on
+     * UTC, and "Eingegangen 07:30" for a 09:30 inquiry misleads the operator.
+     */
+    protected function submittedAt(): string
+    {
+        return now(TenantTimezone::for($this->currentTenant()))->format('d.m.Y H:i');
+    }
 
     /**
      * Identifier this form is measured under, e.g. 'contact-form'. Two events

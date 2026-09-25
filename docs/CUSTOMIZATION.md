@@ -272,6 +272,50 @@ class Blueprint extends \Mmoollllee\Cms\Sites\Default\Section\Blueprint
 }
 ```
 
+**Expected expiry (`$expiresByDesign`)**: the dashboard's "Zu erledigen" list flags
+expired records, because a page whose `publish_until` passed usually fell offline by
+accident. Types whose records are meant to run out — site notices, time-boxed offers —
+set the flag, and their expired records stay off that list (scheduled records and
+draft stashes of the type are still listed):
+
+```php
+class Blueprint extends ConfiguredContentBlueprint
+{
+    protected string $key = 'shop.offer';
+
+    protected bool $expiresByDesign = true;
+}
+```
+
+**Embedding non-routable records**: a record without a page of its own previews on the
+page that embeds it, and its "Vorschau" names it (`?preview_focus=ID`). Query such
+records with the viewing user — `visibleTo($tenant, request()->user())`, as the listing
+block does — and a member's preview shows every entry, unpublished ones included. A slot
+that shows ONE entry of several orders the focused one first, so the "Vorschau" of an
+older or a scheduled entry shows that entry:
+
+```php
+Content::query()->visibleTo($tenant, request()->user())->ofType('shop.offer')
+    ->previewFocusFirst()->orderByDesc('publish_from')->first();
+```
+
+**Notices (opt-in)**: `Cms::enableNotices()` in a service provider's `register()` adds the
+`default.notice` type ("Hinweise": title, rich text, publishing window) and its resource.
+The package's fallback page template (`content.page`) renders them above the homepage's
+blocks — a standalone homepage or an onepager's start section alike; the shells stay
+banner-free, since every onepager section renders that template. An app with its own templates
+places `<x-cms::notices class="…" />` itself and names those templates, so their pages point
+editors to the notices:
+
+```php
+Cms::enableNotices(on: ['acme.content.home', 'acme.content.kontakt']);
+```
+
+The component renders markup only — style `.notices` (the stack), `.notice` and
+`.notice-title` in the site CSS (`richtext` carries the text). For other markup, override
+`resources/views/vendor/cms/components/notices.blade.php` and keep
+`Notices::shown($tenant, request()->user())` as the query.
+
 ---
 
 ## 4. Field kits
@@ -475,12 +519,20 @@ Defaults the base already wires — override only to change:
 | `panelPages()` | the package Dashboard |
 | `tenantProfilePage()` | package page (branding/contact/SEO + spam questions when the Tenant uses `HasSpamQuestions`) |
 | `configureRichEditor()` | the standard editor stack (§7) |
+| `configureTimezone()` | `FilamentTimezone` follows the current tenant's `timezone` column (`TenantTimezone`, Europe/Berlin by default, app timezone as fallback) |
 | `configurePanel(Panel)` | identity — your seam for `->path()`, `->viteTheme()`, discovery, plugins |
 
 Also automatic: the `LoginResponse` → `TenantAwareLoginResponse` binding (host-aware
 post-login redirect), tenant branding (name/logo/primary color), the menu-builder plugin
 (locations from `Cms::menuLocations()`), the tenant middleware incl. persistent
 `ResolveTenantFromHost`, and the local-env login prefill (`cms.dev_login`, env-backed).
+
+**Local time.** Keep `app.timezone` on UTC — the database and PHP stay there. The panel
+shows and takes every time in the site's local time: Filament's pickers and date columns
+convert via `FilamentTimezone`, and text the engine formats itself (window descriptions,
+the to-do list, the draft notice) goes through `TenantTimezone::format()`. App code that
+prints a time for editors or visitors does the same — `TenantTimezone::format($moment)`, or
+`now(TenantTimezone::for($tenant))`; forms on `AbstractTenantAwareForm` get `submittedAt()`.
 
 ### Access management (users & invitations)
 

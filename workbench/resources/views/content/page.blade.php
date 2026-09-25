@@ -2,6 +2,8 @@
      the package block components (which use the package's default <x-site.*>
      design components). --}}
 <article style="display:grid;gap:1.5rem;">
+    <x-cms::notices />
+
     <h2>{{ $content->title }}</h2>
 
     @forelse (($content->blocks ?? []) as $block)
