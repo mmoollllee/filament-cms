@@ -17,7 +17,6 @@ use Mmoollllee\Cms\Filament\Widgets\Concerns\ResolvesContentResourceUrls;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
-use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 /**
  * The dashboard's to-do list: content that is waiting on someone.
@@ -176,12 +175,12 @@ class PendingContentWidget extends TableWidget
     protected function deadlineFor(Model $record): ?string
     {
         if (Drafts::pending($record)) {
-            return TenantTimezone::format($record->draftSavedAt());
+            return $record->draftSavedAt()?->format('d.m.Y H:i');
         }
 
         return match ($record->status()) {
-            ContentStatus::Scheduled => 'ab '.TenantTimezone::format($record->publish_from),
-            ContentStatus::Expired => 'seit '.TenantTimezone::format($record->publish_until),
+            ContentStatus::Scheduled => 'ab '.$record->publish_from?->format('d.m.Y H:i'),
+            ContentStatus::Expired => 'seit '.$record->publish_until?->format('d.m.Y H:i'),
             default => null,
         };
     }

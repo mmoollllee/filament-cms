@@ -26,6 +26,11 @@ class NoticeResource extends TenantScopedContentResource
     /** @var array<int, string> */
     protected static array $contentTypes = [Blueprint::KEY];
 
+    // Pinned: the routes are registered before a tenant is known, so a slug derived
+    // from a site's own `default.notice` (another plural label) would name routes
+    // that do not exist.
+    protected static ?string $slug = 'hinweise';
+
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedMegaphone;
 
     /**
@@ -52,7 +57,9 @@ class NoticeResource extends TenantScopedContentResource
     protected static function detailSections(?Tenant $tenant): array
     {
         // No block builder on this type — the payload section forms the "Inhalt" tab.
-        return static::payloadSections();
+        // Asked of the site's blueprint, so a site overriding `default.notice` brings
+        // its own fields.
+        return static::resolveFormBlueprint()?->payloadFormComponents() ?? static::payloadSections();
     }
 
     public static function getPages(): array

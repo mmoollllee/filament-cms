@@ -15,7 +15,6 @@ use Filament\Support\Icons\Heroicon;
 use Illuminate\Database\Eloquent\Model;
 use Mmoollllee\Cms\Enums\ContentStatus;
 use Mmoollllee\Cms\Enums\ContentVisibility;
-use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 /**
  * Publishing fields: a single "Veröffentlicht" toggle steering the scheduling
@@ -41,12 +40,6 @@ use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
  * The window pickers are hidden while unpublished but stay dehydrated
  * (`dehydratedWhenHidden`), so toggling off actually persists the cleared
  * window instead of silently keeping the record live.
- *
- * Times: the pickers show the tenant's local time ({@see TenantTimezone}), but
- * Get and Set speak the APP timezone — Filament's DateTimeStateCast converts on
- * every read and write. So `now()` is the right value for "Jetzt", and the reset
- * action compares saved and current values without converting; only text shown
- * to the editor goes through {@see TenantTimezone::format()}.
  *
  * `visibility` persists as a Hidden field: the former "Nur Eingeloggt" option
  * never had frontend semantics beyond "invisible outside the preview" (exactly
@@ -242,9 +235,7 @@ class PublishingFields extends FieldKit
         $from = self::parseDateTime($publishFrom);
         $until = self::parseDateTime($publishUntil);
 
-        // Get hands the window over in the app timezone; the sentence names the
-        // wall-clock time the pickers show.
-        $at = fn (CarbonInterface $moment): string => TenantTimezone::format($moment, 'd.m.Y \u\m H:i \U\h\r');
+        $at = fn (CarbonInterface $moment): string => $moment->format('d.m.Y \u\m H:i \U\h\r');
 
         return match (ContentStatus::forWindow($from, $until)) {
             ContentStatus::Draft => 'Für Besucher nicht sichtbar — nur über die Vorschau einsehbar.',

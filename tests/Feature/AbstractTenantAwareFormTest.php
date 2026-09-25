@@ -39,15 +39,10 @@ it('resolves the recipient from an override, else the tenant contact email', fun
         ->and(tenantFormHost()->recipient(null))->toBe('team@example.test');
 });
 
-it('stamps a submission with the local time of the site', function () {
+it('stamps a submission with the app time', function () {
     Carbon::setTestNow('2026-09-25 07:30:00');
 
-    // The server runs on UTC; without a site there is no other time to name.
     expect(tenantFormHost()->stamp())->toBe('25.09.2026 07:30');
-
-    app(CurrentTenant::class)->set(Tenant::factory()->create(['timezone' => 'Europe/Berlin']));
-
-    expect(tenantFormHost()->stamp())->toBe('25.09.2026 09:30');
 });
 
 it('remembers the page the form renders on, an explicit url winning', function () {

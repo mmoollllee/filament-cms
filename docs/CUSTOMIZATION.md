@@ -216,7 +216,9 @@ and `social_links`/`imprint_data`/`privacy_data` (array).
 A **site extension** (`<sites.path>/<Name>/SiteExtension.php` implementing
 `Contracts\SiteExtension`) is auto-discovered and groups content types for a tenant
 `site_key`. The `default` extension (shipped by the package) always loads; the tenant's
-`site_key` extension loads on top.
+`site_key` extension loads on top. An app's own `App\Sites\Default\SiteExtension` replaces
+the package's — while notices are enabled it has to extend
+`Mmoollllee\Cms\Sites\Default\SiteExtension`, which brings them.
 
 ```php
 namespace App\Sites\MySite;
@@ -519,7 +521,6 @@ Defaults the base already wires — override only to change:
 | `panelPages()` | the package Dashboard |
 | `tenantProfilePage()` | package page (branding/contact/SEO + spam questions when the Tenant uses `HasSpamQuestions`) |
 | `configureRichEditor()` | the standard editor stack (§7) |
-| `configureTimezone()` | `FilamentTimezone` follows the current tenant's `timezone` column (`TenantTimezone`, Europe/Berlin by default, app timezone as fallback) |
 | `configurePanel(Panel)` | identity — your seam for `->path()`, `->viteTheme()`, discovery, plugins |
 
 Also automatic: the `LoginResponse` → `TenantAwareLoginResponse` binding (host-aware
@@ -527,12 +528,12 @@ post-login redirect), tenant branding (name/logo/primary color), the menu-builde
 (locations from `Cms::menuLocations()`), the tenant middleware incl. persistent
 `ResolveTenantFromHost`, and the local-env login prefill (`cms.dev_login`, env-backed).
 
-**Local time.** Keep `app.timezone` on UTC — the database and PHP stay there. The panel
-shows and takes every time in the site's local time: Filament's pickers and date columns
-convert via `FilamentTimezone`, and text the engine formats itself (window descriptions,
-the to-do list, the draft notice) goes through `TenantTimezone::format()`. App code that
-prints a time for editors or visitors does the same — `TenantTimezone::format($moment)`, or
-`now(TenantTimezone::for($tenant))`; forms on `AbstractTenantAwareForm` get `submittedAt()`.
+**Time zone.** Every time is the app's (`app.timezone` — the apps read `APP_TIMEZONE`,
+default `Europe/Berlin`): the pickers, the date columns, the engine's own sentences and the
+form mails' `submittedAt()` show it, and it is stored as entered — nothing converts. Run the
+MySQL/MariaDB session on a fixed zone (`'timezone' => env('DB_TIMEZONE', '+00:00')` in
+`config/database.php`): `TIMESTAMP` columns then keep the written value, and a dump pulled
+from the server reads the same on a Mac, whose `SYSTEM` zone would shift it.
 
 ### Access management (users & invitations)
 

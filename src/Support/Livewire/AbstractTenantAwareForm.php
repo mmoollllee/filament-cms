@@ -10,7 +10,6 @@ use Livewire\Component;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\Analytics\Umami;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
-use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 /**
  * Base for public, tenant-aware Livewire forms (contact, job application, …).
@@ -55,13 +54,10 @@ abstract class AbstractTenantAwareForm extends Component
         $this->sourceUrl = $sourceUrl ?: request()->url();
     }
 
-    /**
-     * When the submission arrived, in the site's local time — the server runs on
-     * UTC, and "Eingegangen 07:30" for a 09:30 inquiry misleads the operator.
-     */
+    /** When the submission arrived, in the app's time (config `app.timezone`). */
     protected function submittedAt(): string
     {
-        return now(TenantTimezone::for($this->currentTenant()))->format('d.m.Y H:i');
+        return now()->format('d.m.Y H:i');
     }
 
     /**

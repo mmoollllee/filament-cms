@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Support\Preview;
 
 use Illuminate\Http\Request;
+use Livewire\Livewire;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Concerns\Content\HasPublishingStatus;
 use Mmoollllee\Cms\Contracts\Tenant;
@@ -23,10 +24,10 @@ use Mmoollllee\Cms\Contracts\User;
  * The overlay must NEVER be active while the admin panel talks to the server:
  * ResolveTenantFromHost also runs for panel routes (Filament persistent
  * middleware) and — in apps that append it to the `web` group — for Livewire's
- * /livewire/update endpoint, where an overlaid record would corrupt panel
- * write flows. activateFromRequest() therefore hard-skips panel and Livewire
- * URIs. Cache builders that produce guest-facing data wrap themselves in
- * {@see bypass()} for the same reason.
+ * update endpoint (Livewire::getUpdateUri()), where an overlaid record would
+ * corrupt panel write flows. activateFromRequest() therefore hard-skips panel
+ * and Livewire URIs. Cache builders that produce guest-facing data wrap
+ * themselves in {@see bypass()} for the same reason.
  *
  * The FOCUS names the record a "Vorschau" was opened from when it has no page of
  * its own (a notice, a weekly offer, a team member): `?preview_focus=ID`. Lists
@@ -156,7 +157,8 @@ class PreviewMode
      */
     protected function isPanelOrLivewireRequest(Request $request): bool
     {
-        if ($request->is('livewire/*')) {
+        // Livewire 4 serves updates from a per-install endpoint (/livewire-<hash>/update).
+        if ($request->is(ltrim(Livewire::getUpdateUri(), '/'))) {
             return true;
         }
 

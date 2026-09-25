@@ -132,10 +132,10 @@ referenceable records (FAQ entries, team members, services listed by a listing b
 **Notices ("Hinweise", opt-in)** — `Cms::enableNotices(on: [...])` adds the package's
 `default.notice` type (a title and a rich text with a publishing window, `$expiresByDesign`)
 with its own "Hinweise" resource. `<x-cms::notices />` renders the live notices, the latest
-window first (all of them in a member's preview) — on the homepage in the package's
-fallback page template (an onepager's start section included), wherever an app's own
-templates place it otherwise; the `on:` templates list them under "Außerdem auf dieser
-Seite". The component emits the shared classes `notices`,
+window first (all of them in a member's preview, the previewed one on top) — on the
+homepage in the package's fallback page template (an onepager's start section included),
+wherever an app's own templates place it otherwise; the `on:` templates list them under
+"Außerdem auf dieser Seite". The component emits the shared classes `notices`,
 `notice`, `notice-title` and `richtext`, which the app styles; `Notices::shown($tenant, request()->user())`
 serves an app's own markup.
 
@@ -162,9 +162,8 @@ paths from title/prefix on save.
 drafts on the real site). The content tables show the planned window under the status
 badge ("01.10.2026 10:00 – 15.10.2026 18:00", "ab 01.10.2026 10:00") wherever one is
 planned. The dashboard's to-do list flags expired records unless their blueprint
-declares the expiry as the plan (`$expiresByDesign`, e.g. site notices). Editors enter
-and read every time in the site's local time (the tenant's `timezone`, Europe/Berlin by
-default) while the database stays on UTC — `TenantTimezone` + `FilamentTimezone`.
+declares the expiry as the plan (`$expiresByDesign`, e.g. site notices). Every time is
+the app's time zone (`app.timezone`, `APP_TIMEZONE` in the apps), stored as entered.
 
 **Visibility** — `ContentVisibility` Public/Members per record: members-only pages 404
 for guests.
@@ -877,7 +876,7 @@ show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
   forms `use WithSpamQuiz` to render + validate a random question
   (`AbstractTenantAwareForm` is the tenant-aware Livewire form base to build on — it
   also owns the operator mail's facts: the locked `$sourceUrl` via
-  `captureSourceUrl()` in `mount()`, and `submittedAt()` in the site's local time).
+  `captureSourceUrl()` in `mount()`, and `submittedAt()` in the app's time).
 
 ## Analytics events (optional, with `mmoollllee/filami`)
 

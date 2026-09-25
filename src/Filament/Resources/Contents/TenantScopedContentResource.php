@@ -69,7 +69,6 @@ use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Routing\ContentRenameRedirects;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
-use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 
 abstract class TenantScopedContentResource extends Resource
 {
@@ -834,15 +833,12 @@ abstract class TenantScopedContentResource extends Resource
         $from = $record->getAttribute('publish_from');
         $until = $record->getAttribute('publish_until');
 
-        if (! $from instanceof CarbonInterface) {
-            return null;
-        }
-
-        if ($until instanceof CarbonInterface) {
-            return TenantTimezone::format($from).' – '.TenantTimezone::format($until);
-        }
-
-        return $from->isFuture() ? 'ab '.TenantTimezone::format($from) : null;
+        // The badge above reads the same status(), so the two can never disagree.
+        return match (true) {
+            $from instanceof CarbonInterface && $until instanceof CarbonInterface => $from->format('d.m.Y H:i').' – '.$until->format('d.m.Y H:i'),
+            $record->status() === ContentStatus::Scheduled => 'ab '.$from->format('d.m.Y H:i'),
+            default => null,
+        };
     }
 
     /** Form-state key holding the id of the redirect the editor agreed to remove. */

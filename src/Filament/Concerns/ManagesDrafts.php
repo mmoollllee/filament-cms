@@ -16,7 +16,6 @@ use Mmoollllee\Cms\Filament\Support\UnsavedChanges;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
-use Mmoollllee\Cms\Support\Tenancy\TenantTimezone;
 use Mmoollllee\Cms\Support\Versioning\Versions;
 
 /**
@@ -244,7 +243,7 @@ trait ManagesDrafts
         $record = $this->getRecord();
 
         if (Drafts::pending($record)) {
-            $savedAt = TenantTimezone::format($record->draftSavedAt());
+            $savedAt = $record->draftSavedAt()?->format('d.m.Y H:i');
 
             return $savedAt !== null
                 ? "Entwurf vom {$savedAt} Uhr geladen — noch nicht angewendet."

@@ -5,6 +5,7 @@ namespace Mmoollllee\Cms\Sites;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use LogicException;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\SiteExtension;
 use Mmoollllee\Cms\Sites\Default\SiteExtension as DefaultSiteExtension;
@@ -81,7 +82,31 @@ class SiteExtensionRegistry
             $extensions[$extension->siteKey()] = $extension;
         }
 
+        $this->assertDefaultKeepsNotices($extensions['default']);
+
         return $this->extensions = $extensions;
+    }
+
+    /**
+     * Cms::enableNotices() brings its type and resource through the package's
+     * default extension, so an app extension that replaces it outright would turn
+     * the notices off without a word — no type, no "Hinweise", no banner. That is a
+     * declaration mistake, so it is refused; extending the package class keeps them.
+     *
+     * @throws LogicException
+     */
+    protected function assertDefaultKeepsNotices(SiteExtension $default): void
+    {
+        if (! Cms::hasNotices() || $default instanceof DefaultSiteExtension) {
+            return;
+        }
+
+        throw new LogicException(sprintf(
+            'Cms::enableNotices() needs the package\'s default site extension, but %s replaces it. '
+            .'Extend %s instead (and keep parent::resources() and the notice blueprint).',
+            $default::class,
+            DefaultSiteExtension::class,
+        ));
     }
 
     /**

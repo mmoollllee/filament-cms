@@ -62,16 +62,13 @@ class RegisterTenantPage extends RegisterTenant
                 TextInput::make('brand_claim')
                     ->label('Claim')
                     ->maxLength(255),
+                // No timezone: every time is the app's (APP_TIMEZONE), so a
+                // per-site field would only pretend to steer something.
                 TextInput::make('default_locale')
                     ->label('Sprache')
                     ->required()
                     ->default('de')
                     ->maxLength(8),
-                TextInput::make('timezone')
-                    ->label('Zeitzone')
-                    ->required()
-                    ->default('Europe/Berlin')
-                    ->maxLength(64),
             ]);
     }
 

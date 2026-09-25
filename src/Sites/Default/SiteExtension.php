@@ -18,7 +18,8 @@ use Mmoollllee\Cms\Sites\SiteExtensionRegistry;
  * are editable in the panel — plus the opt-in `default.notice` type with its own
  * resource once an app calls Cms::enableNotices(). The {@see SiteExtensionRegistry}
  * always loads this; an app may still ship its own `App\Sites\Default\SiteExtension`,
- * which overrides this one by site key.
+ * which overrides this one by site key — with notices enabled, only by extending
+ * this class (the registry refuses a replacement that would drop them).
  */
 class SiteExtension implements SiteExtensionContract
 {

@@ -14,6 +14,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Livewire;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Support\CacheKeys;
@@ -271,7 +272,7 @@ it('never activates on panel or livewire request paths, even with a sticky sessi
 
     // … but Livewire component endpoints and panel URIs never do — an active
     // overlay there would corrupt admin write flows.
-    $previewMode->activateFromRequest($makeRequest('http://127.0.0.1/livewire/update', 'POST'), $tenant);
+    $previewMode->activateFromRequest($makeRequest('http://127.0.0.1'.Livewire::getUpdateUri(), 'POST'), $tenant);
     expect($previewMode->active())->toBeFalse();
 
     $previewMode->activateFromRequest($makeRequest('http://127.0.0.1/panel/contents/1/edit'), $tenant);

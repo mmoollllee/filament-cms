@@ -8,6 +8,7 @@ use Filament\Widgets\Widget;
 use Illuminate\Database\Eloquent\Builder;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Enums\ContentStatus;
+use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 
 /**
@@ -145,9 +146,10 @@ class ContentOverviewWidget extends Widget
     }
 
     /**
-     * Map each content_type to the content resource that manages it. The base
-     * resource class is resolved from Cms::resourceBase() so the widget
-     * stays decoupled from any app-specific resource.
+     * Map each content_type to the content resource that manages it — every
+     * content resource, not only those on the app's Cms::resourceBase(): the
+     * package's own (the catch-all, "Hinweise") extend the engine base, like
+     * ContentResourceLocator assumes.
      *
      * @return array<string, class-string>
      */
@@ -155,7 +157,6 @@ class ContentOverviewWidget extends Widget
     {
         $map = [];
 
-        $base = Cms::resourceBase();
         $panel = Filament::getCurrentPanel();
 
         if ($panel === null) {
@@ -163,7 +164,7 @@ class ContentOverviewWidget extends Widget
         }
 
         foreach ($panel->getResources() as $resourceClass) {
-            if (! is_subclass_of($resourceClass, $base)) {
+            if (! is_subclass_of($resourceClass, TenantScopedContentResource::class)) {
                 continue;
             }
 

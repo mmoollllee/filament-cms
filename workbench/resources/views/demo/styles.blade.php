@@ -93,7 +93,7 @@
         /* ---- card ---- */
         .card{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem;box-shadow:0 1px 2px rgba(2,6,23,.04)}
 
-        /* ---- notices (<x-cms::notices />) ---- */
+        /* ---- notices (the cms::notices component; no tag here — Blade would render it) ---- */
         .notices{display:grid;gap:.75rem}
         .notice{border:2px solid #fcd34d;border-radius:var(--radius);background:#fffbeb;color:#78350f;padding:1rem 1.2rem}
         .notice-title{font-weight:600;margin:0 0 .4rem}

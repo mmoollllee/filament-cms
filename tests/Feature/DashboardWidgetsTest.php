@@ -14,12 +14,15 @@
  */
 
 use Livewire\Livewire;
+use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Filament\Widgets\ContentOverviewWidget;
 use Mmoollllee\Cms\Filament\Widgets\PendingContentWidget;
+use Mmoollllee\Cms\Sites\Notice\Blueprint as NoticeBlueprint;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
+use Workbench\App\Sites\Marketing\Service\Resource as ServiceResource;
 
 beforeEach(function () {
     $this->tenant = actingAsMarketingPanelAdmin();
@@ -200,4 +203,18 @@ it('hides the to-do widget without a resolved tenant', function () {
     app(CurrentTenant::class)->forget();
 
     expect(PendingContentWidget::canView())->toBeFalse();
+});
+
+it('links the package resources on an app resource base, too', function () {
+    // Stands in for an app base that its own per-type resources extend — the
+    // catch-all and "Hinweise" come from the package and extend the engine base.
+    Cms::useResourceBase(ServiceResource::class);
+
+    dashboardPage($this->tenant);
+    dashboardPage($this->tenant, ['content_type' => NoticeBlueprint::KEY, 'path' => null, 'payload' => ['content' => '<p>Text</p>']]);
+
+    $urls = array_column(contentOverviewData()['stats'], 'url', 'label');
+
+    expect($urls['Seiten'] ?? null)->toBeString()
+        ->and($urls['Hinweise'] ?? null)->toBeString();
 });

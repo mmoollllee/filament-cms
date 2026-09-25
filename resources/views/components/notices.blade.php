@@ -1,7 +1,8 @@
 {{-- <x-cms::notices> — the site's notice banners ("Hinweise", opt-in via
      Cms::enableNotices()): every notice whose publishing window is open — in a
-     member's preview every notice, unpublished and expired ones included. Renders
-     nothing without a notice, so the caller's layout gets no empty row.
+     member's preview every notice, unpublished and expired ones included, the
+     previewed one on top. Renders nothing without a notice, so the caller's
+     layout gets no empty row.
 
      Markup only — the app styles the shared classes `notices` (the stack),
      `notice` (one banner) and `notice-title` in its site CSS; the text carries
