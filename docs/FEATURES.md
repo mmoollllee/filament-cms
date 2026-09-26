@@ -824,7 +824,9 @@ overrides any of them by shipping the same path (`vendor:publish --tag=cms-front
 
 The Alpine components those views bind against (`siteOnepager`,
 `siteChildNavigation`) ship as ES modules in `resources/js/frontend/` — architecture
-only (lazy loading, history, navigation context, menu state). Apps bundle them via
+only (lazy loading, history, navigation context, menu state). `siteHeadroom` joins them
+as an opt-in for an app's own sticky header (hide on the way down, back on a small
+scroll up). Apps bundle them via
 their own Vite build, register them with `registerCmsFrontend(Alpine, overrides)` and
 layer brand behavior (scroll hints, hero fades, header measuring, scroll stores) on
 top through the override seam and the viewport-state hooks

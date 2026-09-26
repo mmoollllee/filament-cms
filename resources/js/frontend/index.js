@@ -30,12 +30,19 @@
  * Compose multiple mixins into ONE override object and define collision-prone
  * hooks (updateViewportState/onResize) exactly once — the merge is a flat
  * member set.
+ *
+ * `siteHeadroom` (hide a sticky header on the way down, bring it back on a
+ * small scroll up) is registered as well; no package view binds it, an app
+ * header opts in (see site-headroom.js). Apps with their own Alpine wiring can
+ * import it from './site-headroom.js' alone.
  */
 import siteOnepager from './site-onepager';
 import siteChildNavigation from './site-child-navigation';
+import siteHeadroom from './site-headroom';
 
 export { default as siteOnepager } from './site-onepager';
 export { default as siteChildNavigation } from './site-child-navigation';
+export { default as siteHeadroom } from './site-headroom';
 export * from './navigation-shared';
 
 /**
@@ -65,4 +72,6 @@ export function registerCmsFrontend(Alpine, overrides = {}) {
         siteChildNavigation(el, initialNavigationContext, options),
         overrides.childNavigation?.(el, initialNavigationContext, options),
     ));
+
+    Alpine.data('siteHeadroom', siteHeadroom);
 }

@@ -126,7 +126,8 @@ on the tenant's domain.
   `--tag=cms-blocks`).
 - **Frontend JS:** the Alpine components those views bind against (`siteOnepager`,
   `siteChildNavigation`) ship as ES modules — architecture only (lazy loading,
-  history, navigation context, menu state). Bundle them with your Vite build,
+  history, navigation context, menu state) — plus the opt-in `siteHeadroom` for a
+  sticky app header that hides on the way down and returns on a small scroll up. Bundle them with your Vite build,
   register them on `alpine:init`, and layer brand behavior (scroll hints, hero
   fades, header measuring, …) on top via override factories and the viewport-state
   hooks ([`docs/CUSTOMIZATION.md` §10](docs/CUSTOMIZATION.md#10-frontend-views--js)):

@@ -801,6 +801,12 @@ every site via `composer update`:
   did, it is a no-op instead of a second correction.
 - **`siteChildNavigation`** — breadcrumbs, local-section tracking + flyout state on
   standalone pages.
+- **`siteHeadroom`** — opt-in for an app's own sticky header: hides it on the way
+  down, brings it back on the first small scroll up, and keeps a keyboard-focused
+  header in view without scrolling the page. It only tracks `headerHidden`; the
+  template applies the hiding class and wires `onWindowScroll()` / `onFocusIn()`
+  (markup example in `resources/js/frontend/site-headroom.js`). No package view uses
+  it. Apps without `registerCmsFrontend()` import the module on its own.
 
 ```js
 // resources/js/app.js
