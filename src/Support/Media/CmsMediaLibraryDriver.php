@@ -37,6 +37,13 @@ class CmsMediaLibraryDriver extends MediaLibraryItemDriver
      */
     public const ORIGINAL_LEVEL = 'media_library_original';
 
+    /**
+     * MIME type of the media whose conversions are being registered. The vendor
+     * calls the modify callbacks with the conversion only, so the register
+     * callback that runs first in the same pass notes it here.
+     */
+    protected ?string $conversionMediaMimeType = null;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -76,6 +83,22 @@ class CmsMediaLibraryDriver extends MediaLibraryItemDriver
                     ? fn (Conversion $conversion) => $conversion->fit(Fit::Max, $maxWidth, $maxWidth)
                     : null
             )
+            // Runs first in every registerMediaConversions() pass, before the
+            // vendor adds its conversions and calls the modify callbacks.
+            ->registerConversions(function (MediaLibraryItem $item, ?Media $media): void {
+                $this->conversionMediaMimeType = $media?->mime_type;
+            })
+            // A video's stills are cut by ffmpeg. The vendor makes `thumb`
+            // synchronously, inside the upload request — where a PHP-FPM pool
+            // locked down with open_basedir cannot reach the binary, and the
+            // video ends up without a panel preview. Queued, the worker makes
+            // every still of a video a moment later, whatever the app's queue
+            // default.
+            ->modifyConversionsUsing(function (Conversion $conversion): void {
+                if (str_starts_with((string) $this->conversionMediaMimeType, 'video/')) {
+                    $conversion->queued();
+                }
+            })
             ->registerConversions(function (MediaLibraryItem $item, ?Media $media) use ($ogFormat): void {
                 // Processable images only: the library also accepts PDFs,
                 // videos, SVGs and ICOs — a 1200×630 GD crop on those would

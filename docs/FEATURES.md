@@ -783,7 +783,11 @@ dispatches `ConvertVideoForWeb` (queued, 10 min timeout, 2 tries): H.264 MP4, sc
 audio strip, temp-file cleanup, `video_status` processing/complete/failed on the block.
 Requires an `ffmpeg` binary on the server (bundled `pbmedia/laravel-ffmpeg`). Applies to
 legacy path-based uploads; library uploads are served as uploaded (upload-time conversion
-is on the roadmap, see `docs/KONZEPT-MEDIATHEK.md` P4).
+is on the roadmap, see `docs/KONZEPT-MEDIATHEK.md` P4). The stills of a library video
+(`thumb`, `400`, `800`, `responsive`) are always queued, even `thumb`, which the vendor
+renders inside the upload request for images: ffmpeg then runs in the queue worker only,
+so a PHP-FPM pool locked down with `open_basedir` needs no exception for it — the worker's
+CLI PHP must be able to reach the binary.
 
 ## Admin panel
 
