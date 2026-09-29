@@ -676,7 +676,9 @@ A redirection.me-style subsystem, zero-DB-cost on the happy path:
 - **`ResolveActiveRedirects`** middleware serves manual/automatic redirects from a
   per-tenant forever-cache (warmed on every redirect edit) *before* content resolution.
 - **404 logging** — unmatched paths land in `not_found_logs` (deferred + throttled,
-  bot-noise filtered via `ignore_extensions`), visible in the panel ("404-Log" resource,
+  scanner probes filtered via `ignore_extensions` + `ignore_paths` wildcards — dotfiles,
+  `.well-known`, script probes, WordPress/Joomla/Drupal internals — and requests that name
+  themselves as referer on the same host), visible in the panel ("404-Log" resource,
   navigation badge = unresolved count) with a one-click "create redirect" action.
 - **Fuzzy auto-resolve** — the branded 404 page calls `/_resolve404` asynchronously;
   `PathSuggestionResolver` scores the path against all visible content (slug match,
@@ -687,7 +689,8 @@ A redirection.me-style subsystem, zero-DB-cost on the happy path:
   an automatic redirect promotes it to manual + 301 (`confirmed_status`). Deleting is
   soft — a trashed row blocks the resolver from re-creating the same automatic redirect.
 - **Hit counting** (`hits`, `last_hit_at`, deferred) and **daily pruning** of stale
-  low-traffic 404 logs (`cms:prune-not-found-logs`, auto-scheduled).
+  low-traffic 404 logs and of rows the ignore rules match (`cms:prune-not-found-logs`,
+  auto-scheduled).
 
 Everything is tunable under `config('cms.redirects')` — thresholds, statuses, retention.
 

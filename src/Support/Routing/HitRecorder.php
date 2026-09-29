@@ -26,7 +26,10 @@ class HitRecorder
 {
     use DetectsUniqueViolations;
 
-    public function __construct(protected PathNormalizer $normalizer) {}
+    public function __construct(
+        protected PathNormalizer $normalizer,
+        protected NotFoundIgnoreList $ignoreList,
+    ) {}
 
     /**
      * Count a served redirect. Throttled to ≤1 DB write/min per (tenant, from_path).
@@ -56,8 +59,8 @@ class HitRecorder
     }
 
     /**
-     * Record a 404 for a path, upserting the tenant's NotFoundLog row. Ignores obvious probe
-     * noise. Throttled to ≤1 DB write/min per (tenant, path).
+     * Record a 404 for a path, upserting the tenant's NotFoundLog row. Ignores probe noise
+     * ({@see NotFoundIgnoreList}). Throttled to ≤1 DB write/min per (tenant, path).
      */
     public function record404(Tenant $tenant, string $path, ?string $referer = null, ?string $userAgent = null): void
     {
@@ -67,7 +70,7 @@ class HitRecorder
 
         $path = $this->normalizer->normalize($path);
 
-        if ($this->isIgnored($path)) {
+        if ($this->isIgnored($tenant, $path, $referer)) {
             return;
         }
 
@@ -126,20 +129,8 @@ class HitRecorder
         })->always();
     }
 
-    protected function isIgnored(string $path): bool
+    protected function isIgnored(Tenant $tenant, string $path, ?string $referer): bool
     {
-        if (mb_strlen($path) > 2048) {
-            return true;
-        }
-
-        $lower = strtolower($path);
-
-        foreach ((array) config('cms.redirects.ignore_extensions', []) as $extension) {
-            if (str_ends_with($lower, '.'.ltrim((string) $extension, '.'))) {
-                return true;
-            }
-        }
-
-        return false;
+        return $this->ignoreList->ignores($path, $referer, $tenant->primary_domain);
     }
 }

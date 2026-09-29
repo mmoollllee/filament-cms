@@ -50,6 +50,20 @@ return [
     | prune_after_days   delete low-traffic 404 logs older than this many days.
     | prune_min_hits     404 logs with fewer hits than this are eligible for pruning.
     | ignore_extensions  request paths ending in these are never logged (bot/probe noise).
+    | ignore_paths       Str::is() wildcards (case-insensitive, `*` crosses slashes) for
+    |                    probe paths that are never logged: dotfiles and dot-directories
+    |                    (.env*, .git, .well-known), script probes (.php7, .php~), URL
+    |                    schemes and phone numbers resolved as paths (tel:, /+49…), the
+    |                    "null"/"undefined" of script-running crawlers, WordPress, Joomla,
+    |                    Drupal and shop internals, and exploit endpoints (/graphql, /shell).
+    |                    Generic words a person might type (/admin, /login) stay logged:
+    |                    a redirect is the better answer there. So do uploads and theme
+    |                    assets under /wp-content, since after a relaunch those are real old
+    |                    links worth a redirect. A request whose referer is its own URL on
+    |                    the same host (a scanner guessing "/blog" from "/blog/") is never
+    |                    logged either.
+    |                    The daily prune also deletes rows these rules match, so extending
+    |                    them cleans up the log.
     */
     'redirects' => [
         'enabled' => true,
@@ -65,7 +79,51 @@ return [
         'on_rename' => 'keep',
         'prune_after_days' => 90,
         'prune_min_hits' => 3,
-        'ignore_extensions' => ['php', 'env', 'asp', 'aspx', 'cgi', 'jsp', 'sql', 'bak'],
+        'ignore_extensions' => [
+            'php', 'env', 'asp', 'aspx', 'cgi', 'jsp', 'sql', 'bak',
+            'map', 'txt', 'ini', 'log', 'yml', 'yaml', 'sh', 'old', 'swp', 'json',
+            'php3', 'php4', 'php5', 'php7', 'php8', 'phtml', 'phar',
+        ],
+        'ignore_paths' => [
+            '*/.*',
+            '*.php.*',
+            '*.php~',
+            '*:*',
+            '*/+*',
+            '*/%2b*',
+            '*/null',
+            '*/undefined',
+            '/_*',
+            '/wp',
+            '/wordpress',
+            '/wp-content',
+            '/wp-content/uploads',
+            '*/wp-admin*',
+            '*/wp-includes/*',
+            '*/wp-content/plugins/*',
+            '*/wp-json*',
+            '*/wp-login*',
+            '/administrator*',
+            '/components/com_*',
+            '/admin/*',
+            '/admin_*',
+            '/adminpanel*',
+            '/sites/default/*',
+            '/magento_version',
+            '/sales_order',
+            '/key/index',
+            '/index/key',
+            '/graphql',
+            '/rest',
+            '/ip',
+            '/shell',
+            '/webshell',
+            '/media/system/*',
+            '/cgi-bin/*',
+            '/phpmyadmin*',
+            '/phpinfo*',
+            '/env',
+        ],
     ],
 
     /*
