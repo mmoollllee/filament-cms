@@ -1029,6 +1029,31 @@ php artisan cms:media:prune             # delete it
 also catches `{id}/` directories whose row is gone. It leaves a legacy `2020/01/…`
 upload tree in place (a year looks exactly like an id) and reports it instead.
 
+**Blurred placeholders** come from `BlurredPlaceholderGenerator`, bound in place of the
+library's stock generator unless the app configured its own under
+`media-library.responsive_images.tiny_placeholder_generator`. Placeholders generated
+before it may still carry the source photo's metadata; rebuild just those — conversions
+and srcset candidates stay untouched:
+
+```bash
+php artisan cms:media:placeholders --dry-run   # list the missing or metadata-laden ones
+php artisan cms:media:placeholders             # rebuild them (--all for every one)
+```
+
+**Camera metadata** (GPS, device, capture time) stays in the uploaded original only:
+`MetadataFreeFilesystem` is bound over `Spatie\MediaLibrary\MediaCollections\Filesystem`
+(unless the app bound its own) and strips every conversion and srcset candidate before
+it is written. Derivatives generated before the package shipped this still carry it:
+
+```bash
+php artisan cms:media:strip-metadata --dry-run   # list them
+php artisan cms:media:strip-metadata             # strip them in place, then fix the placeholders
+```
+
+An app-level `<x-site.media-item>` override receives the placeholder as a `placeholder`
+prop and `width`/`height` as attributes from the media block; put them on the `<img>`
+(`MediaUrlResolver::placeholderStyle($placeholder)` builds the inline style).
+
 **Rich editor uploads** go into the library as well, via
 `MediaLibraryAttachmentPlugin` (registered in `configureRichEditor()` whenever the
 library is enabled). Nothing to wire in an app. Two consequences worth knowing:

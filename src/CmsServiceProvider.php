@@ -18,7 +18,9 @@ use Illuminate\Support\ServiceProvider;
 use Mmoollllee\Cms\Console\Commands\CheckContentPathsCommand;
 use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
+use Mmoollllee\Cms\Console\Commands\MediaPlaceholdersCommand;
 use Mmoollllee\Cms\Console\Commands\MediaPruneCommand;
+use Mmoollllee\Cms\Console\Commands\MediaStripMetadataCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Contracts\User;
@@ -51,10 +53,12 @@ use Mmoollllee\Cms\Support\Content\PathConflicts;
 use Mmoollllee\Cms\Support\Content\PathGenerator;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
 use Mmoollllee\Cms\Support\Locking\Locks;
+use Mmoollllee\Cms\Support\Media\BlurredPlaceholderGenerator;
 use Mmoollllee\Cms\Support\Media\CmsMediaLibraryItemImageGenerator;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
 use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
+use Mmoollllee\Cms\Support\Media\MetadataFreeFilesystem;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Routing\HitRecorder;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
@@ -69,6 +73,9 @@ use Mmoollllee\Filami\Filami;
 use RalphJSmit\Filament\MediaLibrary\ImageGenerators\MediaLibraryItemImageGenerator;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
+use Spatie\MediaLibrary\MediaCollections\Filesystem as MediaFilesystem;
+use Spatie\MediaLibrary\ResponsiveImages\TinyPlaceholderGenerator\Blurred;
+use Spatie\MediaLibrary\ResponsiveImages\TinyPlaceholderGenerator\TinyPlaceholderGenerator;
 use Tiptap\Marks\Link;
 
 /**
@@ -429,9 +436,25 @@ class CmsServiceProvider extends ServiceProvider
         // once — see the subclass for the guard it adds.
         $this->app->bind(MediaLibraryItemImageGenerator::class, CmsMediaLibraryItemImageGenerator::class);
 
+        // Every derivative reaches the disk through the library's filesystem;
+        // this one drops the camera metadata on the way (the original keeps it).
+        if (! $this->app->bound(MediaFilesystem::class)) {
+            $this->app->bind(MediaFilesystem::class, MetadataFreeFilesystem::class);
+        }
+
+        // The stock placeholder generator keeps the source's metadata (see the
+        // replacement). The library binds it from config during register(), so
+        // swap the binding too — unless the app configured a generator of its own.
+        if (config('media-library.responsive_images.tiny_placeholder_generator') === Blurred::class) {
+            config(['media-library.responsive_images.tiny_placeholder_generator' => BlurredPlaceholderGenerator::class]);
+            $this->app->bind(TinyPlaceholderGenerator::class, BlurredPlaceholderGenerator::class);
+        }
+
         if ($this->app->runningInConsole()) {
             $this->commands([
+                MediaPlaceholdersCommand::class,
                 MediaPruneCommand::class,
+                MediaStripMetadataCommand::class,
             ]);
         }
     }

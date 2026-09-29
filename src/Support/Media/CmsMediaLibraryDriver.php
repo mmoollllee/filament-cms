@@ -30,6 +30,13 @@ class CmsMediaLibraryDriver extends MediaLibraryItemDriver
      */
     public const RENDERED_CONVERSION = 'responsive';
 
+    /**
+     * The key the library registers srcset candidates under when they are
+     * generated off the original rather than off a conversion. Spatie spells it
+     * as a literal in half a dozen places and exposes no constant.
+     */
+    public const ORIGINAL_LEVEL = 'media_library_original';
+
     protected function setUp(): void
     {
         parent::setUp();

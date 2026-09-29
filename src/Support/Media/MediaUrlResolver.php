@@ -9,6 +9,8 @@ use Mmoollllee\Cms\Cms;
 use RalphJSmit\Filament\Explore\Data\FileData;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
+use Spatie\MediaLibrary\ResponsiveImages\RegisteredResponsiveImages;
+use Spatie\MediaLibrary\ResponsiveImages\ResponsiveImage;
 
 /**
  * Resolves stored media references to URLs and metadata.
@@ -40,6 +42,9 @@ final class MediaUrlResolver
 
     /** @var array<string, bool> per-request memo for {@see conversionFileExists()} */
     protected static array $conversionExists = [];
+
+    /** @var array<int, RegisteredResponsiveImages|null> per-request memo for {@see responsiveImages()} */
+    private static array $responsiveImages = [];
 
     public static function url(mixed $ref, ?string $conversion = null): ?string
     {
@@ -164,26 +169,105 @@ final class MediaUrlResolver
      */
     public static function srcset(mixed $ref): ?string
     {
-        $media = self::media($ref);
-
-        if ($media === null || ! self::isImageMime($media->mime_type)) {
-            return null;
-        }
-
-        if (blank(config("filesystems.disks.{$media->disk}.url"))) {
-            return null;
-        }
-
-        // The plugin registers responsive images on the `responsive`
-        // conversion; fall back to original-level responsive images for
-        // custom conversion sets.
-        $srcset = $media->getSrcset(CmsMediaLibraryDriver::RENDERED_CONVERSION);
-
-        if (blank($srcset)) {
-            $srcset = $media->getSrcset();
-        }
+        // The library's own getSrcset() appends the blurred placeholder as a
+        // 32w candidate. With a real `sizes` the browser never picks it, so it
+        // only weighed down every page — {@see placeholder()} renders it where
+        // it is actually seen.
+        $srcset = self::responsiveImages($ref)?->files
+            ->map(fn (ResponsiveImage $image): string => "{$image->url()} {$image->width()}w")
+            ->implode(', ');
 
         return filled($srcset) ? $srcset : null;
+    }
+
+    /**
+     * The blurred placeholder of an image ref as a data URI, shown behind the
+     * <img> until the real file paints over it ({@see placeholderStyle()}).
+     *
+     * JPEG only: the placeholder itself is always a JPEG, so a transparent PNG
+     * would flash a filled box where its transparency belongs. Null wherever
+     * srcset() is null, and when the app turned the placeholders off.
+     */
+    public static function placeholder(mixed $ref): ?string
+    {
+        if (! config('media-library.responsive_images.use_tiny_placeholders')) {
+            return null;
+        }
+
+        if (self::media($ref)?->mime_type !== 'image/jpeg') {
+            return null;
+        }
+
+        $placeholder = self::responsiveImages($ref)?->getPlaceholderSvg();
+
+        return filled($placeholder) ? $placeholder : null;
+    }
+
+    /**
+     * Intrinsic size of an image ref, from its widest srcset candidate, for the
+     * <img> width/height attributes. With them the browser reserves the box
+     * before the file arrives: nothing shifts, and the placeholder has room to
+     * show. Null wherever srcset() is null.
+     *
+     * @return array{width: int, height: int}|null
+     */
+    public static function dimensions(mixed $ref): ?array
+    {
+        $widest = self::responsiveImages($ref)?->files->sortByDesc(fn (ResponsiveImage $image): int => $image->width())->first();
+
+        if ($widest === null || $widest->width() <= 0 || $widest->height() <= 0) {
+            return null;
+        }
+
+        return ['width' => $widest->width(), 'height' => $widest->height()];
+    }
+
+    /**
+     * Inline style that lays a placeholder behind an <img>. The image is opaque
+     * (see placeholder()), so once it has loaded it covers the placeholder and
+     * nothing has to remove it — no script involved.
+     */
+    public static function placeholderStyle(?string $placeholder): ?string
+    {
+        if (blank($placeholder)) {
+            return null;
+        }
+
+        return "background-image:url({$placeholder});background-size:cover;background-position:center;background-repeat:no-repeat";
+    }
+
+    /**
+     * The responsive images the frontend renders for an image ref: the plugin
+     * registers them on the `responsive` conversion, custom conversion sets
+     * fall back to the original-level ones. Null for legacy paths, non-images,
+     * pending conversions, and disks without a public base URL.
+     *
+     * Memoized per request: srcset(), placeholder() and dimensions() all ask
+     * for the same image, and each answer builds a registry of candidates.
+     */
+    private static function responsiveImages(mixed $ref): ?RegisteredResponsiveImages
+    {
+        $media = self::media($ref);
+
+        if ($media === null || ! self::isImageMime($media->mime_type) || blank(config("filesystems.disks.{$media->disk}.url"))) {
+            return null;
+        }
+
+        $key = (int) $media->getKey();
+
+        if (array_key_exists($key, self::$responsiveImages)) {
+            return self::$responsiveImages[$key];
+        }
+
+        foreach ([CmsMediaLibraryDriver::RENDERED_CONVERSION, ''] as $conversion) {
+            $responsiveImages = $media->responsiveImages($conversion);
+
+            if ($responsiveImages->files->isNotEmpty()) {
+                return self::$responsiveImages[$key] = $responsiveImages;
+            }
+        }
+
+        return self::$responsiveImages[$key] = null;
     }
 
     /** Central alt text stored on the media-library item (null for legacy refs). */
@@ -306,6 +390,8 @@ final class MediaUrlResolver
         self::$items = [];
         self::$media = [];
         self::$pickerKeys = [];
+        self::$conversionExists = [];
+        self::$responsiveImages = [];
     }
 
     /**

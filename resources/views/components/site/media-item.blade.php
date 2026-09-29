@@ -4,6 +4,7 @@
     'src' => null,
     'alt' => '',
     'poster' => null,
+    'placeholder' => null,
     'id' => null,
 ])
 
@@ -17,6 +18,6 @@
             <source src="{{ $src }}">
         </video>
     @else
-        <img src="{{ $src }}" alt="{{ $alt }}" {{ $attributes }} @if (filled($id)) id="{{ $id }}" @endif>
+        <img src="{{ $src }}" alt="{{ $alt }}" {{ $attributes->merge(array_filter(['style' => \Mmoollllee\Cms\Support\Media\MediaUrlResolver::placeholderStyle($placeholder)])) }} @if (filled($id)) id="{{ $id }}" @endif>
     @endif
 @endif

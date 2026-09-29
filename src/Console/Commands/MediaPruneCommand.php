@@ -80,12 +80,7 @@ class MediaPruneCommand extends Command
      */
     protected const DRIFT_THRESHOLD = 0.1;
 
-    /**
-     * The key the library registers candidates under when they are generated
-     * off the original rather than off a conversion. Spatie spells it as a
-     * literal in half a dozen places and exposes no constant.
-     */
-    protected const ORIGINAL_LEVEL = 'media_library_original';
+    protected const ORIGINAL_LEVEL = CmsMediaLibraryDriver::ORIGINAL_LEVEL;
 
     /** @var array<int, array{disk: string, path: string, size: int, reason: string}> */
     protected array $orphans = [];

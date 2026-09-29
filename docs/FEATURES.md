@@ -377,7 +377,9 @@ BlockBuilder::make('blocks', $tenant, $blocks, sortableGroup: 'section-blocks');
 
 **Core blocks** — `section` (container: child blocks plus an optional header — title in
 the row, eyebrow + intro text on demand), `text` (rich text with HTML source tab), `media`
-(image/video upload with alt text, poster frame, quality preset), `listing` (renders all
+(image/video upload with alt text, poster frame — else the still extracted from the video —
+quality preset; the first media of a server-rendered page loads `eager` with
+`fetchpriority="high"`, every later one and every `/_content` fragment stays lazy), `listing` (renders all
 visible records of a content type as cards, e.g. services), `note` (editor-only). Views
 ship in the package (`blocks::…` previews, `<x-block::…>` frontend) and are
 `vendor:publish`-overridable.
@@ -726,6 +728,20 @@ group Inhalt), folders, search, filters, bulk actions, image editor, central
   via the Spatie Media API (URL-generator-aware, so private-disk installs work),
   strings as before. `<x-site.image>` emits `srcset`/`sizes`/`loading="lazy"` from the
   responsive conversions; block trees batch-preload refs (no N+1).
+- **Blurred placeholders** — `<x-site.image>` and the media block give a library JPEG its
+  intrinsic `width`/`height` (the box is reserved, nothing shifts) and lay the library's
+  32px placeholder behind the `<img>` as a background until the file paints over it. The
+  placeholder is no longer a `32w` srcset candidate, where the browser never picked it.
+  `BlurredPlaceholderGenerator` replaces the stock generator and drops the source's
+  metadata (a phone photo's EXIF preview turned ~1 KB into 40+ KB, inline in every page);
+  `cms:media:placeholders` rebuilds the missing or metadata-laden ones (`--all`,
+  `--dry-run`).
+- **Metadata stays in the original** — `MetadataFreeFilesystem` (bound over the library's
+  filesystem) drops EXIF/XMP/IPTC — GPS coordinates, device, capture time, embedded
+  previews — from every conversion and srcset candidate on its way to the disk. Lossless
+  (segments and chunks of JPEG/WebP/PNG, no re-encode), and the ICC profile stays so
+  wide-gamut photos keep their colours. `cms:media:strip-metadata` cleans derivatives
+  generated before (and runs the placeholder rebuild); originals are never touched.
 - Default folders per tenant — flat, context-based: **Branding** (logos, favicon, OG),
   **Seiten** (block/hero media), **Dokumente** (downloads); provisioned lazily,
   renamable via `Cms::useMediaFolderNames()`.

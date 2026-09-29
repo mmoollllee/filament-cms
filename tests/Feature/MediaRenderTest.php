@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Support\Media\MediaLoadingPriority;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
@@ -22,6 +23,9 @@ beforeEach(function () {
 it('renders the media block from a library item id with central alt text', function () {
     $tenant = Tenant::factory()->create();
     $item = makeLibraryImage($tenant, attributes: ['alt_text' => 'Zentraler Alt-Text']);
+
+    // Not the page's hero: that one loads eagerly (MediaLoadingPriorityTest).
+    MediaLoadingPriority::forgo();
 
     $rendered = Blade::render('<x-block::media :data="$data" />', [
         'data' => ['media_path' => $item->getKey(), 'active' => true],

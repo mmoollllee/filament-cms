@@ -9,6 +9,7 @@ use Mmoollllee\Cms\Support\Content\ContentResolver;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\NavigationContextBuilder;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
+use Mmoollllee\Cms\Support\Media\MediaLoadingPriority;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
@@ -48,6 +49,9 @@ class ContentFragmentController
         $this->layoutPresetResolver->preload($content->blocks ?? []);
 
         $contentView = $this->templateResolver->resolve($content, $tenant);
+
+        // Fetched on scroll, so below the fold: no media in it may jump the loading queue.
+        MediaLoadingPriority::forgo();
 
         $html = ViewFacade::first(
             ["{$tenant->site_key}.{$contentView}", $contentView],

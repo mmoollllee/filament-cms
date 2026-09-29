@@ -199,3 +199,21 @@ it('memoizes the deterministic hash lookup and clears it on flush', function () 
     // the same hash has to decode to the same id on a cold cache.
     expect(MediaUrlResolver::normalize($hash))->toBe((int) $item->getKey());
 });
+
+it('checks the disk again for a conversion after a flush', function () {
+    Queue::fake();
+    $tenant = Tenant::factory()->create();
+    $item = makeLibraryImage($tenant);
+    $media = $item->getItem();
+    $media->generated_conversions = ['800' => true];
+    $media->save();
+
+    expect(MediaUrlResolver::conversionUrl($item->getKey(), '800'))->toBeNull();
+
+    // A queue worker finished the conversion; a long-running process must see it
+    // once the request caches are reset instead of remembering "missing" forever.
+    Storage::disk('public')->put($media->getPathRelativeToRoot('800'), 'derivative');
+    MediaUrlResolver::flush();
+
+    expect(MediaUrlResolver::conversionUrl($item->getKey(), '800'))->toBe($media->getUrl('800'));
+});
