@@ -3,9 +3,11 @@
 namespace Mmoollllee\Cms\Http\Controllers\Frontend;
 
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\View as ViewFacade;
 use Mmoollllee\Cms\Contracts\Content;
+use Mmoollllee\Cms\Http\Middleware\CanonicalizeTrailingSlash;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
@@ -82,16 +84,35 @@ class ContentShowController
      *
      * The route parameter `$path` is null for the homepage ("/").
      */
-    public function __invoke(Request $request, ?string $path = null): View
+    public function __invoke(Request $request, ?string $path = null): View|RedirectResponse
     {
         $tenant = $this->currentTenant->get();
 
         abort_if($tenant === null, 404);
 
-        $content = $this->contentResolver->findByPath($tenant, $path, $request->user());
+        $requestedPath = $this->contentResolver->normalizePath($path);
+        $lowercasePath = mb_strtolower($requestedPath);
+
+        // Finds the page under another spelling too; the case check below redirects to it.
+        $content = $this->contentResolver->findByPath($tenant, $requestedPath, $request->user());
 
         if ($content === null) {
             throw new NotFoundHttpException;
+        }
+
+        // An exact match on the stored path is the canonical address already; only a match
+        // under another spelling has to compose the path.
+        $canonicalPath = $content->path === $requestedPath ? $requestedPath : $content->resolvedPath();
+
+        // CanonicalizeTrailingSlash leaves mixed-case paths to this redirect, so a trailing
+        // slash is this controller's to strip there too — even when the case already fits.
+        $pathInfo = $request->getPathInfo();
+        $strayTrailingSlash = $pathInfo !== '/' && str_ends_with($pathInfo, '/') && $requestedPath !== $lowercasePath;
+
+        if ($canonicalPath !== null
+            && mb_strtolower($canonicalPath) === $lowercasePath
+            && ($canonicalPath !== $requestedPath || $strayTrailingSlash)) {
+            return $this->redirectToCanonicalCase($request, $canonicalPath);
         }
 
         $onepagerSection = $this->contentResolver->onepagerSectionFor($content, $tenant);
@@ -125,5 +146,22 @@ class ContentShowController
                 'backButton' => $this->resolveBackButton($content),
             ],
         );
+    }
+
+    /**
+     * 301 a request that reached a page under a different letter case to the page's own path.
+     *
+     * Paths are slugs and therefore lower case, but a case-insensitive database collation
+     * (MySQL's default) resolves "/Jobs" to the same row as "/jobs": two addresses serving one
+     * page, each with a self-referencing canonical. The redirect folds the variant into the real
+     * address. The resolver finds the variant on case-sensitive databases as well
+     * ({@see ContentResolver::findByPath()}). A trailing slash goes in the same hop (see
+     * {@see CanonicalizeTrailingSlash}).
+     */
+    protected function redirectToCanonicalCase(Request $request, string $canonicalPath): RedirectResponse
+    {
+        $query = $request->getQueryString();
+
+        return redirect($canonicalPath.($query !== null ? '?'.$query : ''), 301);
     }
 }

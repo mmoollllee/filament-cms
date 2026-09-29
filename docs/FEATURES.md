@@ -669,6 +669,10 @@ sections (as anchors), all routable published public content; cached per tenant.
 **Canonical trailing slash** — `CanonicalizeTrailingSlash` 301s `/pfad/` → `/pfad`
 (preserves link equity from old WordPress URLs).
 
+**Canonical letter case** — `ContentShowController` 301s `/Pfad` → `/pfad` when a page
+answers under another letter case (MySQL's case-insensitive collation would otherwise
+serve one page at two addresses, each with a self-referencing canonical).
+
 ## Redirects & 404 management
 
 A redirection.me-style subsystem, zero-DB-cost on the happy path:

@@ -40,6 +40,11 @@ class ContentResolver
      * First attempts a direct `path` column match. If that fails, falls back
      * to computing resolvedPath() for every visible record (handles blueprint-
      * generated paths that aren't stored literally in the database).
+     *
+     * A path spelled in another letter case ("/Jobs") finds its page too — the
+     * exact spelling wins — so the caller can fold the variant into the page's
+     * own address with a redirect
+     * ({@see \Mmoollllee\Cms\Http\Controllers\Frontend\ContentShowController}).
      */
     public function findByPath(Tenant $tenant, ?string $path, ?Authenticatable $user = null): ?Content
     {
@@ -59,7 +64,7 @@ class ContentResolver
         // `serializable_classes = false` cache stores can round-trip them.
         $cached = Cache::get($key, false);
 
-        if ($cached === null) {
+        if ($cached === self::MISS) {
             return null;
         }
 
@@ -76,6 +81,13 @@ class ContentResolver
 
         $content = $this->resolveFindByPath($tenant, $normalizedPath);
 
+        // A hit under another spelling is only ever answered with a redirect, and the cache
+        // observer busts the keys of a page's own path alone: a variant key would keep
+        // pointing at the page after a rename or delete.
+        if ($content !== null && ! $this->isExactMatch($content, $normalizedPath)) {
+            return $content;
+        }
+
         if ($content !== null) {
             // Cached until the page's own publish_until (null = indefinitely) —
             // the status is time-derived, so a write-invalidated forever cache
@@ -91,7 +103,7 @@ class ContentResolver
         // Cache 404s only BRIEFLY: this absorbs bursts of bots hammering the same dead URL
         // (the fallback in resolveFindByPath() scans all content) without letting an attacker
         // enumerating distinct paths grow the cache store without bound (as rememberForever did).
-        Cache::put($key, null, now()->addSeconds(self::MISS_CACHE_TTL));
+        Cache::put($key, self::MISS, now()->addSeconds(self::MISS_CACHE_TTL));
 
         return null;
     }
@@ -99,14 +111,28 @@ class ContentResolver
     /** Seconds a negative (404) path lookup is cached — long enough to shed bot floods, short enough to bound growth. */
     protected const MISS_CACHE_TTL = 60;
 
+    /**
+     * What a cached 404 holds. Not null: the cache reads a stored null as "nothing stored",
+     * which left every repeated dead URL to the full scan below.
+     */
+    protected const MISS = 'not-found';
+
+    /**
+     * Both spellings of a mixed-case path are resolved in the same pass — the exact one first —
+     * so a path that matches nothing costs one content scan, not one per spelling.
+     */
     protected function resolveFindByPath(Tenant $tenant, string $normalizedPath, ?Authenticatable $user = null): ?Content
     {
-        $content = Cms::contentModel()::query()
-            ->visibleTo($tenant, $user)
-            ->where('path', $normalizedPath)
-            ->first();
+        $lowercasePath = mb_strtolower($normalizedPath);
 
-        if ($content !== null) {
+        $candidates = Cms::contentModel()::query()
+            ->visibleTo($tenant, $user)
+            ->whereIn('path', array_unique([$normalizedPath, $lowercasePath]))
+            ->get()
+            // A case-insensitive collation returns every spelling for either value.
+            ->sortByDesc(fn (Content $content): bool => $content->path === $normalizedPath);
+
+        foreach ($candidates as $content) {
             $content->setRelation('tenant', $tenant);
 
             // A non-routable blueprint has no URL: ignore a stale/leftover `path`
@@ -117,17 +143,37 @@ class ContentResolver
             }
         }
 
-        return Cms::contentModel()::query()
+        $caseVariant = null;
+
+        $contents = Cms::contentModel()::query()
             ->visibleTo($tenant, $user)
             // resolvedPath() consults the parent for parent-driven paths — eager
             // load it so the full scan stays two queries instead of N+1.
             ->with('parent')
-            ->get()
-            ->first(function (Content $content) use ($normalizedPath, $tenant): bool {
-                $content->setRelation('tenant', $tenant);
+            ->get();
 
-                return $content->resolvedPath() === $normalizedPath;
-            });
+        foreach ($contents as $content) {
+            $content->setRelation('tenant', $tenant);
+            $resolvedPath = $content->resolvedPath();
+
+            if ($resolvedPath === $normalizedPath) {
+                return $content;
+            }
+
+            if ($caseVariant === null && $resolvedPath !== null && mb_strtolower($resolvedPath) === $lowercasePath) {
+                $caseVariant = $content;
+            }
+        }
+
+        return $caseVariant;
+    }
+
+    /**
+     * Whether a found page lives at exactly this path, not at another spelling of it.
+     */
+    protected function isExactMatch(Content $content, string $normalizedPath): bool
+    {
+        return $content->path === $normalizedPath || $content->resolvedPath() === $normalizedPath;
     }
 
     /**
