@@ -10,7 +10,7 @@
     x-cloak
     x-show="showBreadcrumbs() && !menuOpen"
 >
-    <a class="inline-flex items-center justify-center no-underline shrink-0" x-bind:href="homePath()" aria-label="{{ __('cms::frontend.back_to_start') }}">
+    <a class="inline-flex items-center justify-center no-underline shrink-0" href="/" x-bind:href="homePath()" aria-label="{{ __('cms::frontend.back_to_start') }}">
         <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z" /></svg>
     </a>
 

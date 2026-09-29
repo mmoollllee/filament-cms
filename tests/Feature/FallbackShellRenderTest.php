@@ -79,6 +79,9 @@ it('renders the onepager fallback shell with the section protocol and without ap
         ->toContain('data-path="/kontakt"')
         ->toContain('data-role="header-indicator"')
         ->toContain('data-role="header-breadcrumbs"')
+        // A real href before Alpine binds it: focusable without JS, and crawlers
+        // that read x-bind:href literally find "/" instead of requesting "homePath()".
+        ->toContain('href="/" x-bind:href="homePath()"')
         ->toContain(__('cms::frontend.loading'))
         // Brand-agnostic: nothing here may bind app-side JS members or stores —
         // a consumer without overrides would throw otherwise.
