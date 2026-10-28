@@ -4,6 +4,7 @@ use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
+use Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException;
 use Livewire\Livewire;
 use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Filament\Pages\Auth\Register;
@@ -196,6 +197,31 @@ it('creates the account for the invited address and attaches it', function () {
         ->and(User::query()->where('email', 'angreifer@example.test')->exists())->toBeFalse()
         ->and($user->tenantRole($tenant))->toBe(TenantUserRole::Admin)
         ->and($invitation->fresh()->isAccepted())->toBeTrue();
+});
+
+it('refuses a registration that swaps in another invitation', function () {
+    // One valid invitation opens the page; were the invitation id writable from the
+    // browser, it would claim any other pending one by its id — an account under that
+    // address, in that project, with that role.
+    Filament::setCurrentPanel(Filament::getPanel('panel'));
+
+    $own = inviteToTenant(Tenant::factory()->create(), 'angreifer@example.test');
+    $foreign = app(TenantInvitations::class)->invite(Tenant::factory()->create(), 'opfer@example.test', TenantUserRole::Admin);
+
+    session()->put(TenantInvitation::SESSION_TOKEN_KEY, $own->token);
+
+    expect(fn () => Livewire::test(Register::class)
+        ->set('invitationId', $foreign->getKey())
+        ->fillForm([
+            'name' => 'Angreifer',
+            'password' => 'geheim-genug-123',
+            'passwordConfirmation' => 'geheim-genug-123',
+        ])
+        ->call('register'))
+        ->toThrow(CannotUpdateLockedPropertyException::class);
+
+    expect($foreign->fresh()->isPending())->toBeTrue()
+        ->and(User::query()->where('email', 'opfer@example.test')->exists())->toBeFalse();
 });
 
 it('lets a tenant admin invite from the user list', function () {

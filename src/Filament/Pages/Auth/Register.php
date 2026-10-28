@@ -9,6 +9,7 @@ use Filament\Schemas\Components\Component;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\Locked;
 use Mmoollllee\Cms\Models\TenantInvitation;
 use SensitiveParameter;
 
@@ -23,7 +24,12 @@ use SensitiveParameter;
  */
 class Register extends BaseRegister
 {
-    /** Resolved in mount(); the id, not the token, so it never reaches the DOM. */
+    /**
+     * Resolved in mount(); the id, not the token, so it never reaches the DOM.
+     * `#[Locked]`: handleRegistration() trusts it — writable from the browser, it
+     * would let one invitation claim any other pending one by its id.
+     */
+    #[Locked]
     public ?int $invitationId = null;
 
     public function mount(): void
