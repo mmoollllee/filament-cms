@@ -1,11 +1,11 @@
 {{--
     cms:override — Blade equivalent of Filament\Forms\Components\Builder::toEmbeddedHtml()
-    (baseline: filament/filament v5.7.1). Since 5.7 the Builder has NO vendor Blade view
+    (baseline: filament/filament v5.11.0). Since 5.7 the Builder has NO vendor Blade view
     anymore (HasEmbeddedView renders PHP-side); this view re-enters the classic render
-    path because CmsServiceProvider sets it explicitly via
-    Builder::configureUsing(fn ($builder) => $builder->view('filament-forms::components.builder'))
-    — a component with an explicit view skips toEmbeddedHtml(), and the prependNamespace()
-    registration makes THIS file win the namespace lookup for every builder in the app.
+    path because BlockBuilder::make() sets it explicitly via
+    ->view('filament-forms::components.builder') — a component with an explicit view skips
+    toEmbeddedHtml(), and the prependNamespace() registration makes THIS file win the
+    namespace lookup.
 
     Every divergence from the vendor-equivalent markup is wrapped in "cms:start" /
     "cms:end" marker comments. (Blade comments do NOT nest — never write literal comment
@@ -13,30 +13,37 @@
     output.) To re-vendor after a Filament update: translate the changes in
     Builder::toEmbeddedHtml() / generateBlockPickerHtml() into this view and re-apply the
     marked blocks (tests/Feature/FilamentViewOverrideDriftTest.php hashes those method
-    sources and fails whenever they change, so drift is never silent).
+    sources and fails whenever they change, so drift is never silent). The markup Filament
+    makes in protected helpers (the reordering component and its screen-reader texts) is
+    asked of the field itself, so it stays Filament's.
 
     cms features carried by this view:
-      1. cross-builder drag & drop — items can be dragged between builders sharing a
-         `data-sortable-group` extra attribute; server half: Concerns\TransfersBuilderItems.
-      2. inline preview editing — with ->blockPreviews() (non-interactive), clicking a preview
+      1. inline preview editing — with ->blockPreviews() (non-interactive), clicking a preview
          swaps it for the item's form in place ("Fertig" closes it) instead of an edit modal.
-      3. inactive blocks — items with data.active = false are dimmed and get a pill in the
-         header that reactivates them on click (state half: BaseBuilderBlock::optionHiddenFields()).
-      4. block-picker paste — the state path is passed through to the block picker so its
-         "Aus Zwischenablage einfügen" entry can target this builder (see block-picker.blade.php).
-      5. option badges — the row header shows what the "Block-Optionen" dialog holds
+      2. inactive blocks — items with data.active = false get a pill in the header that dims
+         the row (builder.css) and reactivates it on click (state half:
+         BaseBuilderBlock::optionHiddenFields()).
+      3. option badges — the row header shows what the "Block-Optionen" dialog holds
          (layout presets, header layout, background image, anchor) as small badges, so
          options that live in the dialog stay visible (Filament\Support\BlockOptionBadges).
+      4. block-picker paste — the builder's paste action (registered by BlockBuilder::make()) is
+         passed through to the block picker, whose "Aus Zwischenablage" entry runs it — between
+         two blocks invoked with the block above (see block-picker.blade.php).
+
+    Dragging blocks between builders needs no view: it comes from
+    mmoollllee/filament-builder-extensions (transferGroup()), which hooks into vendor markup
+    this view keeps as it is; so do copy and paste themselves (CopyItemAction, PasteItemAction).
 --}}
 @php
     use Filament\Actions\Action;
-    use Filament\Support\Enums\Alignment;
+    use Filament\Forms\Components\Builder\Block;
+    use Illuminate\Contracts\Support\Htmlable;
 
     $fieldWrapperView = $getFieldWrapperView();
-    // Vendor 5.7 filters before counting so first/last flags agree with the loop.
+    // Vendor filters before counting so first/last flags agree with the loop.
     $items = array_filter(
         $getItems(),
-        static fn ($item): bool => $item->getParentComponent() instanceof \Filament\Forms\Components\Builder\Block,
+        static fn ($item): bool => $item->getParentComponent() instanceof Block,
     );
     $blockPickerBlocks = $getBlockPickerBlocks();
     $blockPickerColumns = $getBlockPickerColumns();
@@ -69,25 +76,53 @@
     $persistCollapsed = $shouldPersistCollapsed();
 
     $key = $getKey();
-    $statePath = $getStatePath();
+    $id = $getId();
 
     $blockLabelHeadingTag = $getHeadingTag();
     $isBlockLabelTruncated = $isBlockLabelTruncated();
     $labelBetweenItems = $getLabelBetweenItems();
 
-    // cms:start (1) cross-builder drag & drop — group name set via extraAttributes
-    $sortableGroup = $getExtraAttributes()['data-sortable-group'] ?? null;
+    $hasBlockLabels = $hasBlockLabels();
+    $hasBlockIcons = $hasBlockIcons();
+    $hasBlockNumbers = $hasBlockNumbers();
+    $hasBlockHeaders = $hasBlockHeaders();
+
+    // What generateBlockPickerHtml() hands the block picker.
+    $isSearchable = $isSearchable();
+    $searchPrompt = $isSearchable ? $getSearchPrompt() : null;
+    $searchDebounce = $getSearchDebounce();
+    $noSearchResultsMessage = $isSearchable ? $getNoSearchResultsMessage() : null;
+
+    if ($searchPrompt instanceof Htmlable) {
+        $searchPrompt = html_entity_decode(strip_tags($searchPrompt->toHtml()), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+
+    // Filament's own helpers of toEmbeddedHtml() are protected: called on the field itself.
+    $vendor = fn (string $method, mixed ...$arguments): mixed => (fn (): mixed => $this->{$method}(...$arguments))->call($field);
+
+    // Should a Filament update rename them, the field renders itself as Filament does:
+    // without the CMS's additions, previews editable in Filament's modal (BlockBuilder
+    // keeps its edit action then) — never a broken page; the drift test tells us.
+    $rendersCmsView = \Mmoollllee\Cms\Filament\Forms\BlockBuilder::rendersCmsView();
+
+    // cms:start (4) block-picker paste — the builder's PasteItemAction, if it has one
+    $pasteAction = $getAction(\Mmoollllee\Cms\Support\Content\Blocks\BaseBuilderBlock::PASTE_ACTION);
     // cms:end
 @endphp
 
+@if (! $rendersCmsView)
+    {!! $field->toEmbeddedHtml() !!}
+@else
 <x-dynamic-component :component="$fieldWrapperView" :field="$field" label-tag="div">
     <div
         {{
             $attributes
                 ->merge($getExtraAttributes(), escape: false)
+                ->merge($vendor('getAlpineAttributes', $items), escape: false)
                 ->merge([
-                    'aria-labelledby' => $getId() . '-label',
-                    'id' => $getId(),
+                    'aria-describedby' => $getAccessibilityAttributes()['aria-describedby'] ?? null,
+                    'aria-labelledby' => "{$id}-label",
+                    'id' => $id,
                     'role' => 'group',
                 ], escape: false)
                 ->class([
@@ -96,6 +131,8 @@
                 ])
         }}
     >
+        <span wire:ignore x-ref="reorderStatus" class="fi-sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+
         @if ($collapseAllActionIsVisible || $expandAllActionIsVisible)
             <div
                 @class([
@@ -104,17 +141,13 @@
                 ])
             >
                 @if ($collapseAllActionIsVisible)
-                    <span
-                        x-on:click="$dispatch('builder-collapse', '{{ $statePath }}')"
-                    >
+                    <span x-on:click="collapseAll">
                         {{ $collapseAllAction }}
                     </span>
                 @endif
 
                 @if ($expandAllActionIsVisible)
-                    <span
-                        x-on:click="$dispatch('builder-expand', '{{ $statePath }}')"
-                    >
+                    <span x-on:click="expandAll">
                         {{ $expandAllAction }}
                     </span>
                 @endif
@@ -124,68 +157,37 @@
         @if (count($items))
             <ul
                 x-sortable
-                {{-- cms:start (1) cross-builder drag & drop — join the sortable group + expose the
-                     state path; a drop from another list calls transferBuilderItem() on the page
-                     (Concerns\TransfersBuilderItems), a same-list drop keeps vendor's reorder. --}}
-                @if ($sortableGroup) x-sortable-group="{{ $sortableGroup }}" @endif
-                data-schema-component="{{ $key }}"
-                data-state-path="{{ $statePath }}"
-                {{-- cms:end --}}
+                x-ref="reorderItems"
                 data-sortable-animation-duration="{{ $getReorderAnimationDuration() }}"
-                x-on:end.stop="
-                    {{-- cms:start (1) cross-builder drag & drop --}}
-                    if ($event.from !== $event.to) {
-                        const sourceItems = $event.from.sortable.toArray();
-                        const targetItems = $event.to.sortable.toArray();
-
-                        {{-- Remove SortableJS' DOM node so Livewire re-renders cleanly --}}
-                        $event.item.remove();
-
-                        $wire.call('transferBuilderItem', {
-                            sourcePath: $event.from.dataset.statePath,
-                            targetPath: $event.to.dataset.statePath,
-                            sourceItems: sourceItems,
-                            targetItems: targetItems,
-                        })
-                    } else {
-                        $wire.mountAction(
-                            'reorder',
-                            { items: $event.target.sortable.toArray() },
-                            { schemaComponent: '{{ $key }}' },
-                        )
-                    }
-                    {{-- cms:end (vendor: only the mountAction('reorder', …) call) --}}
-                "
+                x-on:end.stop="reorder"
                 class="fi-fo-builder-items"
             >
-                @php
-                    $hasBlockLabels = $hasBlockLabels();
-                    $hasBlockIcons = $hasBlockIcons();
-                    $hasBlockNumbers = $hasBlockNumbers();
-                    $hasBlockHeaders = $hasBlockHeaders();
-                @endphp
-
                 @foreach ($items as $itemKey => $item)
                     @php
+                        /** @var Block $block */
+                        $block = $item->getParentComponent();
+
                         $visibleExtraItemActions = array_filter(
                             $extraItemActions,
                             fn (Action $action): bool => $action(['item' => $itemKey])->isVisible(),
                         );
-                        $cloneAction = $cloneAction(['item' => $itemKey]);
-                        $cloneActionIsVisible = $isCloneable && $cloneAction->isVisible();
-                        $deleteAction = $deleteAction(['item' => $itemKey]);
-                        $deleteActionIsVisible = $isDeletable && $deleteAction->isVisible();
-                        $editAction = $editAction(['item' => $itemKey]);
-                        $editActionIsVisible = $hasBlockPreviews && $editAction->isVisible();
-                        $moveDownAction = $moveDownAction(['item' => $itemKey])->disabled($loop->last);
-                        $moveDownActionIsVisible = $isReorderableWithButtons && $moveDownAction->isVisible();
-                        $moveUpAction = $moveUpAction(['item' => $itemKey])->disabled($loop->first);
-                        $moveUpActionIsVisible = $isReorderableWithButtons && $moveUpAction->isVisible();
+                        $itemCloneAction = $cloneAction(['item' => $itemKey]);
+                        $cloneActionIsVisible = $isCloneable && $itemCloneAction->isVisible();
+                        $itemDeleteAction = $deleteAction(['item' => $itemKey]);
+                        $deleteActionIsVisible = $isDeletable && $itemDeleteAction->isVisible();
+                        $itemEditAction = $editAction(['item' => $itemKey]);
+                        $editActionIsVisible = $hasBlockPreviews && $itemEditAction->isVisible();
                         $reorderActionIsVisible = $isReorderableWithDragAndDrop && $reorderAction->isVisible();
+                        $itemMoveDownAction = $moveDownAction(['item' => $itemKey]);
+                        $itemMoveDownAction->disabled($loop->last || $itemMoveDownAction->isDisabled())->extraAttributes($vendor('getReorderingActionAttributes', $itemMoveDownAction, 'down', ! $isReorderableWithButtons), merge: true);
+                        $moveDownActionIsVisible = ($isReorderableWithButtons || $reorderActionIsVisible) && $itemMoveDownAction->isVisible();
+                        $itemMoveUpAction = $moveUpAction(['item' => $itemKey]);
+                        $itemMoveUpAction->disabled($loop->first || $itemMoveUpAction->isDisabled())->extraAttributes($vendor('getReorderingActionAttributes', $itemMoveUpAction, 'up', ! $isReorderableWithButtons), merge: true);
+                        $moveUpActionIsVisible = ($isReorderableWithButtons || $reorderActionIsVisible) && $itemMoveUpAction->isVisible();
                         $hasItemHeader = $hasBlockHeaders && ($reorderActionIsVisible || $moveUpActionIsVisible || $moveDownActionIsVisible || $hasBlockIcons || $hasBlockLabels || $editActionIsVisible || $cloneActionIsVisible || $deleteActionIsVisible || $isCollapsible || $visibleExtraItemActions);
 
-                        // cms:start (2) inline preview editing + (3) inactive blocks — per-item flags
-                        $itemHasPreview = $hasBlockPreviews && $item->getParentComponent()->hasPreview();
+                        // cms:start (1) inline preview editing + (2) inactive blocks — per-item flags
+                        $itemHasPreview = $hasBlockPreviews && $block->hasPreview();
                         $itemIsInactive = ! filter_var($item->getRawState()['active'] ?? true, FILTER_VALIDATE_BOOLEAN);
                         // cms:end
                     @endphp
@@ -193,34 +195,31 @@
                     <li
                         wire:ignore.self
                         wire:key="{{ $item->getLivewireKey() }}.item"
-                        x-data="{
-                            isCollapsed: @if ($persistCollapsed) $persist(@js($isCollapsed($item))).as(`builder-${@js($key)}-${@js($itemKey)}-isCollapsed`) @else @js($isCollapsed($item)) @endif,
-                            {{-- cms:start (2) inline preview editing — preview items start in preview mode --}}
-                            isEditing: @js(! $itemHasPreview),
-                            {{-- cms:end --}}
-                        }"
-                        x-on:builder-expand.window="$event.detail === '{{ $statePath }}' && (isCollapsed = false)"
-                        x-on:builder-collapse.window="$event.detail === '{{ $statePath }}' && (isCollapsed = true)"
-                        x-on:expand="isCollapsed = false"
+                        {{-- cms:start (1) inline preview editing — preview items start in preview mode:
+                             isEditing beside the state of vendor's item() component (vendor: x-data="item(…)").
+                             Object.assign() keeps the component's getter and its $persist. --}}
+                        x-data="Object.assign(item(@js([
+                            'isCollapsed' => $isCollapsed($item),
+                            'collapseKey' => $persistCollapsed ? "filament:builder:collapsed:{$key}-{$itemKey}" : null,
+                        ])), { isEditing: @js(! $itemHasPreview) })"
+                        {{-- cms:end --}}
+                        x-on:builder-expand.window="expandFromEvent"
+                        x-on:builder-collapse.window="collapseFromEvent"
+                        x-on:expand="expand"
                         x-sortable-item="{{ $itemKey }}"
                         {{
-                            $item->getParentComponent()->getExtraAttributeBag()
+                            $block->getExtraAttributeBag()
                                 ->class([
                                     'fi-fo-builder-item',
                                     'fi-fo-builder-item-has-header' => $hasItemHeader,
-                                    // cms:start (3) inactive blocks — mark THIS item inactive on its own
-                                    // element (not via a descendant marker) so dimming never bubbles up
-                                    // from an inactive child block to its active parent section.
-                                    'fi-fo-builder-item-inactive' => $itemIsInactive,
-                                    // cms:end
                                 ])
                         }}
-                        x-bind:class="{ 'fi-collapsed': isCollapsed }"
+                        x-bind:class="itemClasses"
                     >
                         @if ($hasItemHeader)
                             <div
                                 @if ($isCollapsible)
-                                    x-on:click.stop="isCollapsed = !isCollapsed"
+                                    x-on:click.stop="toggleCollapsed"
                                 @endif
                                 class="fi-fo-builder-item-header"
                             >
@@ -234,20 +233,17 @@
                                             </li>
                                         @endif
 
-                                        @if ($moveUpActionIsVisible || $moveDownActionIsVisible)
-                                            <li x-on:click.stop>
-                                                {{ $moveUpAction }}
-                                            </li>
-
-                                            <li x-on:click.stop>
-                                                {{ $moveDownAction }}
-                                            </li>
+                                        @if ($moveUpActionIsVisible)
+                                            <li x-on:click.stop class="{{ $isReorderableWithButtons ? '' : 'fi-sr-only' }}">{{ $itemMoveUpAction }}</li>
+                                        @endif
+                                        @if ($moveDownActionIsVisible)
+                                            <li x-on:click.stop class="{{ $isReorderableWithButtons ? '' : 'fi-sr-only' }}">{{ $itemMoveDownAction }}</li>
                                         @endif
                                     </ul>
                                 @endif
 
                                 @php
-                                    $blockIcon = $item->getParentComponent()->getIcon();
+                                    $blockIcon = $block->getIcon();
                                 @endphp
 
                                 @if ($hasBlockIcons && filled($blockIcon))
@@ -261,7 +257,7 @@
                                             'fi-truncated' => $isBlockLabelTruncated,
                                         ])
                                     >
-                                        {{ $item->getParentComponent()->getLabel($item->getRawState(), $itemKey, $loop->index) }}
+                                        {{ $block->getLabel($item->getRawState(), $itemKey, $loop->index) }}
 
                                         @if ($hasBlockNumbers)
                                             {{ $loop->iteration }}
@@ -269,12 +265,14 @@
                                     </{{ $blockLabelHeadingTag }}>
                                 @endif
 
-                                {{-- cms:start (3) inactive blocks — pill after the row title; hover swaps
-                                     to a green "aktivieren" affordance, click reactivates in place. --}}
+                                {{-- cms:start (2) inactive blocks — pill after the row title; hover swaps
+                                     to a green "aktivieren" affordance, click reactivates in place. It
+                                     also dims the row (builder.css): a class on the item element would
+                                     go stale, Livewire never updates its own attributes. --}}
                                 @if ($itemIsInactive)
                                     <button
                                         type="button"
-                                        x-on:click.stop="$wire.set(@js($statePath . '.' . $itemKey . '.data.active'), true)"
+                                        x-on:click.stop="$wire.set(@js($getStatePath() . '.' . $itemKey . '.data.active'), true)"
                                         class="fi-fo-builder-item-inactive-pill"
                                         title="Klicken zum Aktivieren"
                                     >
@@ -284,7 +282,7 @@
                                 @endif
                                 {{-- cms:end --}}
 
-                                {{-- cms:start (5) option badges — right-aligned before the end actions --}}
+                                {{-- cms:start (3) option badges — right-aligned before the end actions --}}
                                 @php
                                     $optionBadges = \Mmoollllee\Cms\Filament\Support\BlockOptionBadges::for((array) $item->getRawState());
                                 @endphp
@@ -310,26 +308,26 @@
 
                                         @if ($editActionIsVisible)
                                             <li x-on:click.stop>
-                                                {{ $editAction }}
+                                                {{ $itemEditAction }}
                                             </li>
                                         @endif
 
                                         @if ($cloneActionIsVisible)
                                             <li x-on:click.stop>
-                                                {{ $cloneAction }}
+                                                {{ $itemCloneAction }}
                                             </li>
                                         @endif
 
                                         @if ($deleteActionIsVisible)
                                             <li x-on:click.stop>
-                                                {{ $deleteAction }}
+                                                {{ $itemDeleteAction }}
                                             </li>
                                         @endif
 
                                         @if ($isCollapsible)
                                             <li
                                                 class="fi-fo-builder-item-header-collapsible-actions"
-                                                x-on:click.stop="isCollapsed = !isCollapsed"
+                                                x-on:click.stop="toggleCollapsed"
                                             >
                                                 <div
                                                     class="fi-fo-builder-item-header-collapse-action"
@@ -353,10 +351,10 @@
                             x-show="! isCollapsed"
                             @class([
                                 'fi-fo-builder-item-content',
-                                'fi-fo-builder-item-content-has-preview' => $hasBlockPreviews && $item->getParentComponent()->hasPreview(),
+                                'fi-fo-builder-item-content-has-preview' => $hasBlockPreviews && $block->hasPreview(),
                             ])
                         >
-                            @if ($hasBlockPreviews && $item->getParentComponent()->hasPreview())
+                            @if ($hasBlockPreviews && $block->hasPreview())
                                 @if ($hasInteractiveBlockPreviews)
                                     {{-- vendor behavior for interactive previews --}}
                                     <div
@@ -365,10 +363,10 @@
                                             'fi-interactive' => $hasInteractiveBlockPreviews,
                                         ])
                                     >
-                                        {{ $item->getParentComponent()->renderPreview($item->getRawState()) }}
+                                        {{ $block->renderPreview($item->getRawState()) }}
                                     </div>
                                 @else
-                                    {{-- cms:start (2) inline preview editing — replaces vendor's
+                                    {{-- cms:start (1) inline preview editing — replaces vendor's
                                          edit-overlay (which mounts the edit modal): clicking the
                                          preview swaps it for the item's schema in place.
                                          preventDefault() is what keeps links inside the static
@@ -386,7 +384,7 @@
                                         "
                                         class="fi-fo-builder-item-preview"
                                     >
-                                        {{ $item->getParentComponent()->renderPreview($item->getRawState()) }}
+                                        {{ $block->renderPreview($item->getRawState()) }}
                                     </div>
 
                                     <div x-show="isEditing" x-cloak class="fi-fo-builder-item-inline-edit">
@@ -415,14 +413,18 @@
                             <li class="fi-fo-builder-add-between-items-ctn">
                                 <div class="fi-fo-builder-add-between-items">
                                     <div class="fi-fo-builder-block-picker-ctn">
-                                        {{-- cms: (4) the extra :state-path attribute feeds the picker's paste entry --}}
+                                        {{-- cms: (4) the extra :paste-action attribute feeds the picker's paste entry --}}
                                         <x-filament-forms::builder.block-picker
                                             :action="$addBetweenAction"
                                             :after-item="$itemKey"
                                             :columns="$blockPickerColumns"
                                             :blocks="$blockPickerBlocks"
                                             :key="$key"
-                                            :state-path="$statePath"
+                                            :no-search-results-message="$noSearchResultsMessage"
+                                            :paste-action="$pasteAction ? $pasteAction(['item' => $itemKey]) : null"
+                                            :searchable="$isSearchable"
+                                            :search-debounce="$searchDebounce"
+                                            :search-prompt="$searchPrompt"
                                             :width="$blockPickerWidth"
                                         >
                                             <x-slot name="trigger">
@@ -453,14 +455,18 @@
         @endif
 
         @if ($isAddable && $addAction->isVisible())
-            {{-- cms: (4) the extra :state-path attribute feeds the picker's paste entry --}}
+            {{-- cms: (4) the extra :paste-action attribute feeds the picker's paste entry --}}
             <x-filament-forms::builder.block-picker
                 :action="$addAction"
                 :action-alignment="$addActionAlignment"
                 :blocks="$blockPickerBlocks"
                 :columns="$blockPickerColumns"
                 :key="$key"
-                :state-path="$statePath"
+                :no-search-results-message="$noSearchResultsMessage"
+                :paste-action="$pasteAction"
+                :searchable="$isSearchable"
+                :search-debounce="$searchDebounce"
+                :search-prompt="$searchPrompt"
                 :width="$blockPickerWidth"
             >
                 <x-slot name="trigger">
@@ -468,5 +474,8 @@
                 </x-slot>
             </x-filament-forms::builder.block-picker>
         @endif
+
+        {!! $vendor('getReorderingDescriptionHtml', $items) !!}
     </div>
 </x-dynamic-component>
+@endif

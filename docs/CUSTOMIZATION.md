@@ -237,9 +237,9 @@ A **content type** is a `Blueprint` (extend `ConfiguredContentBlueprint`, set
 `$allowedParentTypes`, …) plus an optional Filament `Resource` extending
 `Cms::resourceBase()`. Discovery only registers resources extending that base.
 
-**Pages are 3-liners** — extend the package base pages and inherit the builder
-clipboard/drag&drop wiring, payload-preserving saves, child-management actions,
-parent-scoped listings and the wide layout:
+**Pages are 3-liners** — extend the package base pages and inherit the
+payload-preserving saves, child-management actions, parent-scoped listings and the wide
+layout (the builders' copy & paste and drag & drop need no page wiring):
 
 ```php
 class ListPage extends \Mmoollllee\Cms\Filament\Resources\Contents\Pages\ContentListPage
@@ -490,7 +490,8 @@ elsewhere) has no footer to embed anything in, so it only gets its own view's en
 **Builders are built by one factory** — `Filament\Forms\BlockBuilder::make($statePath,
 $tenant, $blocks, previews: …, sortableGroup: …, extraItemActions: …)` configures every
 builder (icons, add labels, the scope-aware "Block-Optionen" gear, "Block kopieren",
-preview inline-editing). Improve it once, every builder everywhere updates.
+the picker's clipboard entry, preview inline-editing). Improve it once, every builder
+everywhere updates.
 
 ---
 
@@ -943,21 +944,26 @@ publish tag `cms-lang`); the app locale (`APP_LOCALE`) picks the language.
 
 The package replaces Filament's builder rendering with two vendored views
 (`resources/overrides/filament-forms/`): `filament-forms::components.builder` and
-`…builder.block-picker`. They carry the five builder UX features that have no Filament
-extension point: cross-builder drag & drop, inline preview editing, the inactive-block
-UI, the clipboard-paste picker entry, and the block-option badges in the row header.
-Everything else (copy action, options gear, headings) lives in PHP and survives Filament
-updates.
+`…builder.block-picker`. They carry the four builder UX features that have no Filament
+extension point: inline preview editing, the inactive-block UI, the picker's "Aus
+Zwischenablage" entry and the block-option badges in the row header. Everything else lives
+in PHP and survives Filament updates: the options gear and headings here, copy & paste and
+drag & drop between builders in `mmoollllee/filament-builder-extensions`
+(`CopyItemAction`/`PasteItemAction`, `->transferGroup()`) — the picker entry only runs the
+paste action the builder registers.
 
 Since Filament 5.7 the builder has **no vendor Blade view** — it renders PHP-side via
 `Builder::toEmbeddedHtml()`. The package re-enters the classic view path by pinning the
-view name globally (`Builder::configureUsing(fn ($b) => $b->view('filament-forms::components.builder'))`
-in `CmsServiceProvider`); `prependNamespace` then resolves that name to the override,
-and the picker Blade component the view renders resolves through the same namespace.
+view name on every CMS builder (`->view('filament-forms::components.builder')` in
+`BlockBuilder::make()`); `prependNamespace` then resolves that name to the override, and
+the picker Blade component the view renders resolves through the same namespace.
 
-The builder view is a Blade translation of the **filament v5.7.1**
+The builder view is a Blade translation of the **filament v5.11.0**
 `toEmbeddedHtml()`/`generateBlockPickerHtml()` markup, the picker a vendored copy of the
 still-existing vendor view — every divergence wrapped in `cms:start`/`cms:end` markers.
+What `toEmbeddedHtml()` leaves to protected helpers (the reordering component, the
+screen-reader position texts) the view asks of the field itself, so that markup stays
+Filament's. The CMS therefore requires `filament/filament` `^5.11`.
 `tests/Feature/FilamentViewOverrideDriftTest.php` hashes those vendor sources (method
 source + picker file) — when a Filament update changes them, the test fails with
 re-vendoring instructions (translate/copy the vendor changes, re-apply the marked

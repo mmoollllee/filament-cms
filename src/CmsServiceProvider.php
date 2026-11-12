@@ -88,6 +88,9 @@ use Tiptap\Marks\Link;
  */
 class CmsServiceProvider extends ServiceProvider
 {
+    /** The deepest Livewire property path the editor needs: rich text in a section's blocks (see boot()). */
+    public const LIVEWIRE_NESTING_DEPTH = 40;
+
     public function register(): void
     {
         $this->mergeConfigFrom(__DIR__.'/../config/cms.php', 'cms');
@@ -249,10 +252,11 @@ class CmsServiceProvider extends ServiceProvider
             $views.'/components/site' => resource_path('views/components/site'),
         ], 'cms-frontend');
 
-        // Override Filament's builder rendering (builder + block-picker) to add
-        // cross-builder drag & drop, inline preview editing, the inactive-block UI and
-        // the clipboard paste entry (the view half of the TransfersBuilderItems /
-        // PastesBuilderBlocks concerns).
+        // Override Filament's builder rendering (builder + block-picker) to add inline
+        // preview editing, the inactive-block UI, the block-option badges and the
+        // picker's clipboard entry. Copy, paste and dragging blocks between builders
+        // themselves come from mmoollllee/filament-builder-extensions (see
+        // BlockBuilder::make()).
         //
         // Since Filament 5.7 the Builder ships NO Blade view — it renders PHP-side via
         // toEmbeddedHtml() (HasEmbeddedView), and its published-view override check only
@@ -264,7 +268,7 @@ class CmsServiceProvider extends ServiceProvider
         // resolves through the same namespace). Builders outside the CMS keep
         // Filament's embedded rendering untouched.
         //
-        // NOTE: both files are vendored equivalents (baseline filament/filament v5.7.1;
+        // NOTE: both files are vendored equivalents (baseline filament/filament v5.11.0;
         // the builder view mirrors Builder::toEmbeddedHtml()) with the cms changes
         // wrapped in `cms:start`/`cms:end` markers. Because this shadows vendor
         // rendering, a Filament update changing it would be silently swallowed —
@@ -337,6 +341,20 @@ class CmsServiceProvider extends ServiceProvider
         // back to the vendor default of 600s. Bridged here so the model, the
         // lock manager and `clear-expired` all agree.
         config(['filament-resource-lock.lock_timeout' => Locks::timeout()]);
+
+        // Rich text syncs its TipTap document with Livewire as nested data, and in
+        // a section's blocks it sits 8 path segments deep before the document even
+        // starts (data.blocks.{section}.data.blocks.{block}.data._content_editor).
+        // Livewire refuses paths deeper than 10 by default (payload.max_nesting_depth),
+        // which would fail every request of the editor. Filament's rich-editor docs
+        // suggest 32 for a rich editor near the top of a form; the CMS's sit 8 levels
+        // deeper, hence 40 — unless the app allows more already (or sets no limit at
+        // all: null).
+        $nestingDepth = config('livewire.payload.max_nesting_depth');
+
+        if ($nestingDepth !== null && $nestingDepth < self::LIVEWIRE_NESTING_DEPTH) {
+            config(['livewire.payload.max_nesting_depth' => self::LIVEWIRE_NESTING_DEPTH]);
+        }
 
         // Optional Umami analytics (mmoollllee/filami): every tenant gets its
         // own Umami website, provisioned on creation and kept in sync on

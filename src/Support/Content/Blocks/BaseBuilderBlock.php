@@ -11,7 +11,6 @@ use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Illuminate\Support\Js;
 use Filament\Schemas\Components\Component;
 use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Tabs;
@@ -25,9 +24,17 @@ use Mmoollllee\Cms\Filament\RichEditor\Blocks\NavigationCardGroupBlock;
 use Mmoollllee\Cms\Models\LayoutPreset;
 use Mmoollllee\Cms\Support\Content\Blocks\Contracts\BuilderBlock;
 use Mmoollllee\Cms\Support\Content\RichText;
+use Mmoollllee\FilamentBuilderExtensions\Clipboard\CopyItemAction;
+use Mmoollllee\FilamentBuilderExtensions\Clipboard\PasteItemAction;
 
 abstract class BaseBuilderBlock implements BuilderBlock
 {
+    /** What a copied block is to the clipboard: only a paste of this kind takes it. */
+    public const CLIPBOARD_KIND = 'cms.block';
+
+    /** The name {@see pasteBlockAction()} registers under, by which the block picker finds it. */
+    public const PASTE_ACTION = 'pasteBlock';
+
     protected static function layoutPresetField(string $type, ?Tenant $tenant = null): Select
     {
         return LayoutPreset::selectField($type, $tenant);
@@ -174,27 +181,34 @@ abstract class BaseBuilderBlock implements BuilderBlock
     }
 
     /**
-     * Extra item action that copies the block (type + current data) as JSON to the
-     * clipboard — the counterpart of the block picker's "Aus Zwischenablage einfügen"
-     * ({@see \Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks}). Runs entirely
-     * client-side (Alpine), reading the live item state via $wire so unsaved edits
-     * are included; localStorage is the fallback for clipboard-restricted browsers.
+     * Extra item action that copies the block (type + current data) to the clipboard,
+     * localStorage for a day where the browser refuses it — the package's CopyItemAction
+     * (mmoollllee/filament-builder-extensions), read in the browser so unsaved edits are
+     * included. {@see pasteBlockAction()} takes it back, across pages, tenants and tabs.
      */
     public static function copyBlockAction(): Action
     {
-        return Action::make('copyBlock')
+        return CopyItemAction::make('copyBlock')
+            ->kind(static::CLIPBOARD_KIND)
             ->label('Block kopieren')
-            ->icon(Heroicon::OutlinedClipboardDocument)
-            ->alpineClickHandler(function (array $arguments, Builder $component): string {
-                $itemPath = Js::from("{$component->getStatePath()}.{$arguments['item']}")->toHtml();
+            ->successNotificationTitle('Block kopiert');
+    }
 
-                return <<<JS
-                    const payload = JSON.stringify(\$wire.get({$itemPath}));
-                    try { await navigator.clipboard.writeText(payload); } catch (e) {}
-                    localStorage.setItem('filament_builder_clipboard', payload);
-                    new FilamentNotification().title('Block kopiert').success().send();
-                    JS;
-            });
+    /**
+     * Pastes a block copied with {@see copyBlockAction()}, registered on every builder and
+     * offered by its block picker ("Aus Zwischenablage"): last from the picker below the
+     * blocks, after the block above from the picker between two. Only a block the builder
+     * offers is taken, and only what fits its fields; the rest gets the fields' defaults.
+     */
+    public static function pasteBlockAction(): PasteItemAction
+    {
+        return PasteItemAction::make(static::PASTE_ACTION)
+            ->kind(static::CLIPBOARD_KIND)
+            // Short enough for the picker's width; the tooltip says it in full.
+            ->label('Aus Zwischenablage')
+            ->tooltip('Aus Zwischenablage einfügen')
+            ->successNotificationTitle('Block eingefügt')
+            ->failureNotificationTitle('Kein passender Block in der Zwischenablage');
     }
 
     /**
@@ -233,9 +247,9 @@ abstract class BaseBuilderBlock implements BuilderBlock
     protected static function optionHiddenFields(): array
     {
         return [
-            // The active state drives the row dimming via the builder override's
-            // per-item `fi-fo-builder-item-inactive` class; this Hidden field only
-            // persists the value through dehydration.
+            // The active state drives the builder override's "inaktiv" pill, which
+            // also dims the row (builder.css); this Hidden field only persists the
+            // value through dehydration.
             Hidden::make('active')
                 ->default(true),
             Hidden::make('title'),

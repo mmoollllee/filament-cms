@@ -502,7 +502,7 @@ class DatabaseSeeder extends Seeder
                         public function siteKey(): string { return 'my-site'; }
                     }
                     PHP)),
-                $this->textChild('Resources & pages — 3-liners', '<p>Per-type Filament resources extend <code>TenantScopedContentResource</code>; their pages extend the package base pages and inherit block copy/paste, cross-builder drag &amp; drop, payload-preserving + draft-aware saves (Entwurf/Vorschau) and parent-scoped listings:</p>'.$this->code('php', <<<'PHP'
+                $this->textChild('Resources & pages — 3-liners', '<p>Per-type Filament resources extend <code>TenantScopedContentResource</code>; their pages extend the package base pages and inherit payload-preserving + draft-aware saves (Entwurf/Vorschau) and parent-scoped listings. Block copy/paste and drag &amp; drop between sections come with the block builder itself:</p>'.$this->code('php', <<<'PHP'
                     class ListPage extends ContentListPage
                     {
                         protected static string $resource = Resource::class;
@@ -534,9 +534,9 @@ class DatabaseSeeder extends Seeder
                     // php artisan vendor:publish --tag=cms-site-components (<x-site.*>)
                     // php artisan vendor:publish --tag=cms-blocks          (block views)
                     PHP)),
-                $this->textChild('Update safety — the two vendored views', '<p>Exactly two Filament views are overridden (builder + block picker) — they carry cross-builder drag &amp; drop, inline preview editing, the inactive-block UI and clipboard paste. A hash-based drift test fails on every Filament update that touches the originals, with re-vendoring instructions:</p>'.$this->code('php', <<<'PHP'
+                $this->textChild('Update safety — the two vendored views', '<p>Exactly two Filament views are overridden (builder + block picker) — they carry inline preview editing, the inactive-block UI, the option badges and the paste entry of the block picker (copy, paste and drag &amp; drop between builders come from <code>mmoollllee/filament-builder-extensions</code>). A hash-based drift test fails on every Filament update that touches the originals, with re-vendoring instructions:</p>'.$this->code('php', <<<'PHP'
                     // tests/Feature/FilamentViewOverrideDriftTest.php
-                    // → fails when filament/forms changes builder.blade.php or block-picker.blade.php
+                    // → fails when filament/forms changes the builder's markup (Builder::toEmbeddedHtml()) or block-picker.blade.php
                     // → re-apply the `cms:start` … `cms:end` blocks onto the new vendor copy, update the hash
                     PHP)),
             ])],

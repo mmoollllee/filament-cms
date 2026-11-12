@@ -5,13 +5,11 @@ namespace Mmoollllee\Cms\Filament\Resources\Fragments\Pages;
 use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
 use Mmoollllee\Cms\Filament\Concerns\CreatesDrafts;
-use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
 use Mmoollllee\Cms\Filament\Resources\Fragments\FragmentResource;
 
 class CreateFragment extends CreateRecord
 {
     use CreatesDrafts;
-    use PastesBuilderBlocks;
 
     protected static string $resource = FragmentResource::class;
 

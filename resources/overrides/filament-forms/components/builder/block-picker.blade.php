@@ -1,22 +1,19 @@
 {{--
     cms:override — vendored copy of filament/forms resources/views/components/builder/block-picker.blade.php
-    (baseline: filament/filament v5.7.1). Shadows the vendor view via prependNamespace()
+    (baseline: filament/filament v5.11.0). Shadows the vendor view via prependNamespace()
     in CmsServiceProvider — the cms builder view renders the picker as this Blade
     component, so the namespace lookup still applies even though vendor's own builder
     (toEmbeddedHtml) inlines the picker HTML in PHP since 5.7. Drift is guarded by
     tests/Feature/FilamentViewOverrideDriftTest.php.
 
-    Divergence from vendor (marked below): the picker accepts the builder's state path and
-    appends an "Aus Zwischenablage einfügen" entry that pastes a block copied with the
-    "Block kopieren" item action (BaseBuilderBlock::copyBlockAction()). Server half:
-    Concerns\PastesBuilderBlocks::pasteBuilderBlock() on the panel's Create/Edit pages.
+    Divergence from vendor (marked below): the picker takes the builder's paste action and
+    appends an "Aus Zwischenablage" entry that pastes a block copied with the "Block kopieren"
+    item action (BaseBuilderBlock::copyBlockAction()). The action is the PasteItemAction of
+    mmoollllee/filament-builder-extensions, registered on every CMS builder by
+    BlockBuilder::make(): the browser reads the clipboard, then mounts it with what it found;
+    between two blocks it pastes after the one above (the builder view hands the picker the
+    action invoked with that item).
 --}}
-@php
-    use Filament\Support\Enums\Alignment;
-    use Filament\Support\Enums\GridDirection;
-    use Filament\Support\View\ComponentAttributeBag as FilamentComponentAttributeBag;
-@endphp
-
 @props([
     'action',
     'actionAlignment' => null,
@@ -24,22 +21,52 @@
     'blocks',
     'columns' => null,
     'key',
-    // cms: paste target — the builder's state path (passed by the overridden builder view)
-    'statePath' => null,
+    'noSearchResultsMessage' => null,
+    // cms: the builder's PasteItemAction (passed by the overridden builder view)
+    'pasteAction' => null,
+    'searchable' => false,
+    'searchDebounce' => 0,
+    'searchPrompt' => null,
     'trigger',
     'width' => null,
 ])
 
+@php
+    use Filament\Support\Enums\Alignment;
+    use Filament\Support\Enums\GridDirection;
+    use Filament\Support\Enums\Width;
+    use Filament\Support\View\ComponentAttributeBag as FilamentComponentAttributeBag;
+    use Illuminate\Contracts\Support\Htmlable;
+    use Illuminate\Support\Js;
+    use Illuminate\Support\Str;
+
+    $placement = match ($actionAlignment) {
+        Alignment::Start, Alignment::Left => 'bottom-start',
+        Alignment::End, Alignment::Right => 'bottom-end',
+        default => null,
+    };
+
+    if (is_string($width)) {
+        $width = Width::tryFrom($width) ?? $width;
+    }
+
+    $widthClass = ($width instanceof Width)
+        ? "fi-width-{$width->value}"
+        : (is_string($width) ? $width : null);
+
+    $listAttributes = $searchable
+        ? new FilamentComponentAttributeBag([
+            'x-data' => 'blockPicker()',
+        ])
+        : new FilamentComponentAttributeBag;
+@endphp
+
 <x-filament::dropdown
-    :placement="
-        match ($actionAlignment) {
-            Alignment::Start, Alignment::Left => 'bottom-start',
-            Alignment::End, Alignment::Right => 'bottom-end',
-            default => null,
-        }
-    "
+    :menu="! $searchable"
+    :placement="$placement"
     shift
     :width="$width"
+    :wire:key="$key . '.' . $action->getName() . '.' . $afterItem . '.block-picker.' . md5(serialize([$widthClass, $placement, filled($blocks), $searchable]))"
     :attributes="
         \Filament\Support\prepare_inherited_attributes(
             $attributes->class([
@@ -53,75 +80,104 @@
         {{ $trigger }}
     </x-slot>
 
-    <x-filament::dropdown.list>
-        <div
-            {{ (new FilamentComponentAttributeBag)->grid($columns, GridDirection::Column) }}
+    @if (filled($blocks))
+        <x-filament::dropdown.list
+            :attributes="\Filament\Support\prepare_inherited_attributes($listAttributes)"
         >
-            @foreach ($blocks as $block)
-                @php
-                    $blockIcon = $block->getIcon();
+            @if ($searchable)
+                <div class="fi-fo-builder-block-picker-search-ctn">
+                    <x-filament::input
+                        type="text"
+                        x-ref="searchInput"
+                        x-on:keydown.enter.prevent=""
+                        :attributes="
+                            \Filament\Support\prepare_inherited_attributes(
+                                new FilamentComponentAttributeBag([
+                                    'aria-label' => e($searchPrompt),
+                                    'placeholder' => e($searchPrompt),
+                                    'x-model.debounce.' . $searchDebounce => 'search',
+                                ]),
+                            )
+                        "
+                    />
+                </div>
+            @endif
 
-                    $wireClickActionArguments = ['block' => $block->getName()];
-
-                    if (filled($afterItem)) {
-                        $wireClickActionArguments['afterItem'] = $afterItem;
-                    }
-
-                    $wireClickActionArguments = \Illuminate\Support\Js::from($wireClickActionArguments);
-
-                    $wireClickAction = "mountAction('{$action->getName()}', {$wireClickActionArguments}, { schemaComponent: '{$key}' })";
-                @endphp
-
-                <x-filament::dropdown.list.item
-                    :icon="$blockIcon"
-                    x-on:click="close"
-                    :wire:click="$wireClickAction"
-                >
-                    {{ $block->getLabel() }}
-                </x-filament::dropdown.list.item>
-            @endforeach
-        </div>
-
-        {{-- cms:start block-picker paste — reads the copied block from the clipboard
-             (localStorage fallback) and calls pasteBuilderBlock() on the page. --}}
-        @if (filled($statePath))
-            @php
-                $pasteStatePath = \Illuminate\Support\Js::from($statePath)->toHtml();
-                $pasteAfterItem = \Illuminate\Support\Js::from($afterItem)->toHtml();
-                $pasteClickHandler = <<<JS
-                    close();
-                    let payload = null;
-                    try {
-                        const text = await navigator.clipboard.readText();
-                        if (text) payload = JSON.parse(text);
-                    } catch(e) {
-                        try {
-                            const stored = localStorage.getItem('filament_builder_clipboard');
-                            if (stored) payload = JSON.parse(stored);
-                        } catch(e2) {}
-                    }
-                    if (payload && payload.type && payload.data) {
-                        await \$wire.pasteBuilderBlock(
-                            {$pasteStatePath},
-                            JSON.stringify(payload),
-                            {$pasteAfterItem}
-                        );
-                    } else {
-                        new FilamentNotification()
-                            .title('Kein Block in der Zwischenablage')
-                            .warning()
-                            .send();
-                    }
-                JS;
-            @endphp
-
-            <x-filament::dropdown.list.item
-                icon="heroicon-o-clipboard-document-check"
-                :x-on:click="$pasteClickHandler"
+            <div
+                {{ (new FilamentComponentAttributeBag)->grid($columns, GridDirection::Column) }}
             >
-                Aus Zwischenablage einfügen
-            </x-filament::dropdown.list.item>
-        @endif
-        {{-- cms:end --}}
-    </x-filament::dropdown.list>
+                @foreach ($blocks as $block)
+                    @php
+                        $blockIcon = $block->getIcon();
+                        $blockLabel = $block->getLabel();
+
+                        $blockSearchLabel = null;
+
+                        if ($searchable) {
+                            $blockSearchLabel = $blockLabel;
+
+                            if ($blockSearchLabel instanceof Htmlable) {
+                                $blockSearchLabel = html_entity_decode(strip_tags($blockSearchLabel->toHtml()), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                            }
+
+                            $blockSearchLabel = Str::lower($blockSearchLabel);
+                        }
+
+                        $wireClickActionArguments = ['block' => $block->getName()];
+
+                        if (filled($afterItem)) {
+                            $wireClickActionArguments['afterItem'] = $afterItem;
+                        }
+
+                        $wireClickActionArguments = Js::from($wireClickActionArguments);
+
+                        $wireClickAction = "mountAction('{$action->getName()}', {$wireClickActionArguments}, { schemaComponent: '{$key}' })";
+                    @endphp
+
+                    <x-filament::dropdown.list.item
+                        :icon="$blockIcon"
+                        :role="$searchable ? 'button' : 'menuitem'"
+                        :tabindex="$searchable ? 0 : -1"
+                        x-on:click="close"
+                        :wire:click="$wireClickAction"
+                        :wire:key="$searchable ? md5($wireClickAction . $blockSearchLabel) : null"
+                        :data-block-label="$blockSearchLabel"
+                        :x-show="$searchable ? 'isBlockVisible($el)' : null"
+                    >
+                        {{ $blockLabel }}
+                    </x-filament::dropdown.list.item>
+                @endforeach
+            </div>
+
+            @if ($searchable)
+                <div
+                    x-cloak
+                    x-show="hasNoSearchResults"
+                    role="status"
+                    aria-live="polite"
+                    class="fi-fo-builder-block-picker-no-search-results-message"
+                >
+                    {{ $noSearchResultsMessage }}
+                </div>
+            @endif
+
+            {{-- cms:start block-picker paste — the package's PasteItemAction: its click handler reads
+                 the clipboard (localStorage fallback) and mounts the action with what it found. The
+                 label stays short enough for the picker's width; the title carries the full one. A
+                 search leaves it standing: it is no block to search for. --}}
+            @if ($pasteAction?->isVisible())
+                <x-filament::dropdown.list.item
+                    :icon="$pasteAction->getIcon()"
+                    :role="$searchable ? 'button' : 'menuitem'"
+                    :tabindex="$searchable ? 0 : -1"
+                    :title="$pasteAction->getTooltip()"
+                    :x-load-js="json_encode([\Mmoollllee\FilamentBuilderExtensions\FilamentBuilderExtensionsServiceProvider::scriptSrc()], JSON_UNESCAPED_SLASHES)"
+                    :x-on:click="'close(); '.$pasteAction->getAlpineClickHandler()"
+                >
+                    {{ $pasteAction->getLabel() }}
+                </x-filament::dropdown.list.item>
+            @endif
+            {{-- cms:end --}}
+        </x-filament::dropdown.list>
+    @endif
 </x-filament::dropdown>

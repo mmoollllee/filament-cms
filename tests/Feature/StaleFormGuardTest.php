@@ -151,12 +151,18 @@ it('never reaches the guard when the record itself is gone', function () {
 
     $tab = Livewire::test(EditContent::class, ['record' => $record->getKey()])
         ->fillForm(['title' => 'Aus Tab B']);
+    $idleTab = Livewire::test(EditContent::class, ['record' => $record->getKey()]);
 
     $record->newQueryWithoutScopes()->whereKey($record->getKey())->delete();
 
-    // Livewire re-resolves the record property on every hydration, so a form
-    // whose record was deleted elsewhere dies before any of our write guards
-    // run. Pinned so the guard is never credited with a case it cannot see.
-    expect(fn () => $tab->call('save'))
-        ->toThrow(Illuminate\Database\Eloquent\ModelNotFoundException::class);
+    // Filament's resource pages re-resolve the record on every request
+    // (resolveScopedModelProperties()), so a form whose record was deleted
+    // elsewhere ends in a 404 before any of our write guards run — nothing is
+    // written, the record not brought back. Pinned so the guard is never
+    // credited with a case it cannot see: a request that writes nothing 404s
+    // just the same.
+    $idleTab->call('$refresh')->assertStatus(404);
+    $tab->call('save')->assertStatus(404);
+
+    expect(Content::withoutGlobalScopes()->whereKey($record->getKey())->exists())->toBeFalse();
 });

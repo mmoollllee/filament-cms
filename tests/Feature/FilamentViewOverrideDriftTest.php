@@ -26,26 +26,29 @@
 
 use Illuminate\Support\Facades\File;
 
-const FILAMENT_VIEW_BASELINE = 'v5.7.5';
+const FILAMENT_VIEW_BASELINE = 'v5.11.0';
 
 dataset('embedded render methods', [
     'Builder::toEmbeddedHtml' => [
         \Filament\Forms\Components\Builder::class,
         'toEmbeddedHtml',
-        'f8a7c1351bd303499c8ec8ae90bf0fa7ee2dcd1a365f46595d3eb7aa02b82e88',
+        '071e7584056dea2754c9d7a48681d2d1ce99a17312bd7b17136e90bf22de9839',
     ],
-    // v5.7.5 simplified two conditional class entries ($class => filled($class)
-    // → $class) in the INLINE picker HTML — a no-op the override never sees: it
-    // renders through the published Blade view below (unchanged since v5.7.1).
+    // The INLINE picker HTML; the override renders through the published Blade view
+    // below, with the props this method hands it (searchable, searchPrompt, …).
     'Builder::generateBlockPickerHtml' => [
         \Filament\Forms\Components\Builder::class,
         'generateBlockPickerHtml',
-        '823392cabb4d8f1a1851d9ea204c5b44d7fa4b161d66f32dc02ef883c1d42a5b',
+        '9dd56f0de11dcc9e3224526d3e5f1343b5ac8f77537f22058a490e4830382bc4',
     ],
+    // Since v5.7 the PHP wrapper finds a field's errors differently, gives the error
+    // message an id ({id}-error) and adds a screen-reader text for required fields
+    // ({id}-required); the override renders the field wrapper view, which carries
+    // the same changes.
     'Field::wrapEmbeddedHtml' => [
         \Filament\Forms\Components\Field::class,
         'wrapEmbeddedHtml',
-        '6796bfb5f45a5fe3fb5f5eafdd1c550ea496f03ece16a6da7b3458dfeffbc82b',
+        '550bcb6f6e127c9ed3bf7a0a9a4aa8d4c2251747ed1a4428f1cbe361fb2b5f15',
     ],
 ]);
 
@@ -74,7 +77,7 @@ it('matches the vendor baseline the block-picker view override was vendored from
     expect(File::exists($absolute))->toBeTrue('Vendor block-picker view is missing — did the Filament view move?');
 
     expect(hash_file('sha256', $absolute))->toBe(
-        '3bfe9847733b1e995416a638eb40eb2c2083ea56da77ff4a6da17f6ac0fcdff0',
+        'd6a553c0104d51b6663b1e80fb890ed37f04cc0b7d53490eb1026d83e603e4dc',
         'Filament changed the block-picker view since baseline '.FILAMENT_VIEW_BASELINE.'. '
             .'Re-apply the vendor changes to the override in resources/overrides/filament-forms/ '
             .'(keep the cms:start/cms:end blocks), then update the hash in this test.',

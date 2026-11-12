@@ -406,12 +406,19 @@ in a service provider — see the demo's "Custom blocks" HowTo.
 clicking it swaps to the edit form in place, "Fertig" returns to the preview. No modals.
 
 **Copy & paste blocks** — every block row has a "Block kopieren" action (copies
-type + data as JSON to the clipboard, localStorage fallback); every block picker offers
-"Aus Zwischenablage einfügen" — including *across pages, tenants and browser tabs*.
+type + data as JSON to the clipboard, localStorage fallback for 24 hours); every block
+picker offers "Aus Zwischenablage" — at the end, or between two blocks after the one
+above — including *across pages, tenants and browser tabs*. From the keyboard: a click on
+a block, outside its fields, selects it (framed); ⌘C copies it, ⌘V pastes after it (Ctrl
+elsewhere). In a field or with text selected the keys copy and paste text as ever. A
+builder only takes a block it offers, and only what fits the block's fields
+(`BaseBuilderBlock::copyBlockAction()` / `pasteBlockAction()`, from
+`mmoollllee/filament-builder-extensions`).
 
-**Cross-builder drag & drop** — blocks can be dragged between sections (all section
-child-builders share the `section-blocks` sortable group); order in both lists is
-preserved server-side (`TransfersBuilderItems`).
+**Cross-builder drag & drop** — blocks can be dragged between sections, into an empty one
+too (all section child-builders share the `section-blocks` transfer group); the server
+checks both builders against the form and keeps the order of both lists
+(`->transferGroup()` of `mmoollllee/filament-builder-extensions`).
 
 **Deactivate instead of delete** — the per-block gear ("Block-Optionen") has an "Aktiv"
 toggle; inactive blocks stay in the builder dimmed, with an "inaktiv → aktivieren" pill
@@ -439,7 +446,7 @@ dropping them (`ConfirmsLeaving`, used by `ManagesDrafts` and `CreatesDrafts`). 
 question only follows targets inside the panel.
 
 **Editable block titles** — `->title('title', placeholder: 'Titel', suffix: 'Sektion')`
-(from the bundled `mmoollllee/filament-builder-title`) renders an inline text input in
+(from the bundled `mmoollllee/filament-builder-extensions`) renders an inline text input in
 the block's header row — name blocks without opening them.
 
 **Per-site allowlists** — restrict what editors can add:
@@ -820,8 +827,8 @@ CLI PHP must be able to reach the binary.
   tenant registration + tenant profile (branding/contact/SEO/spam questions) pages
   included.
 - **Base pages** — site resources' pages extend `ContentListPage` / `ContentCreatePage` /
-  `ContentEditPage` and inherit everything above (incl. builder clipboard/DnD wiring and
-  payload-preserving saves) in 3 lines per page.
+  `ContentEditPage` and inherit everything above (incl. payload-preserving saves) in 3
+  lines per page.
 
 ## Field kits
 
@@ -945,7 +952,7 @@ model (it never touches existing app code).
 
 | Package | Used for |
 |---|---|
-| `mmoollllee/filament-builder-title` | inline editable block titles (`->title()` Block/Repeater macro) |
+| `mmoollllee/filament-builder-extensions` | inline editable block titles (`->title()`), drag & drop between builders, block copy & paste |
 | `blendbyte/filament-title-with-slug` | title + slug/path input with URL preview |
 | `datlechin/filament-menu-builder` | drag-and-drop menus (tenant-scoped by the package) |
 | `defstudio/filament-searchable-input` | the internal-path autocomplete inputs |

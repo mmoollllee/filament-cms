@@ -33,7 +33,7 @@ providers:
   - DefStudio\SearchableInput\SearchableInputServiceProvider
   - ProtoneMedia\LaravelFFMpeg\Support\ServiceProvider
   - yannkuesthardt\SpamProtect\SpamprotectServiceProvider
-  - Mmoollllee\FilamentBuilderTitle\FilamentBuilderTitleServiceProvider
+  - Mmoollllee\FilamentBuilderExtensions\FilamentBuilderExtensionsServiceProvider
   # Membership, invitations and the access list; configured by CmsServiceProvider.
   - Mmoollllee\FilamentTenantAccess\TenantAccessServiceProvider
   # Optional Umami analytics (require-dev here; consumers install it themselves).

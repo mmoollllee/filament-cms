@@ -453,15 +453,18 @@
     opacity: 1;
 }
 
-/* Dim a block whose `active` option is off. The marker sits on the item's OWN
-   element (set by the builder override), so an inactive child never dims its
-   active parent section. Full opacity on hover. */
-.fi-fo-builder-item-inactive {
+/* Dim a block whose `active` option is off: the item whose OWN header carries the
+   "inaktiv" pill (the child combinators keep an inactive child from dimming its
+   active parent section). Not a class on the item: Livewire never updates the
+   item element's own attributes (wire:ignore.self), so it would outlive a click
+   on the pill until the next page load; the pill comes and goes with every
+   render. Full opacity on hover. */
+.fi-fo-builder-item:has(> .fi-fo-builder-item-header > .fi-fo-builder-item-inactive-pill) {
     opacity: 0.5;
     transition: opacity 0.15s ease;
 }
 
-.fi-fo-builder-item-inactive:hover {
+.fi-fo-builder-item:has(> .fi-fo-builder-item-header > .fi-fo-builder-item-inactive-pill):hover {
     opacity: 1;
 }
 

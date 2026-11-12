@@ -8,8 +8,6 @@ use Filament\Support\Enums\Width;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Filament\Concerns\LocksRecords;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
-use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
-use Mmoollllee\Cms\Filament\Concerns\TransfersBuilderItems;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
@@ -17,8 +15,6 @@ use Mmoollllee\Cms\Support\Preview\PreviewMode;
  * Base edit page for every content resource (catch-all AND site-extension types).
  *
  * Provides the pieces every content form needs and that are easy to forget:
- * - the builder clipboard-paste + cross-builder drag & drop Livewire methods
- *   (without them, the builder UI's paste entry / cross-section drop errors),
  * - payload preservation on save (Filament would drop unmanaged payload.* keys),
  * - the draft workflow ("Entwurf speichern" / "Änderungen anwenden" / Vorschau,
  *   see {@see ManagesDrafts}) with the delete action as footer trash button,
@@ -39,8 +35,6 @@ abstract class ContentEditPage extends EditRecord
         getDeleteFormAction as protected getDeleteFormActionGeneric;
         previewQuery as protected previewQueryGeneric;
     }
-    use PastesBuilderBlocks;
-    use TransfersBuilderItems;
 
     protected Width|string|null $maxContentWidth = Width::ScreenTwoExtraLarge;
 

@@ -7,16 +7,13 @@ use Filament\Support\Enums\Width;
 use Illuminate\Validation\ValidationException;
 use Mmoollllee\Cms\Filament\Concerns\CreatesDrafts;
 use Mmoollllee\Cms\Filament\Concerns\LocksRecords;
-use Mmoollllee\Cms\Filament\Concerns\PastesBuilderBlocks;
-use Mmoollllee\Cms\Filament\Concerns\TransfersBuilderItems;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
 use Mmoollllee\Cms\Support\FormFieldValidation;
 
 /**
  * Base create page for every content resource (catch-all AND site-extension types).
- * Wires the builder's clipboard-paste + cross-builder drag & drop Livewire halves,
- * the "Unveröffentlicht anlegen" flow ({@see CreatesDrafts}) and the wide content
- * layout, so a site page class only pins its `$resource`:
+ * Wires the "Unveröffentlicht anlegen" flow ({@see CreatesDrafts}) and the wide
+ * content layout, so a site page class only pins its `$resource`:
  *
  *     class CreatePage extends ContentCreatePage
  *     {
@@ -26,8 +23,6 @@ use Mmoollllee\Cms\Support\FormFieldValidation;
 abstract class ContentCreatePage extends CreateRecord
 {
     use CreatesDrafts;
-    use PastesBuilderBlocks;
-    use TransfersBuilderItems;
 
     protected Width|string|null $maxContentWidth = Width::ScreenTwoExtraLarge;
 

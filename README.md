@@ -30,7 +30,7 @@ pruning). The app provides models, config, a thin PanelProvider and its frontend
 
 Composer only reads `repositories` from the ROOT composer.json — the entries this
 package declares for its own dependencies are ignored in consuming apps. Every
-client app must therefore declare ALL THREE repositories itself:
+client app must therefore declare ALL FOUR repositories itself:
 
 ```jsonc
 {
@@ -41,8 +41,10 @@ client app must therefore declare ALL THREE repositories itself:
         // dependencies of filament-cms that are not on Packagist:
         // — Filament's plugin registry (license required for awcodes/richer-editor):
         { "type": "composer", "url": "https://packages.filamentphp.com/composer" },
-        // — the inline block-title macro package:
-        { "type": "vcs", "url": "https://github.com/mmoollllee/filament-builder-title" }
+        // — the builder tools (block titles, drag & drop between builders, copy & paste):
+        { "type": "vcs", "url": "https://github.com/mmoollllee/filament-builder-extensions" },
+        // — per-tenant access for the panel's users:
+        { "type": "vcs", "url": "https://github.com/mmoollllee/filament-tenant-access" }
     ],
     "require": {
         "mmoollllee/filament-cms": "^0.1"
@@ -52,6 +54,13 @@ client app must therefore declare ALL THREE repositories itself:
 
 `composer install` needs an `auth.json` with your filamentphp.com credentials
 (for the plugin registry). Everything else resolves from Packagist.
+
+**Upgrading an app that requires `mmoollllee/filament-builder-title` itself** (the CMS
+bundled it before `filament-builder-extensions` replaced it): remove it from `require` and
+its repository from `repositories`, add the `filament-builder-extensions` repository above,
+then `composer update` (updating the CMS alone needs `-W`: it brings Filament 5.11 along)
+and `php artisan filament:assets`. The two packages conflict — both define `->title()` —,
+so Composer refuses the update while the old one is still required.
 
 ### 2. `cms:install`
 
@@ -377,13 +386,22 @@ composer serve                       # http://127.0.0.1:8000
 
 ## Update-safety
 
-Two Filament builder views are vendored (cross-builder drag & drop, inline preview
-editing, inactive-block UI, clipboard paste, block-option badges — no extension points
-exist for these).
+Two Filament builder views are vendored (inline preview editing, inactive-block UI,
+the block picker's clipboard entry, block-option badges — no extension points exist for
+these; dragging blocks between builders and copy & paste themselves come from
+`mmoollllee/filament-builder-extensions`, without an override).
 `tests/Feature/FilamentViewOverrideDriftTest.php` hashes the vendor originals and fails
 with re-vendoring instructions whenever a Filament update touches them — see
 [`docs/CUSTOMIZATION.md` §11](docs/CUSTOMIZATION.md#11-vendored-filament-view-overrides).
+The views follow Filament 5.11.0, so the CMS requires `filament/filament` `^5.11`.
 Everything else extends supported APIs.
+
+Rich text inside a section's blocks reaches Livewire as property paths deeper than the
+10 levels Livewire allows by default (`payload.max_nesting_depth`), which would fail
+every request of the editor. The `CmsServiceProvider` raises the limit to 40 — Filament's
+rich-editor docs suggest 32 for a rich editor near the top of a form, the CMS's sit 8
+levels deeper — unless the app's `config/livewire.php` allows more already or sets no
+limit (`null`).
 
 
 ## Silent failure modes
