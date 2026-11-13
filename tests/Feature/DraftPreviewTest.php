@@ -18,6 +18,7 @@ use Livewire\Livewire;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\Content\ContentResolver;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\TenantCache;
 use Workbench\App\Models\Content;
@@ -160,6 +161,25 @@ it('cannot overwrite guarded attributes through a draft overlay', function () {
 
     expect($overlaid->getKey())->toBe($page->getKey())
         ->and($overlaid->title)->toBe('Entwurfs-Titel');
+
+    app(PreviewMode::class)->deactivate();
+});
+
+it('finds a page at the path its stashed draft moves it to, in preview only', function () {
+    $tenant = previewTenant();
+    $page = previewPage($tenant);
+    $page->stashDraft(['title' => 'Entwurfs-Titel', 'path' => '/entwurfs-adresse']);
+    $editor = User::factory()->superadmin()->create();
+    $resolver = app(ContentResolver::class);
+
+    // The live site knows the page by its stored address alone.
+    expect($resolver->findByPath($tenant, '/entwurfs-adresse', $editor))->toBeNull();
+
+    // The preview links the page by its draft address — and finds it there.
+    app(PreviewMode::class)->activate();
+
+    expect($resolver->findByPath($tenant, '/entwurfs-adresse', $editor)?->getKey())->toBe($page->getKey())
+        ->and($resolver->findByPath($tenant, '/gibt-es-nicht', $editor))->toBeNull();
 
     app(PreviewMode::class)->deactivate();
 });

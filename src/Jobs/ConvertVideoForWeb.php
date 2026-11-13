@@ -4,7 +4,7 @@ namespace Mmoollllee\Cms\Jobs;
 
 use FFMpeg\Format\Video\X264;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -16,7 +16,12 @@ use Mmoollllee\Cms\Support\Content\VideoConversionHelper;
 use ProtoneMedia\LaravelFFMpeg\Support\FFMpeg;
 use Throwable;
 
-class ConvertVideoForWeb implements ShouldQueue
+/**
+ * Queued only once the save that dispatched it commits: every content save runs in a
+ * transaction, and a worker on another connection (Redis, SQS) would otherwise pick the job
+ * up before the blocks it reads are committed — or for a save that rolled back.
+ */
+class ConvertVideoForWeb implements ShouldQueueAfterCommit
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 

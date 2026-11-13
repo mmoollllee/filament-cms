@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
+use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Content\NavigationContextBuilder;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Content;
@@ -148,6 +149,48 @@ it('ends every walk up the tree at a cycle', function () {
     expect(app(NavigationContextBuilder::class)->breadcrumbLabelsFor($b->fresh()))->toBe(['A', 'B'])
         ->and(app(ContentResolver::class)->onepagerSectionFor($b->fresh(), $this->tenant))->toBeNull()
         ->and($b->fresh()->generatedPath())->toBe('/zyklus-a/b');
+});
+
+it('ends a subtree cascade at a cycle instead of re-saving its rows into each other', function () {
+    $a = integrityPage($this->tenant, ['title' => 'A', 'path' => '/zyklus-a']);
+    $b = integrityPage($this->tenant, ['title' => 'B', 'path' => '/zyklus-a/b', 'parent_id' => $a->id]);
+
+    // Only reachable past the hooks — which is exactly how a broken import leaves it.
+    DB::table('contents')->where('id', $a->id)->update(['parent_id' => $b->id]);
+
+    failAfterQueries(300);
+
+    // The save composes A below B and drags B along — once, not back into A.
+    expect($a->fresh()->save())->toBeTrue()
+        ->and($a->fresh()->path)->toBe('/zyklus-a/b/zyklus-a')
+        ->and($b->fresh()->path)->toBe('/zyklus-a/b/zyklus-a/b');
+});
+
+it('reads only the subtree it walks, one level per query', function () {
+    $root = integrityPage($this->tenant, ['title' => 'Wurzel', 'path' => '/wurzel']);
+    $child = integrityPage($this->tenant, ['title' => 'Kind', 'path' => '/wurzel/kind', 'parent_id' => $root->id]);
+    $grandchild = integrityPage($this->tenant, ['title' => 'Enkel', 'path' => '/wurzel/kind/enkel', 'parent_id' => $child->id]);
+
+    // The rest of the tenant, and a foreign row that names the root as its parent.
+    foreach (range(1, 3) as $number) {
+        integrityPage($this->tenant, ['title' => "Andere {$number}", 'path' => "/andere-{$number}"]);
+    }
+
+    $foreign = integrityPage($this->foreign, ['title' => 'Fremd', 'path' => '/fremd']);
+    DB::table('contents')->where('id', $foreign->id)->update(['parent_id' => $root->id]);
+
+    DB::enableQueryLog();
+
+    $keys = app(ContentTree::class)->subtreeKeys($root);
+
+    // A rename asks this for every row its cascade re-saves: each query binds the one level
+    // it reads — never the whole tenant, never the keys collected so far.
+    expect(array_map('intval', $keys))->toBe([$root->id, $child->id, $grandchild->id])
+        ->and(array_map(fn (array $query): array => array_map('intval', $query['bindings']), DB::getQueryLog()))->toBe([
+            [$this->tenant->id, $root->id],
+            [$this->tenant->id, $child->id],
+            [$this->tenant->id, $grandchild->id],
+        ]);
 });
 
 it('saves a move and the subtree it drags along as one write, outside the panel too', function () {

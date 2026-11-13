@@ -4,6 +4,7 @@ namespace Mmoollllee\Cms\Filament\Resources\Concerns;
 
 use Filament\Notifications\Notification;
 use Filament\Support\Enums\Width;
+use Illuminate\Validation\ValidationException;
 use Mansoor\FilamentVersionable\RevisionsPage;
 use Mmoollllee\Cms\Support\Preview\Drafts;
 
@@ -58,7 +59,20 @@ abstract class ContentRevisionsPage extends RevisionsPage
         $record = $this->getRecord();
         $hadPendingDraft = Drafts::pending($record);
 
-        parent::restoreVersion();
+        try {
+            parent::restoreVersion();
+        } catch (ValidationException $exception) {
+            // The saving hook refuses what the revision would bring back — a parent since
+            // deleted, moved below the page, or no longer allowed. This page draws no field
+            // errors, so the answer is a notice; nothing was restored and the stash stays.
+            Notification::make()
+                ->danger()
+                ->title('Fassung nicht wiederhergestellt')
+                ->body(implode(' ', $exception->validator->errors()->all()))
+                ->send();
+
+            return;
+        }
 
         if ($hadPendingDraft) {
             $record->discardDraft();

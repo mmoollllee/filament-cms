@@ -14,7 +14,10 @@
  */
 
 use Illuminate\Support\Facades\DB;
+use Mmoollllee\Cms\Enums\RedirectOrigin;
 use Mmoollllee\Cms\Models\Menu;
+use Mmoollllee\Cms\Models\Redirect;
+use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Mmoollllee\Cms\Support\TenantCache;
@@ -68,6 +71,28 @@ it('keeps the generation for a write that rolls back', function () {
     expect($this->cache->generation($this->tenant->id))->toBe($before);
 });
 
+it('keeps the generation for a redirect saved without a change', function () {
+    $redirect = Redirect::create([
+        'tenant_id' => $this->tenant->id,
+        'from_path' => '/alt',
+        'to_url' => 'https://example.test/neu',
+        'status_code' => 301,
+        'origin' => RedirectOrigin::Manual,
+    ]);
+
+    $before = $this->cache->generation($this->tenant->id);
+
+    // The 404 resolver re-saves an unchanged suggestion on every call: plain 404 traffic
+    // must not empty the tenant's cache.
+    $redirect->fresh()->save();
+
+    expect($this->cache->generation($this->tenant->id))->toBe($before);
+
+    $redirect->fresh()->update(['to_url' => 'https://example.test/neuer']);
+
+    expect($this->cache->generation($this->tenant->id))->not->toBe($before);
+});
+
 it('files a read that raced a write under the old generation', function () {
     // The reader takes the generation, then reads the database…
     $generation = $this->cache->generation($this->tenant->id);
@@ -114,4 +139,24 @@ it('shows a renamed page under its new address in a menu that links it', functio
     expect(collect(Menu::linksForLocation('header', $this->tenant))->pluck('path')->all())
         ->toContain('/aktion')
         ->not->toContain('/angebot');
+});
+
+it('keeps its wrapped entries apart from the bare ones earlier releases wrote', function () {
+    // Code of an earlier release — a rollback, an old worker mid-deploy — reads these
+    // spellings and would take a {generation, value} wrapper for its payload.
+    expect([
+        CacheKeys::content(1, '/seite'),
+        CacheKeys::sections(1),
+        CacheKeys::sitemap(1),
+        CacheKeys::candidates(1),
+        CacheKeys::redirects(1),
+        CacheKeys::menu(1, 'header'),
+    ])->not->toContain(
+        'tenant:1:content:v2:/seite',
+        'tenant:1:sections:v2',
+        'tenant:1:sitemap',
+        'tenant:1:candidates',
+        'tenant:1:redirects',
+        'tenant:1:menu:header',
+    );
 });

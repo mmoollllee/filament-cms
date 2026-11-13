@@ -9,3 +9,4 @@ auth.json
 .idea/
 .vscode/
 /workbench/database/database.sqlite
+.phpunit.result.cache

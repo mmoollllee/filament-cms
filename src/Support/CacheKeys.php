@@ -13,6 +13,11 @@ use Mmoollllee\Cms\Cms;
  * tenant lookup sits outside it — it is how the tenant is found in the first place —
  * and is forgotten by domain. Writers and readers MUST agree on the spelling — spread
  * as literals, a renamed key silently splits them into "always stale" / "never cleared".
+ *
+ * A key's version moves with its payload's shape. The generation-scoped keys took one
+ * step together when TenantCache started wrapping every entry as `{generation, value}`:
+ * code of an earlier release — a rollback, an old worker during a deploy — reads its own
+ * keys then, never a wrapper it would take for a payload.
  */
 class CacheKeys
 {
@@ -36,49 +41,49 @@ class CacheKeys
     /**
      * Resolved Content (or cached null) per normalized path ({@see \Mmoollllee\Cms\Support\Content\ContentResolver}).
      *
-     * `v2`: payload is a scalar attribute array (ModelCache, 0.2.6).
+     * `v2`: payload is a scalar attribute array (ModelCache, 0.2.6). `v3`: wrapped by TenantCache.
      */
     public static function content(int|string $tenantId, string $path): string
     {
-        return "tenant:{$tenantId}:content:v2:{$path}";
+        return "tenant:{$tenantId}:content:v3:{$path}";
     }
 
     /**
      * The tenant's onepager section list ({@see \Mmoollllee\Cms\Support\Content\ContentResolver}).
      *
-     * `v2`: payload is a list of scalar attribute arrays (ModelCache, 0.2.6).
+     * `v2`: payload is a list of scalar attribute arrays (ModelCache, 0.2.6). `v3`: wrapped by TenantCache.
      */
     public static function sections(int|string $tenantId): string
     {
-        return "tenant:{$tenantId}:sections:v2";
+        return "tenant:{$tenantId}:sections:v3";
     }
 
-    /** The rendered sitemap XML ({@see \Mmoollllee\Cms\Http\Controllers\Frontend\SitemapController}). */
+    /** The rendered sitemap XML ({@see \Mmoollllee\Cms\Http\Controllers\Frontend\SitemapController}); `v2`: wrapped by TenantCache. */
     public static function sitemap(int|string $tenantId): string
     {
-        return "tenant:{$tenantId}:sitemap";
+        return "tenant:{$tenantId}:sitemap:v2";
     }
 
-    /** 404 fuzzy-suggestion candidates ({@see \Mmoollllee\Cms\Support\Routing\PathSuggestionResolver}). */
+    /** 404 fuzzy-suggestion candidates ({@see \Mmoollllee\Cms\Support\Routing\PathSuggestionResolver}); `v2`: wrapped by TenantCache. */
     public static function candidates(int|string $tenantId): string
     {
-        return "tenant:{$tenantId}:candidates";
+        return "tenant:{$tenantId}:candidates:v2";
     }
 
-    /** The active-redirect map ({@see \Mmoollllee\Cms\Support\Routing\RedirectResolver}). */
+    /** The active-redirect map ({@see \Mmoollllee\Cms\Support\Routing\RedirectResolver}); `v2`: wrapped by TenantCache. */
     public static function redirects(int|string $tenantId): string
     {
-        return "tenant:{$tenantId}:redirects";
+        return "tenant:{$tenantId}:redirects:v2";
     }
 
-    /** Link-ready menu entries per location ({@see \Mmoollllee\Cms\Models\Menu::linksForLocation()}). */
+    /** Link-ready menu entries per location ({@see \Mmoollllee\Cms\Models\Menu::linksForLocation()}); `v2`: wrapped by TenantCache. */
     public static function menu(int|string $tenantId, string $location): string
     {
         // The nested-menu opt-in changes the cached shape — a separate key keeps
         // toggling it from serving the other shape until the next menu save.
         $suffix = Cms::hasNestedMenus() ? ':nested' : '';
 
-        return "tenant:{$tenantId}:menu:{$location}{$suffix}";
+        return "tenant:{$tenantId}:menu:v2:{$location}{$suffix}";
     }
 
     /** Redirect hit-count throttle lock ({@see \Mmoollllee\Cms\Support\Routing\HitRecorder}). */

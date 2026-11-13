@@ -43,6 +43,16 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  */
 trait GeneratesPathAndSlug
 {
+    /**
+     * Keys whose subtree cascade is running in this save chain. A `parent_id` cycle — only
+     * reachable past these hooks, the way a raw write or a broken import leaves it — would
+     * otherwise have its rows re-save each other until a path outgrows its column: the
+     * cascade ends at the row it began with.
+     *
+     * @var array<string, true>
+     */
+    protected static array $cascadingKeys = [];
+
     protected static function bootGeneratesPathAndSlug(): void
     {
         static::saving(function (Model $content): void {
@@ -131,13 +141,25 @@ trait GeneratesPathAndSlug
             // cannot see is a row written between that check and this cascade.
             // childrenOf() is tenant-scoped, so a row of another tenant that names this one
             // as its parent is never saved by THIS tenant's rename.
-            app(ContentTree::class)
-                ->childrenOf($content)
-                ->each(function (Model $child) use ($content): void {
-                    // Composed against this record as it now stands, without reading it back.
-                    $child->setRelation('parent', $content);
-                    $child->save();
-                });
+            $key = (string) $content->getKey();
+            static::$cascadingKeys[$key] = true;
+
+            try {
+                app(ContentTree::class)
+                    ->childrenOf($content)
+                    ->each(function (Model $child) use ($content): void {
+                        // A cycle back to a row whose cascade is still running ends here.
+                        if (isset(static::$cascadingKeys[(string) $child->getKey()])) {
+                            return;
+                        }
+
+                        // Composed against this record as it now stands, without reading it back.
+                        $child->setRelation('parent', $content);
+                        $child->save();
+                    });
+            } finally {
+                unset(static::$cascadingKeys[$key]);
+            }
         });
     }
 

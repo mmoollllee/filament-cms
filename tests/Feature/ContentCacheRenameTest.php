@@ -1,5 +1,6 @@
 <?php
 
+use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
 use Mmoollllee\Cms\Support\TenantCache;
 use Workbench\App\Models\Content;
@@ -26,7 +27,7 @@ it('drops the old path cache when a content path is renamed', function () {
     ]);
 
     $oldPath = $content->path;
-    $oldKey = "tenant:{$tenant->id}:content:v2:{$oldPath}";
+    $oldKey = CacheKeys::content($tenant->id, $oldPath);
     $cache = app(TenantCache::class);
 
     // Warm the anonymous-visitor cache for the old path.

@@ -16,7 +16,7 @@ use Mmoollllee\Cms\Support\TenantCache;
  * Resolves an incoming path to an active redirect for a tenant.
  *
  * The whole set of active redirects is materialized once per tenant into a `from_path → target`
- * map cached under the tenant's cache generation (keyed `tenant:{id}:redirects`, {@see TenantCache}).
+ * map cached under the tenant's cache generation (keyed by {@see CacheKeys::redirects()}, {@see TenantCache}).
  * A lookup is then a single cache read + array access — zero DB queries on a hit — so redirects
  * can run BEFORE content resolution (shadowing live content) without measurably affecting page
  * load. Redirect and content writes move the generation on after they commit

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Mmoollllee\Cms\Jobs\ConvertVideoForWeb;
@@ -136,4 +137,9 @@ it('finds a media block that is not nested in a section', function () {
     ]);
 
     Queue::assertPushed(ConvertVideoForWeb::class);
+});
+
+it('queues the conversion only once the save commits', function () {
+    // Every content save is a transaction: a worker must not read the blocks before COMMIT.
+    expect(new ConvertVideoForWeb(1, 'clips/big.mp4'))->toBeInstanceOf(ShouldQueueAfterCommit::class);
 });

@@ -19,8 +19,17 @@ use Mmoollllee\Cms\Support\TenantCache;
  */
 class RedirectCacheObserver
 {
+    /**
+     * A save that wrote nothing leaves every cache as it was: Eloquent fires `saved` without an
+     * UPDATE, and the public 404 resolver re-saves an unchanged suggestion on every call — a
+     * flush there would let plain 404 traffic empty the tenant's whole cache.
+     */
     public function saved(Redirect $redirect): void
     {
+        if ((! $redirect->wasRecentlyCreated) && (! $redirect->wasChanged())) {
+            return;
+        }
+
         $this->flush($redirect);
     }
 

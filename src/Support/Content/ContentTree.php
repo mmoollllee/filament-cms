@@ -33,6 +33,9 @@ use Mmoollllee\Cms\Rules\ValidParent;
  */
 class ContentTree
 {
+    /** Keys one subtree query binds at most — well below the ceiling of every driver. */
+    protected const KEYS_PER_QUERY = 500;
+
     /**
      * The record holding $path for $tenantId, or null when the address is free.
      *
@@ -177,10 +180,12 @@ class ContentTree
     /**
      * $rootKey plus every key below it in $tenantId, nearest levels first.
      *
-     * Walked over one `id → parent_id` map of the tenant rather than one query per level —
-     * content sets per tenant are small, and a deep import would otherwise bind the whole
-     * accumulated key set as parameters at every level, past SQLite's variable ceiling. A
-     * row already collected is never queued again, which is what ends a malformed cycle.
+     * One query per level, reading the next level's keys and nothing else: a rename asks this
+     * again for every row its cascade re-saves, so the walk must cost what the subtree holds,
+     * not what the tenant holds. Each query binds that one level — in chunks, since a single
+     * level can be wide — and never the keys collected so far, which a deep import would
+     * push past SQLite's variable ceiling. A row already collected is never queued again,
+     * which is what ends a malformed cycle.
      *
      * @return array<int, mixed>
      */
@@ -192,26 +197,29 @@ class ContentTree
         }
 
         $model = Cms::contentModel();
-
-        $childrenByParent = [];
-
-        foreach ($model::query()
-            ->where('tenant_id', $tenantId)
-            ->whereNotNull('parent_id')
-            ->pluck('parent_id', (new $model)->getKeyName()) as $key => $parentKey) {
-            $childrenByParent[(string) $parentKey][] = $key;
-        }
+        $keyName = (new $model)->getKeyName();
 
         $keys = [$rootKey];
         $collected = [(string) $rootKey => true];
+        $level = [$rootKey];
 
-        for ($index = 0; $index < count($keys); $index++) {
-            foreach ($childrenByParent[(string) $keys[$index]] ?? [] as $childKey) {
-                if (! isset($collected[(string) $childKey])) {
-                    $collected[(string) $childKey] = true;
-                    $keys[] = $childKey;
+        while ($level !== []) {
+            $next = [];
+
+            foreach (array_chunk($level, static::KEYS_PER_QUERY) as $parentKeys) {
+                foreach ($model::query()
+                    ->where('tenant_id', $tenantId)
+                    ->whereIn('parent_id', $parentKeys)
+                    ->pluck($keyName) as $childKey) {
+                    if (! isset($collected[(string) $childKey])) {
+                        $collected[(string) $childKey] = true;
+                        $next[] = $childKey;
+                    }
                 }
             }
+
+            $keys = [...$keys, ...$next];
+            $level = $next;
         }
 
         return $keys;

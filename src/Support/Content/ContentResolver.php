@@ -55,7 +55,8 @@ class ContentResolver
         // drafts on retrieval) — a merely logged-in user sees exactly the guest
         // result, so the warm cache serves them too.
         if ($user !== null && app(PreviewMode::class)->active()) {
-            return $this->resolveFindByPath($tenant, $normalizedPath, $user);
+            return $this->resolveFindByPath($tenant, $normalizedPath, $user)
+                ?? $this->resolveDraftPath($tenant, $normalizedPath, $user);
         }
 
         $tenantId = $tenant->getKey();
@@ -111,6 +112,29 @@ class ContentResolver
         // without letting an attacker enumerating distinct paths grow the cache store
         // without bound (as rememberForever did).
         $cache->put($tenantId, $key, self::MISS, now()->addSeconds(self::MISS_CACHE_TTL), $generation);
+
+        return null;
+    }
+
+    /**
+     * The visible record whose stashed draft moves it to this path — in preview only. The
+     * overlay gives it the draft's path, which listings and breadcrumbs of the preview link
+     * to, while the column still holds the live one. Records with a pending draft are few,
+     * and retrieving them in preview overlays their draft.
+     */
+    protected function resolveDraftPath(Tenant $tenant, string $normalizedPath, Authenticatable $user): ?Content
+    {
+        foreach (Cms::contentModel()::query()->visibleTo($tenant, $user)->whereNotNull('draft')->get() as $content) {
+            if ($content->resolvedPath() !== $normalizedPath) {
+                continue;
+            }
+
+            $content->setRelation('tenant', $tenant);
+
+            if ($this->isRoutable($content, $tenant)) {
+                return $content;
+            }
+        }
 
         return null;
     }

@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Models\Menu;
+use Mmoollllee\Cms\Support\CacheKeys;
 use Workbench\App\Models\Tenant;
 
 /**
@@ -83,7 +84,7 @@ it('does not serve the flat cached shape after opting in', function () {
 
     // Warm the flat cache first — a shared key would keep serving it.
     expect(Menu::linksForLocation('header', $tenant)[0])->not->toHaveKey('children');
-    expect(Cache::has("tenant:{$tenant->id}:menu:header"))->toBeTrue();
+    expect(Cache::has(CacheKeys::menu($tenant->id, 'header')))->toBeTrue();
 
     Cms::enableNestedMenus();
 

@@ -62,6 +62,16 @@ then `composer update` (updating the CMS alone needs `-W`: it brings Filament 5.
 and `php artisan filament:assets`. The two packages conflict — both define `->title()` —,
 so Composer refuses the update while the old one is still required.
 
+**Upgrading from v0.23 or older:** the stored `path` is the address now. Routing, links,
+the sitemap and breadcrumbs read the column instead of composing the path up the
+ancestors, so a row whose stored path drifted from the composed one (a blueprint that
+gained a `urlPathPrefix`, a changed `site_key`, an import written past the model) is
+served at its stored address after the update, and the address links pointed to before
+answers 404. Run `php artisan cms:paths:check` once after deploying the update: it lists
+those rows, and `--fix` moves each to its generated path — the address links pointed to
+before — with a redirect from the stored one
+([console commands](docs/FEATURES.md#console-commands)).
+
 ### 2. `cms:install`
 
 ```bash

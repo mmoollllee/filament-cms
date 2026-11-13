@@ -58,10 +58,12 @@ class ValidParent implements ValidationRule
         $allowed = $this->blueprint?->allowedParentTypes() ?? [];
 
         if ($allowed !== [] && ! in_array($parent->getAttribute('content_type'), $allowed, true)) {
+            // The singular label: pluralLabel() falls back to an English pluralizer
+            // ("Seites") for a blueprint that names no plural of its own.
             $fail(sprintf(
-                'Unter „%s“ können keine %s liegen.',
+                'Unter „%s“ ist der Typ „%s“ nicht erlaubt.',
                 $parent->getAttribute('title'),
-                $this->blueprint->pluralLabel(),
+                $this->blueprint->label(),
             ));
         }
     }
