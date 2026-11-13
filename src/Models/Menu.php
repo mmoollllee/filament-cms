@@ -6,12 +6,12 @@ use Blendbyte\FilamentResourceLock\Models\Concerns\HasLocks;
 use Datlechin\FilamentMenuBuilder\Models\Menu as BaseMenu;
 use Datlechin\FilamentMenuBuilder\Models\MenuItem;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\PayloadLink;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use Mmoollllee\Cms\Support\TenantCache;
 
 /**
  * Tenant-scoped navigation menu (extends the datlechin menu-builder model).
@@ -62,11 +62,13 @@ class Menu extends BaseMenu
      */
     public static function linksForLocation(string $location, Tenant $tenant): array
     {
-        return Cache::rememberForever(
+        return app(TenantCache::class)->remember(
+            $tenant->getKey(),
             CacheKeys::menu($tenant->getKey(), $location),
+            null,
             // bypass(): the linkable Content models resolve item URLs — built
             // during a preview request they would freeze DRAFT paths into this
-            // guest-served forever cache.
+            // guest-served cache until the tenant's next write.
             fn (): array => app(PreviewMode::class)->bypass(function () use ($location, $tenant): array {
                 $menu = self::locationForTenant($location, $tenant);
 

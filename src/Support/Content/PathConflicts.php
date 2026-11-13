@@ -138,12 +138,12 @@ class PathConflicts
             $seen[$child->getKey()] = true;
 
             // Compose against the parent as it will be stored, not as the database still
-            // has it: seeding the relation is what makes PathGenerator (via resolvedPath)
+            // has it: seeding the relation is what makes PathGenerator (via generatedPath)
             // use the NEW parent path instead of re-reading the old one.
             $probe = clone $child;
             $probe->setRelation('parent', $parent);
 
-            $path = $probe->resolvedPath();
+            $path = $probe->generatedPath();
 
             if (blank($path)) {
                 continue;

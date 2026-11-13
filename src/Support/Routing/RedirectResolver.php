@@ -10,15 +10,17 @@ use Mmoollllee\Cms\Models\Redirect;
 use Mmoollllee\Cms\Observers\RedirectCacheObserver;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use Mmoollllee\Cms\Support\TenantCache;
 
 /**
  * Resolves an incoming path to an active redirect for a tenant.
  *
  * The whole set of active redirects is materialized once per tenant into a `from_path → target`
- * map cached with `rememberForever` (keyed `tenant:{id}:redirects`). A lookup is then a single
- * cache read + array access — zero DB queries on a hit — so redirects can run BEFORE content
- * resolution (shadowing live content) without measurably affecting page load. The map is eagerly
- * re-warmed by {@see RedirectCacheObserver} and on content changes.
+ * map cached under the tenant's cache generation (keyed `tenant:{id}:redirects`, {@see TenantCache}).
+ * A lookup is then a single cache read + array access — zero DB queries on a hit — so redirects
+ * can run BEFORE content resolution (shadowing live content) without measurably affecting page
+ * load. Redirect and content writes move the generation on after they commit
+ * ({@see RedirectCacheObserver}); the map rebuilds on the next request.
  */
 class RedirectResolver
 {
@@ -55,8 +57,10 @@ class RedirectResolver
      */
     public function activeMap(Tenant $tenant): array
     {
-        return Cache::rememberForever(
+        return app(TenantCache::class)->remember(
+            $tenant->getKey(),
             $this->cacheKey($tenant->getKey()),
+            null,
             // bypass(): buildMap() resolves content-target paths — built during
             // a preview request they would freeze DRAFT paths into the
             // guest-served redirect map.

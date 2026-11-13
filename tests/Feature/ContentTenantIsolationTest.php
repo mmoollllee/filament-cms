@@ -1,15 +1,15 @@
 <?php
 
 /*
- * `parent_id` reaches the database validated by nothing but the Select's option list,
- * and an option list is a UI affordance. Every tree walk therefore has to say which
- * tenant it belongs to, and the form has to refuse a foreign parent outright — otherwise
- * one tenant's record inherits another's URL structure, its rename cascade saves rows it
- * does not own, and its collision message quotes a foreign page title back at the editor.
+ * The saving hook refuses a foreign `parent_id` for every writer (ContentTreeIntegrityTest),
+ * and the form refuses it before that, on the field. Rows written past the model — an
+ * import, a raw query — can still carry one, so every tree walk says which tenant it
+ * belongs to as well: otherwise one tenant's record inherits another's URL structure,
+ * its rename cascade saves rows it does not own, and its collision message quotes a
+ * foreign page title back at the editor.
  *
  * `parent_id` is also the only edge in the tree and nothing in the schema stops it
- * pointing back into the chain, so both walks need a cycle brake — the ancestor walk
- * most of all, because ContentResolver falls back to running it per row on every 404.
+ * pointing back into the chain, so the walks need a cycle brake too.
  */
 
 use Illuminate\Support\Facades\DB;

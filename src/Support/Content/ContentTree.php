@@ -6,19 +6,25 @@ use Illuminate\Database\Eloquent\Collection;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug;
 use Mmoollllee\Cms\Contracts\Content;
+use Mmoollllee\Cms\Rules\ValidParent;
 
 /**
- * The two questions everything that moves a path has to ask, asked in one place.
+ * Every question that walks the content tree, asked in one place.
  *
  * - "Who holds this address?" — {@see ownerOf()}
+ * - "Which row is the parent, and the parent's parent?" — {@see parentOf()} / {@see ancestorsOf()}
  * - "Which rows does this move touch?" — {@see childrenOf()} / {@see subtreeKeys()}
  *
- * Both were answered by their own inline query at every call site: the collision guard,
- * the rename redirects, the cascade in {@see GeneratesPathAndSlug} and the redirect form's
- * shadowing hint. Each of those queries has the same two easy-to-forget parts — scope by
- * tenant (nothing validates `parent_id` against one, so an adopted foreign row would
- * otherwise be dragged along by this tenant's rename) and ignore the rows that are moving
- * with the save (they hold their old address only until they are rewritten).
+ * Each of these used to be answered by its own inline query or loop at every call site —
+ * the collision guard, the rename redirects, the cascade in {@see GeneratesPathAndSlug},
+ * the breadcrumbs, the onepager lookup, the table indent — and each walk carried its own
+ * version of the same two easy-to-forget parts, or forgot them:
+ *
+ * - scope by tenant. The write path refuses a foreign parent ({@see ValidParent}), but rows
+ *   written past it (an import, a raw query) can still carry one, and an eager-loaded
+ *   relation is not scoped at all;
+ * - survive a cycle. `parent_id` is a tree by convention only; nothing in the schema stops
+ *   it pointing back into the chain, and an unguarded walk loops until the request dies.
  *
  * Ownership deliberately ignores visibility: the `(tenant_id, path)` unique index does
  * too, so a draft or an expired page holds its address just as hard as a live one. The
@@ -45,6 +51,89 @@ class ContentTree
             ->where('path', $path)
             ->whereKeyNot(array_values(array_filter($ignoreKeys)))
             ->first();
+    }
+
+    /**
+     * The row with $key in $tenantId — never another tenant's, whatever key is asked for.
+     */
+    public function find(int|string|null $tenantId, mixed $key): ?Content
+    {
+        if ($tenantId === null || blank($key)) {
+            return null;
+        }
+
+        return Cms::contentModel()::query()
+            ->where('tenant_id', $tenantId)
+            ->whereKey($key)
+            ->first();
+    }
+
+    /**
+     * $content's parent: the row `parent_id` names, if it belongs to $content's own tenant.
+     *
+     * A loaded `parent` relation is used as it is when it is that row and of that tenant —
+     * lists eager-load the chain (the content table's indent, the resolver) and have to stay
+     * free of queries. Anything else is replaced by the scoped answer: a relation loaded
+     * before `parent_id` changed (a form probing a new parent), or one reaching into another
+     * tenant, which an eager load cannot rule out. The answer is kept on the model the way a
+     * lazy load would keep it.
+     */
+    public function parentOf(Content $content): ?Content
+    {
+        $parentId = $content->getAttribute('parent_id');
+        $tenantId = $content->getAttribute('tenant_id');
+
+        if (blank($parentId) || $tenantId === null) {
+            return null;
+        }
+
+        if ($content->relationLoaded('parent')) {
+            $loaded = $content->getRelation('parent');
+
+            if ($loaded instanceof Content
+                && (string) $loaded->getKey() === (string) $parentId
+                && (string) $loaded->getAttribute('tenant_id') === (string) $tenantId) {
+                return $loaded;
+            }
+        }
+
+        $parent = $this->find($tenantId, $parentId);
+
+        $content->setRelation('parent', $parent);
+
+        return $parent;
+    }
+
+    /**
+     * $content's ancestors, nearest first — the one walk up the tree.
+     *
+     * Tenant-scoped at every step ({@see parentOf()}), and it stops where the chain comes
+     * back to a row it has already passed: a malformed cycle ends the walk instead of the
+     * request. $limit stops it early for callers that only ever look a few levels up.
+     *
+     * @return list<Content>
+     */
+    public function ancestorsOf(Content $content, ?int $limit = null): array
+    {
+        $seen = filled($content->getKey()) ? [(string) $content->getKey() => true] : [];
+        $ancestors = [];
+        $current = $content;
+
+        // The limit is checked before the next parent is asked for, so a list that
+        // eager-loaded exactly $limit levels never loads one more.
+        while ($limit === null || count($ancestors) < $limit) {
+            $parent = $this->parentOf($current);
+
+            if ($parent === null || isset($seen[(string) $parent->getKey()])) {
+                break;
+            }
+
+            $seen[(string) $parent->getKey()] = true;
+            $ancestors[] = $parent;
+            $current = $parent;
+        }
+
+        return $ancestors;
     }
 
     /**
@@ -76,10 +165,63 @@ class ContentTree
     }
 
     /**
+     * $root plus every descendant, level by level — the rows a rename of $root drags along.
+     *
+     * @return array<int, mixed>
+     */
+    public function subtreeKeys(Content $root): array
+    {
+        return $this->subtreeKeysOf($root->getAttribute('tenant_id'), $root->getKey());
+    }
+
+    /**
+     * $rootKey plus every key below it in $tenantId, nearest levels first.
+     *
+     * Walked over one `id → parent_id` map of the tenant rather than one query per level —
+     * content sets per tenant are small, and a deep import would otherwise bind the whole
+     * accumulated key set as parameters at every level, past SQLite's variable ceiling. A
+     * row already collected is never queued again, which is what ends a malformed cycle.
+     *
+     * @return array<int, mixed>
+     */
+    public function subtreeKeysOf(int|string|null $tenantId, mixed $rootKey): array
+    {
+        // A record that does not exist yet has no key and therefore no descendants.
+        if ($tenantId === null || blank($rootKey)) {
+            return [];
+        }
+
+        $model = Cms::contentModel();
+
+        $childrenByParent = [];
+
+        foreach ($model::query()
+            ->where('tenant_id', $tenantId)
+            ->whereNotNull('parent_id')
+            ->pluck('parent_id', (new $model)->getKeyName()) as $key => $parentKey) {
+            $childrenByParent[(string) $parentKey][] = $key;
+        }
+
+        $keys = [$rootKey];
+        $collected = [(string) $rootKey => true];
+
+        for ($index = 0; $index < count($keys); $index++) {
+            foreach ($childrenByParent[(string) $keys[$index]] ?? [] as $childKey) {
+                if (! isset($collected[(string) $childKey])) {
+                    $collected[(string) $childKey] = true;
+                    $keys[] = $childKey;
+                }
+            }
+        }
+
+        return $keys;
+    }
+
+    /**
      * The rows whose parent is one of $keys, excluding $keys themselves.
      *
-     * The one query behind every question this class answers, so the two parts that are
-     * easy to forget — scope by tenant, and never count a row that is part of the set
+     * The one query behind the child questions this class answers, so the two parts that
+     * are easy to forget — scope by tenant, and never count a row that is part of the set
      * being asked about — are written once.
      *
      * @param  array<int, mixed>  $keys
@@ -98,34 +240,5 @@ class ContentTree
             ->whereIn('parent_id', $keys)
             ->whereKeyNot($keys)
             ->get();
-    }
-
-    /**
-     * $root plus every descendant, level by level — the rows a rename of $root drags
-     * along. Guards against a malformed cycle in `parent_id` rather than looping forever
-     * on it: the tree is a tree by convention, nothing in the schema enforces it.
-     *
-     * @return array<int, mixed>
-     */
-    public function subtreeKeys(Content $root): array
-    {
-        // A record that does not exist yet has no key and therefore no descendants;
-        // whereKeyNot([null]) would compare against NULL and quietly match nothing.
-        $keys = array_values(array_filter([$root->getKey()]));
-        $level = $keys;
-
-        while ($level !== []) {
-            $level = $this->childrenOfAny($root->getAttribute('tenant_id'), $level)
-                ->modelKeys();
-
-            // Everything already seen is dropped here rather than in the query: a deep
-            // import would otherwise bind the whole accumulated key set as parameters at
-            // every level, past SQLite's variable ceiling.
-            $level = array_values(array_diff($level, $keys));
-
-            $keys = [...$keys, ...$level];
-        }
-
-        return $keys;
     }
 }

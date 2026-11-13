@@ -29,16 +29,27 @@ browse it.
 ## Multi-tenancy
 
 **Tenant-by-host resolution** — `ResolveTenantFromHost` middleware matches the request
-host against `tenants.primary_domain` and stores the match in the request-scoped
-`CurrentTenant` singleton (`app(CurrentTenant::class)->get()`), which the whole engine
-reads. Hits are cached forever (`tenant_domain:{host}`), misses never (a new domain works
-immediately).
+host against `tenants.primary_domain` and stores the match in `CurrentTenant`
+(`app(CurrentTenant::class)->get()`), which the whole engine reads. `CurrentTenant` is
+bound `scoped()`: shared within a request or queued job, flushed between them, so Octane
+and the queue worker never carry one request's tenant into the next. Hits are cached
+forever (`tenant_domain:{host}`), misses never (a new domain works immediately).
+
+`cms:install` scopes it to the frontend route group; the apps append it to the whole `web`
+group in `bootstrap/app.php` instead, so every web request knows its site:
 
 ```php
-Route::middleware(ResolveTenantFromHost::class)->group(function () {
-    Route::get('/{path?}', ContentShowController::class)->where('path', '.*');
-});
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->web(append: [
+        ResolveTenantFromHost::class,
+        ResolveActiveRedirects::class,
+        EnsureTenantIsVisible::class,
+    ]);
+})
 ```
+
+The package's own routes (the `/_resolve404` endpoint) name the tenant middleware
+themselves and work with either wiring — Laravel runs a middleware listed twice once.
 
 **Tenant visibility** — `TenantVisibility` (Public / Members / Archived) gates the whole
 frontend via `EnsureTenantIsVisible`; members-only tenants require a logged-in tenant user.
@@ -153,8 +164,22 @@ a parent **moves the whole subtree**; old URLs fall through to the redirect/404
 pipeline, which logs and auto-resolves them. Types with a `urlPathPrefix` keep
 their type-based paths — the prefix wins over the hierarchy.
 
+**Tree rules, enforced on save** — whoever writes (the panel, an import, a restored
+revision), the saving hook refuses a `parent_id` of another tenant, one below the
+record itself, and one of a type the blueprint's `allowedParentTypes()` does not list.
+A type that lists none — every `urlPathPrefix` type — may still be filed under any page
+of its tenant for structure (a jobs listing, a category overview). Every walk up the
+tree (`ContentTree::ancestorsOf()`) stays inside the tenant and ends at a cycle that a
+raw write may still leave behind.
+
 **Path generation** — `GeneratesPathAndSlug` + `PathGenerator` derive collision-free
-paths from title/prefix on save.
+paths from title/prefix on save. The stored `path` is THE address: computed on write,
+read as it is — routing, links, sitemap and breadcrumbs all read the column
+(`resolvedPath()`), `generatedPath()` answers what a save would store. A save and the
+subtree it moves are one transaction, for every writer. A row that drifts anyway (a
+blueprint gains a `urlPathPrefix`, a tenant switches `site_key`, an import writes past
+the model) stays at its stored address until `php artisan cms:paths:check --fix` moves
+it — with a redirect, like an edit would.
 
 **Publishing** — `publish_from` / `publish_until` + `ContentStatus`
 (Draft/Scheduled/Published/Expired). Guests only ever see published, public content
@@ -172,9 +197,13 @@ for guests.
 `content.template` (per-record override) → blueprint `defaultTemplate()` →
 `content.page`; each first tried site-specific (`{site_key}.content.page`), then global.
 
-**Resolver caching** — `ContentResolver::findByPath()` caches hits forever and 404s for
-60s, invalidated by `ContentCacheObserver` on every content/tenant/menu save — content
-edits are live instantly, unchanged pages never query.
+**Resolver caching** — `ContentResolver::findByPath()` caches hits until the tenant's
+next write (or the page's `publish_until`) and 404s for 60s; a miss costs one indexed
+lookup on the stored path, never a scan. Every frontend cache of a tenant — pages,
+sections, sitemap, suggestions, redirect map, menus — sits under one cache generation
+(`TenantCache`), which each content/menu/redirect/tenant write moves on **after it
+commits**: content edits are live instantly, unchanged pages never query, and a visitor
+arriving mid-save cannot put the old version back.
 
 **Onepager** — a site can compose its frontend as a single scrolling page of section
 contents (`default.section`): every section has its own path, every path renders the
@@ -656,7 +685,8 @@ stays active for its whole section. A desktop dropdown is app territory:
 @endforeach
 ```
 
-Cache invalidation covers menu, item and location changes (`ContentCacheObserver`).
+Cache invalidation covers menu, item and location changes — and content changes, so a
+menu item linking a page follows it when the page is renamed (`ContentCacheObserver`).
 
 ## SEO, sitemap, robots
 
@@ -940,8 +970,15 @@ show a logo in e-mail. Absolute URLs throughout (mail clients have no base URL).
 php artisan cms:install [--force]  # scaffold a fresh app: config (models pre-wired), migrations,
                                    # model + panel-provider stubs, frontend routes, filament:assets
 php artisan cms:clear-tenant-cache [--tenant=ID] [--no-warm]  # flush + rewarm per-tenant caches
+php artisan cms:paths:check [--tenant=ID] [--fix]  # report rows off their generated path; --fix moves them
 php artisan cms:prune-not-found-logs [--days=90] [--min-hits=3]  # scheduled daily
 ```
+
+`cms:paths:check` is read-only without `--fix` and fails only on rows that cannot move
+(another record holds the corrected path), so it can gate a deploy. Run it with `--fix`
+after a deploy that changes how a type is addressed (`urlPathPrefix`, routability) or after
+a tenant's `site_key` changes: each drifted row is re-saved through the model, moves its
+subtree along and leaves a redirect from the old address.
 
 `cms:install` is idempotent: existing files are reported and skipped, so it is safe
 on an already-integrated app (`--force` overwrites the scaffolding). The one manual

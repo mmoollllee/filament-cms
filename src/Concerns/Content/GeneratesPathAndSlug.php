@@ -3,12 +3,14 @@
 namespace Mmoollllee\Cms\Concerns\Content;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
+use Mmoollllee\Cms\Contracts\ContentBlueprint;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\ContentEditPage;
+use Mmoollllee\Cms\Rules\ValidParent;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Content\FrontendUrl;
@@ -19,17 +21,18 @@ use Mmoollllee\Cms\Support\Routing\PathNormalizer;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 
 /**
- * Keeps a Content model's `path` + `slug` in sync with its blueprint's `isRoutable()`,
- * on both the write side (the saving hook) and the read side ({@see resolvedPath()}):
+ * Keeps a Content model's `path` + `slug` in sync with its blueprint's `isRoutable()`:
  *
  * - Routable types: `path` is generated (via {@see PathGenerator}) and the `slug` is
  *   derived from the path's last segment (path is the source of truth).
  * - Non-routable types: `path` stays null (no URL), but a tenant-unique `slug` is kept
  *   (from the form, or auto-derived from the title for programmatic creation).
  *
- * resolvedPath() delegates to {@see PathGenerator} so routability is the single source of
- * truth: the normalized stored path for routable types, null for non-routable ones —
- * never a stale leftover path on a non-routable record.
+ * The stored `path` is THE address — computed on write, read as it is. The saving hook
+ * stores the generator's answer on every save, and a save that moves a record carries its
+ * subtree along inside the same transaction ({@see save()}), so the column is current by
+ * construction. {@see resolvedPath()} reads it back (null for non-routable types), and
+ * {@see generatedPath()} answers what a save WOULD store.
  *
  * On top of that it supplies the frontend link every "open this record in the frontend"
  * affordance uses ({@see frontendPath()} / {@see getFrontendUrl()}): "Vorschau", the
@@ -50,6 +53,11 @@ trait GeneratesPathAndSlug
                 $content->content_type,
                 $content->tenant?->site_key,
             );
+
+            // Before anything below composes against the parent: a parent of another
+            // tenant, one below the record itself or of a type the blueprint rules out
+            // never reaches the database, whoever writes it.
+            static::failOnInvalidParent($content, $blueprint);
 
             // Non-routable types have no path, but keep a tenant-unique slug.
             if ($blueprint !== null && $blueprint->isRoutable() === false) {
@@ -116,19 +124,57 @@ trait GeneratesPathAndSlug
             // below re-saves each descendant, so every one of them writes its own.
             app(ContentRenameRedirects::class)->followRename($content);
 
-            // All or nothing. The saving guard above rejects a move whose subtree does not
-            // fit, but a row written between that check and this cascade would still throw
-            // here — and half a subtree left at the new prefix has to be repaired by hand.
-            // The parent's own UPDATE joins this transaction wherever the caller opened
-            // one; the panel does, via BasePanelProvider's databaseTransactions().
-            // childrenOf() is tenant-scoped: nothing validates parent_id against a tenant,
-            // so an adopted foreign row would otherwise be saved by THIS tenant's rename.
-            DB::transaction(function () use ($content): void {
-                app(ContentTree::class)
-                    ->childrenOf($content)
-                    ->each(fn (Model $child) => $child->save());
-            });
+            // All or nothing: this runs inside save()'s transaction, so a descendant that
+            // fails to save rolls back the whole move — this record's own UPDATE and the
+            // redirects above included — instead of leaving half a subtree at the new
+            // prefix. The saving guard rejects a move whose subtree does not fit; what it
+            // cannot see is a row written between that check and this cascade.
+            // childrenOf() is tenant-scoped, so a row of another tenant that names this one
+            // as its parent is never saved by THIS tenant's rename.
+            app(ContentTree::class)
+                ->childrenOf($content)
+                ->each(function (Model $child) use ($content): void {
+                    // Composed against this record as it now stands, without reading it back.
+                    $child->setRelation('parent', $content);
+                    $child->save();
+                });
         });
+    }
+
+    /**
+     * Save the record — and whatever its new path drags along — as one write.
+     *
+     * A path change re-saves the whole subtree onto the new prefix and leaves forwarding
+     * redirects behind (the saved hook above), so a save that fails halfway must not keep
+     * its first half. This is Laravel's saveOrFail() made the default: every writer — the
+     * panel, a console command, an import, a queued job — gets the transaction, not only
+     * the callers that remember to open one. Inside a caller's transaction it nests as a
+     * savepoint.
+     */
+    public function save(array $options = []): bool
+    {
+        return $this->getConnection()->transaction(fn (): bool => parent::save($options));
+    }
+
+    /**
+     * Refuse a `parent_id` that breaks the tree ({@see ValidParent}) — checked whenever the
+     * parent, the tenant or the type changes, so a create, a duplicate, a move and a
+     * restored revision all meet it, while the cascade's re-saves (none of which changes a
+     * parent) do not pay for it.
+     *
+     * @throws ValidationException
+     */
+    protected static function failOnInvalidParent(Model $content, ?ContentBlueprint $blueprint): void
+    {
+        if (blank($content->getAttribute('parent_id'))
+            || ! $content->isDirty(['parent_id', 'tenant_id', 'content_type'])) {
+            return;
+        }
+
+        Validator::make(
+            ['parent_id' => $content->getAttribute('parent_id')],
+            ['parent_id' => [new ValidParent($content, $blueprint)]],
+        )->validate();
     }
 
     /**
@@ -160,11 +206,42 @@ trait GeneratesPathAndSlug
     }
 
     /**
-     * The content's URL path, or null when its blueprint is non-routable. Delegates to
-     * {@see PathGenerator} (the single source of truth) rather than trusting a possibly
-     * stale `path` column.
+     * The content's URL path: the stored `path`, normalized — or null when its blueprint
+     * is non-routable, so a leftover path on such a record is never handed out.
+     *
+     * Reading the column rather than composing the path again is what keeps routing,
+     * links, the sitemap and the breadcrumbs on one answer, and every call free of a walk
+     * up the tree. The column is current by construction (see the class doc); a row that
+     * drifted anyway — written past the hooks, or a blueprint changed under it — stays at
+     * its stored address until `cms:paths:check --fix` moves it, redirect included.
+     *
+     * What a save WOULD store is {@see generatedPath()}.
      */
     public function resolvedPath(): ?string
+    {
+        $content = clone $this;
+
+        static::ensureTenantLoaded($content);
+
+        $blueprint = app(ContentBlueprintRegistry::class)->find(
+            $content->getAttribute('content_type'),
+            $content->tenant?->site_key,
+        );
+
+        if ($blueprint !== null && $blueprint->isRoutable() === false) {
+            return null;
+        }
+
+        return app(PathNormalizer::class)->normalizeOrNull($content->getAttribute('path'));
+    }
+
+    /**
+     * The path a save would store for the record as it stands — the {@see PathGenerator}'s
+     * answer, asked on a clone because the generator writes the slug back onto the model
+     * it is handed. For everything that previews a save: the form's path preview, the
+     * collision guard and the redirect-shadowing check walking a pending rename.
+     */
+    public function generatedPath(): ?string
     {
         $content = clone $this;
 
@@ -183,7 +260,7 @@ trait GeneratesPathAndSlug
      */
     public function frontendPath(): ?string
     {
-        return $this->resolvedPath() ?? $this->parent?->resolvedPath();
+        return $this->resolvedPath() ?? app(ContentTree::class)->parentOf($this)?->resolvedPath();
     }
 
     /**

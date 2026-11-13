@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use Mmoollllee\Cms\Http\Controllers\Frontend\ResolveNotFoundController;
+use Mmoollllee\Cms\Http\Middleware\EnsureTenantIsVisible;
+use Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost;
 
 /*
 | Package frontend routes, loaded via CmsServiceProvider::loadRoutesFrom() during provider boot
@@ -11,8 +13,14 @@ use Mmoollllee\Cms\Http\Controllers\Frontend\ResolveNotFoundController;
 
 Route::middleware('web')->group(function (): void {
     // Async "parallel auto-resolution" endpoint called by the branded 404 page.
+    //
+    // It names the tenant middleware itself rather than trusting the app to have put it on
+    // the `web` group: an app that scopes it to its own frontend route group instead would
+    // leave this endpoint without a tenant, answering every 404 with no suggestions at all.
+    // Where the app does append it to `web`, Laravel de-duplicates the stack, so it still
+    // runs once. The visibility gate belongs with it — suggestions quote page titles.
     Route::get('/_resolve404', ResolveNotFoundController::class)
-        ->middleware('throttle:60,1')
+        ->middleware([ResolveTenantFromHost::class, EnsureTenantIsVisible::class, 'throttle:60,1'])
         ->name('cms.resolve-not-found');
 
     // The invitation accept endpoint (`/_invitation/{token}`) is registered by

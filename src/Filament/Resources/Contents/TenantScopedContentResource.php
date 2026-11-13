@@ -717,7 +717,7 @@ abstract class TenantScopedContentResource extends Resource
             ->groups([
                 Group::make('parent.title')
                     ->label('Übergeordnete Seite')
-                    ->getTitleFromRecordUsing(fn (Model $record): string => $record->parent?->title ?? 'Oberste Ebene')
+                    ->getTitleFromRecordUsing(fn (Model $record): string => app(ContentTree::class)->parentOf($record)?->title ?? 'Oberste Ebene')
                     ->collapsible(),
             ])
             // The "↳" indent walks the parent chain per row — keep it query-free.
@@ -1097,9 +1097,10 @@ abstract class TenantScopedContentResource extends Resource
         $types = static::getContentTypes();
         $requestedType = static::getRequestedContentType();
         $depth = 0;
-        $ancestor = $record->parent;
 
-        while ($ancestor !== null && $depth < 4) {
+        // The table eager-loads four levels of `parent`; the walk reads exactly those and
+        // keeps to the record's own tenant ({@see ContentTree::ancestorsOf()}).
+        foreach (app(ContentTree::class)->ancestorsOf($record, limit: 4) as $ancestor) {
             $listed = ($types === [] || in_array($ancestor->content_type, $types, true))
                 && ($requestedType === null || $ancestor->content_type === $requestedType);
 
@@ -1108,7 +1109,6 @@ abstract class TenantScopedContentResource extends Resource
             }
 
             $depth++;
-            $ancestor = $ancestor->parent;
         }
 
         return $depth;
@@ -1363,40 +1363,13 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
-     * The record id plus all ids below it in the parent_id tree (computed from a
-     * single id→parent_id map — content sets per tenant are small).
+     * The record id plus all ids below it in the parent_id tree ({@see ContentTree::subtreeKeysOf()}).
      *
      * @return list<int>
      */
     protected static function selfAndDescendantIds(Tenant $tenant, int $recordId): array
     {
-        $parents = Cms::contentModel()::query()
-            ->whereBelongsTo($tenant)
-            ->whereNotNull('parent_id')
-            ->pluck('parent_id', 'id')
-            ->all();
-
-        $childrenByParent = [];
-
-        foreach ($parents as $id => $parentId) {
-            $childrenByParent[(int) $parentId][] = (int) $id;
-        }
-
-        $collected = [$recordId];
-        $queue = [$recordId];
-
-        while ($queue !== []) {
-            $current = array_shift($queue);
-
-            foreach ($childrenByParent[$current] ?? [] as $childId) {
-                if (! in_array($childId, $collected, true)) {
-                    $collected[] = $childId;
-                    $queue[] = $childId;
-                }
-            }
-        }
-
-        return $collected;
+        return array_map('intval', app(ContentTree::class)->subtreeKeysOf($tenant->getKey(), $recordId));
     }
 
     protected static function getDefaultParentId(?Tenant $tenant, ?string $contentType): ?int
@@ -1943,7 +1916,7 @@ abstract class TenantScopedContentResource extends Resource
 
     /**
      * The path a save would store for the current form state — asked of the generator
-     * itself ({@see GeneratesPathAndSlug::resolvedPath()}) on a throwaway model, so
+     * itself ({@see GeneratesPathAndSlug::generatedPath()}) on a throwaway model, so
      * routability, urlPathPrefix and normalization all come from the one place that
      * decides them.
      *
@@ -1983,7 +1956,7 @@ abstract class TenantScopedContentResource extends Resource
             'path' => $path,
         ]);
 
-        // Spares resolvedPath() the tenant lookup; the clone it works on keeps the relation.
+        // Spares generatedPath() the tenant lookup; the clone it works on keeps the relation.
         if ($tenant !== null) {
             $content->setRelation('tenant', $tenant);
         }
@@ -1992,7 +1965,7 @@ abstract class TenantScopedContentResource extends Resource
         // record. Only then does isDirty('path') mean "this save would move the stored
         // path" — the typed value alone can equal the stored one while the generated path
         // differs, which is exactly the drifted record this whole guard exists for.
-        $content->forceFill(['path' => $content->resolvedPath()]);
+        $content->forceFill(['path' => $content->generatedPath()]);
 
         return $content;
     }

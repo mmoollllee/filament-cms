@@ -2,7 +2,6 @@
 
 namespace Mmoollllee\Cms\Support\Routing;
 
-use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
@@ -10,6 +9,7 @@ use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Content\NavigationContextBuilder;
 use Mmoollllee\Cms\Support\Content\PublishingTransitions;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use Mmoollllee\Cms\Support\TenantCache;
 
 /**
  * Fuzzy-matches an unresolved path against a tenant's live content to power the "Meinten Sie?"
@@ -159,7 +159,8 @@ class PathSuggestionResolver
      */
     protected function candidates(Tenant $tenant): array
     {
-        return Cache::remember(
+        return app(TenantCache::class)->remember(
+            $tenant->getKey(),
             CacheKeys::candidates($tenant->getKey()),
             // TTL until the next publishing transition (null = forever), so
             // suggestions track time-driven (un)publishing. Closure — only

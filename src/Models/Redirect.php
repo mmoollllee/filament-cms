@@ -23,7 +23,7 @@ use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
  *
  * Soft-deleted so a rejected redirect's `from_path` is remembered forever and never
  * re-suggested. Exactly one of `to_content_id` / `to_url` is the target: `to_content_id` is
- * preferred for internal targets (resolved live via resolvedPath() so it survives path drift).
+ * preferred for internal targets (resolved live via resolvedPath(), so it follows the page through renames).
  *
  * @property RedirectOrigin $origin
  */

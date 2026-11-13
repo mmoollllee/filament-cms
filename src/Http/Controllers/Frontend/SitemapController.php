@@ -5,7 +5,6 @@ namespace Mmoollllee\Cms\Http\Controllers\Frontend;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\ContentBlueprint;
@@ -16,6 +15,7 @@ use Mmoollllee\Cms\Support\Content\ContentResolver;
 use Mmoollllee\Cms\Support\Content\PublishingTransitions;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\Support\TenantCache;
 
 /**
  * Generates an XML sitemap for the current tenant.
@@ -37,7 +37,8 @@ class SitemapController
 
         abort_if($tenant === null, 404);
 
-        $xml = Cache::remember(
+        $xml = app(TenantCache::class)->remember(
+            $tenant->getKey(),
             CacheKeys::sitemap($tenant->getKey()),
             // TTL until the next publishing transition (null = forever): the
             // sitemap must gain scheduled pages and drop expiring ones on time,

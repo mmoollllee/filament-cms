@@ -133,13 +133,9 @@ class NavigationContextBuilder
      */
     protected function ancestorTrail(Content $content): array
     {
-        $ancestors = [];
-        $currentAncestor = $content->parent;
-
-        while ($currentAncestor instanceof Content) {
-            array_unshift($ancestors, $currentAncestor);
-            $currentAncestor = $currentAncestor->parent;
-        }
+        // Top-most first, the order a trail is read in. Tenant-scoped, and it ends at a
+        // cycle instead of looping on it ({@see ContentTree::ancestorsOf()}).
+        $ancestors = array_reverse(app(ContentTree::class)->ancestorsOf($content));
 
         if ($ancestors !== []) {
             return $ancestors;

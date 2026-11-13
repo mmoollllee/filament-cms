@@ -15,12 +15,15 @@ namespace Mmoollllee\Cms\Contracts;
  *
  * The frontend-url methods come from {@see HasFrontendUrl} and are implemented by
  * {@see \Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug} — the same trait that
- * supplies resolvedPath(), so app models get them without a code change.
+ * supplies resolvedPath() and generatedPath(), so app models get them without a code change.
  */
 interface Content extends HasFrontendUrl
 {
-    /** Resolved URL path for this content (stored `path`, or blueprint-generated). */
+    /** The URL path of this content: its stored `path` (null for non-routable types). */
     public function resolvedPath(): ?string;
+
+    /** The path a save would store for this content as it stands — the generator's answer. */
+    public function generatedPath(): ?string;
 
     /**
      * The frontend path this record is reachable at: its own path, or — for

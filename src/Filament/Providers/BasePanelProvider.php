@@ -120,11 +120,11 @@ abstract class BasePanelProvider extends FilamentPanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->maxContentWidth(Width::Full)
             // Filament's pages and actions already call beginDatabaseTransaction(), but it
-            // is a no-op until a panel opts in. A content save is not one write: renaming a
-            // page cascades onto its whole subtree
-            // ({@see \Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug}), and without
-            // this the parent's UPDATE commits before a failing descendant ever runs,
-            // leaving half a tree at the new prefix to be repaired by hand.
+            // is a no-op until a panel opts in. A content save is atomic on its own — the
+            // model wraps itself and the subtree its rename cascades onto in one transaction
+            // ({@see \Mmoollllee\Cms\Concerns\Content\GeneratesPathAndSlug::save()}) — but a
+            // page save is more than the model: relationship saves, the after-save hooks and
+            // the draft clearing belong in the same all-or-nothing.
             ->databaseTransactions()
             ->resources($this->panelResources())
             ->pages($this->panelPages())

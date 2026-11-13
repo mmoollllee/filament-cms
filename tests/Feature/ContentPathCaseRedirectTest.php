@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Http\Middleware\CanonicalizeTrailingSlash;
 use Mmoollllee\Cms\Support\CacheKeys;
+use Mmoollllee\Cms\Support\Content\ContentResolver;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
 
@@ -50,17 +51,37 @@ it('still answers 404 when no page matches in any letter case', function () {
     $this->get('http://127.0.0.1/Gibt-Es-Nicht')->assertNotFound();
 });
 
-it('scans the contents only once for a mixed-case path that matches nothing', function () {
+it('answers a mixed-case path that matches nothing without scanning the contents', function () {
     DB::enableQueryLog();
 
     $this->get('http://127.0.0.1/Gibt-Es-Nicht')->assertNotFound();
 
-    // The full-scan fallback is the one content query without a WHERE on the path.
-    $scans = collect(DB::getQueryLog())
+    // The stored path is the address: every content lookup filters on it. A query without
+    // a WHERE on the path would be the old fallback that composed every row's path.
+    $contentQueries = collect(DB::getQueryLog())
         ->pluck('query')
-        ->filter(fn (string $query): bool => str_contains($query, 'from "contents"') && ! str_contains($query, '"path"'));
+        ->filter(fn (string $query): bool => str_contains($query, 'from "contents"'));
 
-    expect($scans)->toHaveCount(1);
+    expect($contentQueries)->not->toBeEmpty()
+        ->and($contentQueries->reject(fn (string $query): bool => str_contains($query, '"path"')))->toBeEmpty();
+});
+
+it('finds a page stored with capitals on a case-sensitive database', function () {
+    $tenant = Tenant::query()->where('primary_domain', '127.0.0.1')->sole();
+
+    $page = Content::create([
+        'tenant_id' => $tenant->id,
+        'content_type' => 'default.page',
+        'title' => 'Altlast',
+        'path' => '/altlast',
+        'visibility' => 'public',
+        'publish_from' => now()->subDay(),
+    ]);
+
+    // A legacy row or an import can carry capitals the slugger would never write.
+    DB::table('contents')->where('id', $page->id)->update(['path' => '/Altlast']);
+
+    expect(app(ContentResolver::class)->findByPath($tenant, '/altlast')?->getKey())->toBe($page->getKey());
 });
 
 it('answers a repeated dead URL from the cache instead of scanning again', function () {

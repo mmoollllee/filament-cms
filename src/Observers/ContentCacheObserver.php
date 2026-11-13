@@ -4,20 +4,30 @@ namespace Mmoollllee\Cms\Observers;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\ModelCache;
-use Mmoollllee\Cms\Support\Routing\RedirectResolver;
+use Mmoollllee\Cms\Support\TenantCache;
 
 /**
- * Invalidates and re-warms frontend caches when Content, Menu, or Tenant records change.
+ * Keeps the frontend caches in step with the Content, Menu and Tenant writes that change
+ * what a visitor sees — once those writes have committed.
  *
- * All frontend caches use `rememberForever` — this observer is the sole invalidation mechanism.
- * After clearing stale keys, it immediately re-populates the cache so the next visitor
- * still gets a cache hit. Wired in CmsServiceProvider::boot() against the config-resolved models.
+ * Every such write moves its tenant to a new cache generation after its transaction
+ * commits ({@see TenantCache}): pages, sections, sitemap, suggestion candidates, the
+ * redirect map and the menus of that tenant rebuild on their next read, from committed
+ * rows. Nothing is forgotten or re-warmed inside the transaction any more — a visitor
+ * arriving in that window used to put the old row straight back into the cache, and a
+ * rollback used to leave re-warmed caches holding rows that never existed.
+ *
+ * The host → tenant lookup is the one cache outside the generation (it is how the tenant
+ * is found to begin with). It is forgotten by domain and re-warmed, also after commit, from
+ * domains captured when the write happened: once the transaction has committed, the model
+ * reports its new values as its original ones.
+ *
+ * Wired in CmsServiceProvider::boot() against the config-resolved models.
  */
 class ContentCacheObserver
 {
@@ -26,111 +36,88 @@ class ContentCacheObserver
         // Draft stashes never reach this observer: HasDraft persists the
         // `draft` column via a query-builder update without model events, so
         // every `saved` seen here is a real (applied) content change.
-        $this->invalidateContentCaches($content);
+        $this->flushAfterCommit($content, $content->tenant_id);
     }
 
     public function contentDeleted(Content $content): void
     {
-        $this->invalidateContentCaches($content);
+        $this->flushAfterCommit($content, $content->tenant_id);
     }
 
     public function menuSaved(Menu $menu): void
     {
-        $this->invalidateMenuCaches($menu);
+        $this->flushAfterCommit($menu, $menu->tenant_id);
     }
 
     public function menuDeleted(Menu $menu): void
     {
-        $this->invalidateMenuCaches($menu);
+        $this->flushAfterCommit($menu, $menu->tenant_id);
     }
 
     /**
      * Menu items and locations belong to a Menu but do NOT fire Menu model events,
      * so reordering/adding/removing items (or assigning a location) in the panel
-     * would otherwise leave the rememberForever menu-link cache stale. Resolve the
-     * owning Menu from the item/location and invalidate its tenant's caches.
+     * would otherwise leave the menu-link cache stale. Resolve the owning Menu from
+     * the item/location and move its tenant's generation on.
      */
     public function menuStructureChanged(Model $itemOrLocation): void
     {
         $menu = $this->resolveOwningMenu($itemOrLocation);
 
         if ($menu !== null) {
-            $this->invalidateMenuCaches($menu);
+            $this->flushAfterCommit($itemOrLocation, $menu->tenant_id);
         }
     }
 
     public function tenantSaved(Tenant $tenant): void
     {
-        $this->invalidateTenantCache($tenant);
+        $tenantId = $tenant->getKey();
+        $domain = $tenant->primary_domain;
+        // Captured now: after the commit, getOriginal() already answers with the new value.
+        $previousDomain = $tenant->wasChanged('primary_domain') ? $tenant->getOriginal('primary_domain') : null;
+
+        $tenant->getConnection()->afterCommit(function () use ($tenant, $tenantId, $domain, $previousDomain): void {
+            if (filled($previousDomain)) {
+                Cache::forget(CacheKeys::tenantDomain($previousDomain));
+            }
+
+            if (filled($domain)) {
+                Cache::forget(CacheKeys::tenantDomain($domain));
+
+                // Re-warmed from the committed row (scalar attribute payload, see ModelCache).
+                Cache::rememberForever(
+                    CacheKeys::tenantDomain($domain),
+                    fn (): ?array => ModelCache::pack($tenant->fresh()),
+                );
+            }
+
+            // site_key selects each content's blueprint and the settings shape what the
+            // pages render around: every cache derived from the tenant moves on with it.
+            app(TenantCache::class)->flush($tenantId);
+        });
     }
 
     /**
      * Without this, a deleted tenant's domain keeps serving from the warm
-     * rememberForever cache instead of falling through to the 404 pipeline.
+     * host lookup instead of falling through to the 404 pipeline.
      */
     public function tenantDeleted(Tenant $tenant): void
     {
-        Cache::forget(CacheKeys::tenantDomain($tenant->primary_domain));
-    }
+        $tenantId = $tenant->getKey();
+        $domain = $tenant->primary_domain;
 
-    protected function invalidateContentCaches(Content $content): void
-    {
-        $tenantId = $content->tenant_id;
-
-        if ($tenantId === null) {
-            return;
-        }
-
-        // Clear the specific content path cache
-        if (filled($content->path)) {
-            Cache::forget(CacheKeys::content($tenantId, $content->path));
-        }
-
-        // A rename changes the `path` column; the OLD path's rememberForever cache (a cached
-        // Content or a cached null) must be dropped too — otherwise the old URL keeps serving
-        // stale content forever and never falls through to the redirect/404 pipeline. Mirrors
-        // the primary_domain old-value handling in invalidateTenantCache().
-        if ($content->wasChanged('path') && filled($content->getOriginal('path'))) {
-            Cache::forget(CacheKeys::content($tenantId, $content->getOriginal('path')));
-        }
-
-        // Clear sections and sitemap (content changes may affect these)
-        Cache::forget(CacheKeys::sections($tenantId));
-        Cache::forget(CacheKeys::sitemap($tenantId));
-
-        // Redirect suggestion candidates are derived from live content — drop the list so it
-        // rebuilds lazily on the next 404 callback.
-        Cache::forget(CacheKeys::candidates($tenantId));
-
-        // A redirect can target a content path (to_content_id → resolvedPath()); a content change
-        // may re-point it. Forget (don't eagerly rebuild) the active-redirect map so a bulk
-        // save/reorder of N rows doesn't rebuild it N times; it rebuilds lazily on the next
-        // request, matching how the content/sections caches above are handled.
-        app(RedirectResolver::class)->forgetById($tenantId);
-    }
-
-    protected function invalidateMenuCaches(Menu $menu): void
-    {
-        $tenantId = $menu->tenant_id;
-
-        if ($tenantId === null) {
-            return;
-        }
-
-        $locations = array_keys(Cms::menuLocations());
-
-        foreach ($locations as $location) {
-            Cache::forget(CacheKeys::menu($tenantId, $location));
-        }
-
-        // Re-warm menu caches
-        $tenant = $menu->tenant;
-
-        if ($tenant !== null) {
-            foreach ($locations as $location) {
-                Menu::linksForLocation($location, $tenant);
+        $tenant->getConnection()->afterCommit(function () use ($tenantId, $domain): void {
+            if (filled($domain)) {
+                Cache::forget(CacheKeys::tenantDomain($domain));
             }
-        }
+
+            app(TenantCache::class)->flush($tenantId);
+        });
+    }
+
+    protected function flushAfterCommit(Model $model, int|string|null $tenantId): void
+    {
+        app(TenantCache::class)->flushAfterCommit($model, $tenantId);
     }
 
     /**
@@ -144,40 +131,5 @@ class ContentCacheObserver
         $menuId = $itemOrLocation->getAttribute('menu_id');
 
         return $menuId === null ? null : Menu::query()->find($menuId);
-    }
-
-    protected function invalidateTenantCache(Tenant $tenant): void
-    {
-        // Clear cached tenant by current domain
-        Cache::forget(CacheKeys::tenantDomain($tenant->primary_domain));
-
-        // If the domain changed, also clear the old domain's cache
-        if ($tenant->wasChanged('primary_domain') && $tenant->getOriginal('primary_domain') !== null) {
-            Cache::forget(CacheKeys::tenantDomain($tenant->getOriginal('primary_domain')));
-        }
-
-        // Re-warm the tenant domain cache (scalar attribute payload, see ModelCache)
-        Cache::rememberForever(
-            CacheKeys::tenantDomain($tenant->primary_domain),
-            fn (): ?array => ModelCache::pack($tenant->fresh()),
-        );
-
-        // site_key selects each content's blueprint, so every resolvedPath()-derived cache
-        // (content paths, sections, sitemap, redirect map + suggestion paths) is stale when it
-        // changes. Rare, but forget them here so the site stays correct without a manual clear.
-        if ($tenant->wasChanged('site_key')) {
-            $tenantId = $tenant->getKey();
-
-            Cache::forget(CacheKeys::sections($tenantId));
-            Cache::forget(CacheKeys::sitemap($tenantId));
-            Cache::forget(CacheKeys::candidates($tenantId));
-            Cache::forget(CacheKeys::redirects($tenantId));
-
-            Cms::contentModel()::query()
-                ->where('tenant_id', $tenantId)
-                ->whereNotNull('path')
-                ->pluck('path')
-                ->each(fn (string $path) => Cache::forget(CacheKeys::content($tenantId, $path)));
-        }
     }
 }

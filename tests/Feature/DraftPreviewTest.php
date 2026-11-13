@@ -19,6 +19,7 @@ use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Enums\TenantUserRole;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
+use Mmoollllee\Cms\Support\TenantCache;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Fragment;
 use Workbench\App\Models\Tenant;
@@ -362,14 +363,15 @@ it('keeps the warm path cache on draft stashes and never serves drafts to guests
     $tenant = previewTenant();
     $page = previewPage($tenant);
 
-    // Guest request warms the forever path cache.
+    // Guest request warms the path cache.
     $this->get('http://127.0.0.1/preview-fixture')->assertOk();
     $cacheKey = CacheKeys::content($tenant->getKey(), '/preview-fixture');
-    expect(Cache::has($cacheKey))->toBeTrue();
+    $cache = app(TenantCache::class);
+    expect($cache->get($tenant->getKey(), $cacheKey, false))->toBeArray();
 
     // A draft stash leaves the warm cache untouched (observer skips draft-only saves).
     stashPreviewDraft($page->fresh());
-    expect(Cache::has($cacheKey))->toBeTrue();
+    expect($cache->get($tenant->getKey(), $cacheKey, false))->toBeArray();
 
     // A superadmin browses the preview…
     $this->actingAs(User::factory()->superadmin()->create());
@@ -383,7 +385,7 @@ it('keeps the warm path cache on draft stashes and never serves drafts to guests
 
     // Applying content for real DOES invalidate the path cache.
     $page->fresh()->update(['title' => 'Angewendeter Titel']);
-    expect(Cache::has($cacheKey))->toBeFalse();
+    expect($cache->get($tenant->getKey(), $cacheKey, false))->toBeFalse();
 });
 
 // -----------------------------------------------------------------------------

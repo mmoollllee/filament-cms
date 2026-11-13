@@ -10,6 +10,7 @@ use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\ModelCache;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
+use Mmoollllee\Cms\Support\TenantCache;
 
 class ClearTenantCacheCommand extends Command
 {
@@ -50,21 +51,9 @@ class ClearTenantCacheCommand extends Command
 
         Cache::forget(CacheKeys::tenantDomain($tenant->primary_domain));
 
-        foreach (array_keys(Cms::menuLocations()) as $location) {
-            Cache::forget(CacheKeys::menu($tenantId, $location));
-        }
-
-        Cache::forget(CacheKeys::sections($tenantId));
-        Cache::forget(CacheKeys::sitemap($tenantId));
-        Cache::forget(CacheKeys::redirects($tenantId));
-        Cache::forget(CacheKeys::candidates($tenantId));
-
-        // Content path caches
-        Cms::contentModel()::query()
-            ->where('tenant_id', $tenantId)
-            ->whereNotNull('path')
-            ->pluck('path')
-            ->each(fn (string $path) => Cache::forget(CacheKeys::content($tenantId, $path)));
+        // Pages, sections, sitemap, suggestion candidates, menus and the redirect map at
+        // once — including pages cached under a path no current row stores any more.
+        app(TenantCache::class)->flush($tenantId);
 
         $this->line("  Cleared cache for tenant [{$tenantId}] {$tenant->name}");
     }

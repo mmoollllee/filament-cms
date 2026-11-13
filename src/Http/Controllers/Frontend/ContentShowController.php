@@ -11,6 +11,7 @@ use Mmoollllee\Cms\Http\Middleware\CanonicalizeTrailingSlash;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Sites\ContentBlueprintRegistry;
 use Mmoollllee\Cms\Support\Content\ContentResolver;
+use Mmoollllee\Cms\Support\Content\ContentTree;
 use Mmoollllee\Cms\Support\Content\LayoutPresetResolver;
 use Mmoollllee\Cms\Support\Content\NavigationContextBuilder;
 use Mmoollllee\Cms\Support\Content\TemplateResolver;
@@ -66,9 +67,13 @@ class ContentShowController
             return $custom;
         }
 
-        if ($content->parent !== null) {
+        // Only a parent of this tenant: a foreign `parent_id` must not put another site's
+        // address on this page's back button.
+        $parent = app(ContentTree::class)->parentOf($content);
+
+        if ($parent !== null) {
             return [
-                'href' => $content->parent->resolvedPath(),
+                'href' => $parent->resolvedPath(),
                 'label' => __('cms::frontend.back_to_parent'),
             ];
         }

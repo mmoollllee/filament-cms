@@ -4,7 +4,6 @@ namespace Mmoollllee\Cms\Support\Content;
 
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Facades\Cache;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
 use Mmoollllee\Cms\Contracts\Tenant;
@@ -13,6 +12,7 @@ use Mmoollllee\Cms\Support\CacheKeys;
 use Mmoollllee\Cms\Support\ModelCache;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
+use Mmoollllee\Cms\Support\TenantCache;
 
 /**
  * Resolves URL paths to Content records for a given tenant.
@@ -37,9 +37,10 @@ class ContentResolver
     /**
      * Find a Content record by its URL path within a tenant.
      *
-     * First attempts a direct `path` column match. If that fails, falls back
-     * to computing resolvedPath() for every visible record (handles blueprint-
-     * generated paths that aren't stored literally in the database).
+     * The stored `path` column is the address ({@see Content::resolvedPath()}), so this is
+     * an indexed lookup for a hit and a miss alike — it no longer falls back to composing
+     * the path of every visible record, which made each distinct dead URL cost a query per
+     * row of the tenant.
      *
      * A path spelled in another letter case ("/Jobs") finds its page too — the
      * exact spelling wins — so the caller can fold the variant into the page's
@@ -57,12 +58,19 @@ class ContentResolver
             return $this->resolveFindByPath($tenant, $normalizedPath, $user);
         }
 
-        $key = CacheKeys::content($tenant->getKey(), $normalizedPath);
+        $tenantId = $tenant->getKey();
+        $key = CacheKeys::content($tenantId, $normalizedPath);
+        $cache = app(TenantCache::class);
 
-        // `false` = not cached; `null` = a cached 404 (negative hit); an attribute
+        // Taken before the database is read: a write that commits while this request is
+        // still resolving moves the generation on, and what is stored below then lands
+        // where nobody reads it ({@see TenantCache}).
+        $generation = $cache->generation($tenantId);
+
+        // `false` = not cached; MISS = a cached 404 (negative hit); an attribute
         // array (ModelCache) = a real hit. Payloads stay scalar so L13's
         // `serializable_classes = false` cache stores can round-trip them.
-        $cached = Cache::get($key, false);
+        $cached = $cache->get($tenantId, $key, false);
 
         if ($cached === self::MISS) {
             return null;
@@ -81,29 +89,28 @@ class ContentResolver
 
         $content = $this->resolveFindByPath($tenant, $normalizedPath);
 
-        // A hit under another spelling is only ever answered with a redirect, and the cache
-        // observer busts the keys of a page's own path alone: a variant key would keep
-        // pointing at the page after a rename or delete.
+        // A hit under another spelling is only ever answered with a redirect; caching it
+        // would add a key per spelling a visitor happens to type, for a page that answers
+        // under its own address anyway.
         if ($content !== null && ! $this->isExactMatch($content, $normalizedPath)) {
             return $content;
         }
 
         if ($content !== null) {
-            // Cached until the page's own publish_until (null = indefinitely) —
-            // the status is time-derived, so a write-invalidated forever cache
-            // would keep serving the page past its expiry. Scheduled pages heal
-            // through the short 404-miss TTL below. Busted early by
-            // ContentCacheObserver on write. withDraft: false — this cache
-            // serves the live site, which never overlays drafts.
-            Cache::put($key, ModelCache::pack($content, withDraft: false), $content->publish_until);
+            // Cached until the page's own publish_until (null = until the tenant's next
+            // write) — the status is time-derived, so a write-invalidated cache would keep
+            // serving the page past its expiry. Scheduled pages heal through the short
+            // 404-miss TTL below. withDraft: false — this cache serves the live site,
+            // which never overlays drafts.
+            $cache->put($tenantId, $key, ModelCache::pack($content, withDraft: false), $content->publish_until, $generation);
 
             return $content;
         }
 
         // Cache 404s only BRIEFLY: this absorbs bursts of bots hammering the same dead URL
-        // (the fallback in resolveFindByPath() scans all content) without letting an attacker
-        // enumerating distinct paths grow the cache store without bound (as rememberForever did).
-        Cache::put($key, self::MISS, now()->addSeconds(self::MISS_CACHE_TTL));
+        // without letting an attacker enumerating distinct paths grow the cache store
+        // without bound (as rememberForever did).
+        $cache->put($tenantId, $key, self::MISS, now()->addSeconds(self::MISS_CACHE_TTL), $generation);
 
         return null;
     }
@@ -113,13 +120,16 @@ class ContentResolver
 
     /**
      * What a cached 404 holds. Not null: the cache reads a stored null as "nothing stored",
-     * which left every repeated dead URL to the full scan below.
+     * which sent every repeated dead URL back to the database.
      */
     protected const MISS = 'not-found';
 
     /**
-     * Both spellings of a mixed-case path are resolved in the same pass — the exact one first —
-     * so a path that matches nothing costs one content scan, not one per spelling.
+     * The visible page stored at this path. Both spellings of a mixed-case path are asked in
+     * one indexed query, the exact one first. A miss asks once more by lower-cased path: a
+     * case-insensitive collation (MySQL, MariaDB) has answered every spelling already, a
+     * case-sensitive one (SQLite) only finds a page stored with capitals — a legacy row, an
+     * import — that way.
      */
     protected function resolveFindByPath(Tenant $tenant, string $normalizedPath, ?Authenticatable $user = null): ?Content
     {
@@ -128,11 +138,18 @@ class ContentResolver
         $candidates = Cms::contentModel()::query()
             ->visibleTo($tenant, $user)
             ->whereIn('path', array_unique([$normalizedPath, $lowercasePath]))
-            ->get()
-            // A case-insensitive collation returns every spelling for either value.
-            ->sortByDesc(fn (Content $content): bool => $content->path === $normalizedPath);
+            ->get();
 
-        foreach ($candidates as $content) {
+        if ($candidates->isEmpty()) {
+            $query = Cms::contentModel()::query()->visibleTo($tenant, $user);
+
+            $candidates = $query
+                ->whereRaw('lower('.$query->getQuery()->getGrammar()->wrap('path').') = ?', [$lowercasePath])
+                ->get();
+        }
+
+        // A case-insensitive collation returns every spelling for either value.
+        foreach ($candidates->sortByDesc(fn (Content $content): bool => $content->path === $normalizedPath) as $content) {
             $content->setRelation('tenant', $tenant);
 
             // A non-routable blueprint has no URL: ignore a stale/leftover `path`
@@ -143,29 +160,7 @@ class ContentResolver
             }
         }
 
-        $caseVariant = null;
-
-        $contents = Cms::contentModel()::query()
-            ->visibleTo($tenant, $user)
-            // resolvedPath() consults the parent for parent-driven paths — eager
-            // load it so the full scan stays two queries instead of N+1.
-            ->with('parent')
-            ->get();
-
-        foreach ($contents as $content) {
-            $content->setRelation('tenant', $tenant);
-            $resolvedPath = $content->resolvedPath();
-
-            if ($resolvedPath === $normalizedPath) {
-                return $content;
-            }
-
-            if ($caseVariant === null && $resolvedPath !== null && mb_strtolower($resolvedPath) === $lowercasePath) {
-                $caseVariant = $content;
-            }
-        }
-
-        return $caseVariant;
+        return null;
     }
 
     /**
@@ -199,7 +194,8 @@ class ContentResolver
         // bypass(): user-less callers (e.g. the sitemap) can run during a
         // preview request; packing overlaid models would serve DRAFT sections
         // to every guest until the next invalidation.
-        $sections = ModelCache::unpackMany(Cms::contentModel(), Cache::remember(
+        $sections = ModelCache::unpackMany(Cms::contentModel(), app(TenantCache::class)->remember(
+            $tenant->getKey(),
             CacheKeys::sections($tenant->getKey()),
             // Closure TTL: only evaluated when the cache actually stores.
             fn (): ?\Carbon\CarbonInterface => PublishingTransitions::nextFor($tenant),
@@ -250,14 +246,11 @@ class ContentResolver
             return null;
         }
 
-        $ancestor = $content->parent;
-
-        while ($ancestor instanceof Content) {
+        // Tenant-scoped, and it ends at a cycle instead of looping on it ({@see ContentTree::ancestorsOf()}).
+        foreach (app(ContentTree::class)->ancestorsOf($content) as $ancestor) {
             if ($this->isOnepagerShellRoot($ancestor, $tenant)) {
                 return $ancestor;
             }
-
-            $ancestor = $ancestor->parent;
         }
 
         return null;

@@ -431,8 +431,8 @@ Cms::allowRootBlocks('my-site', ['section', 'text', 'media']);
 allowed parent type. On an onepager that is every section, while usually exactly
 one of them renders the type in question — its template is the one calling
 `visibleChildren()`. Choosing any other saves cleanly, shows the record as
-published, and the site never displays it. `allowedParentTypes` is not enforced on
-save either.
+published, and the site never displays it: the saving hook enforces the tree's rules
+(same tenant, a listed type, no cycle), not which section renders the record.
 
 Narrow the options in the resource so the engine can preselect — and, where only
 one section qualifies, drop the select entirely:

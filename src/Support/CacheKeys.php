@@ -7,14 +7,21 @@ use Mmoollllee\Cms\Cms;
 /**
  * Single source for every cache key the engine reads or invalidates.
  *
- * The keys form one coherent per-tenant cache: writers (Menu, ContentResolver,
- * RedirectResolver, SitemapController, PathSuggestionResolver,
- * ResolveTenantFromHost) and invalidators (ContentCacheObserver,
- * ClearTenantCacheCommand) MUST agree on the spelling — spread as literals, a
- * renamed key silently splits them into "always stale" / "never cleared".
+ * The per-tenant keys (content, sections, sitemap, candidates, redirects, menu) hold
+ * entries built under the tenant's cache generation ({@see TenantCache}); invalidating
+ * them means moving that generation on, not forgetting them one by one. The host →
+ * tenant lookup sits outside it — it is how the tenant is found in the first place —
+ * and is forgotten by domain. Writers and readers MUST agree on the spelling — spread
+ * as literals, a renamed key silently splits them into "always stale" / "never cleared".
  */
 class CacheKeys
 {
+    /** The tenant's cache generation — every other per-tenant entry is valid only under it ({@see TenantCache}). */
+    public static function generation(int|string $tenantId): string
+    {
+        return "tenant:{$tenantId}:generation";
+    }
+
     /**
      * Host → Tenant lookup ({@see \Mmoollllee\Cms\Http\Middleware\ResolveTenantFromHost}).
      *

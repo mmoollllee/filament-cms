@@ -174,7 +174,7 @@ class ContentRenameRedirects
             // has it — the same seeding PathConflicts uses to walk a pending rename.
             $probe = clone $child;
             $probe->setRelation('parent', $content);
-            $probe->setAttribute('path', $probe->resolvedPath());
+            $probe->setAttribute('path', $probe->generatedPath());
 
             $shadow = $this->shadowing($probe->getAttribute('tenant_id'), $probe->getAttribute('path'), $probe);
 

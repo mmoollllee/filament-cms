@@ -255,10 +255,15 @@ tenant-unique slug, `path` stays null. For embedded-but-referenceable content
 
 **Hierarchy (`$allowedParentTypes`)**: declares which types a record may nest under —
 it drives the parent select, breadcrumbs, the "… verwalten" child actions and
-parent-scoped listings. `default.page` allows `default.page` out of the box. For
-routable types WITHOUT a `urlPathPrefix` the path follows the parent
-(parent path + own segment, subtree moves on rename); a `urlPathPrefix` keeps
-type-based paths instead.
+parent-scoped listings, and it is enforced on save for every writer (`ValidParent`),
+together with two rules that hold for every type: the parent belongs to the record's own
+tenant, and it is not the record or one of its descendants. `default.page` allows
+`default.page` out of the box. For routable types WITHOUT a `urlPathPrefix` the path
+follows the parent (parent path + own segment, subtree moves on rename); a
+`urlPathPrefix` keeps type-based paths instead. Such a type declares no parent types,
+and an empty list means "not constrained" — a resource of its own may still file its
+records under a page of the tenant for structure (a hidden `parent_id` defaulting to
+the listing section), which the URL never reads.
 
 **Seiten-Typ select (`$offeredInTypeSelect`)**: the catch-all form shows its type
 select only when the site has more than one offered routable type. `default.section`

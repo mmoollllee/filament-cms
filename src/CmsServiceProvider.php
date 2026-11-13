@@ -66,6 +66,7 @@ use Mmoollllee\Cms\Support\Routing\PathSuggestionResolver;
 use Mmoollllee\Cms\Support\Routing\RedirectResolver;
 use Mmoollllee\Cms\Support\Shortcodes;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
+use Mmoollllee\Cms\Support\TenantCache;
 use Mmoollllee\Cms\Tiptap\Marks\LinkPicker;
 use Mmoollllee\Cms\View\Components\LinkSuggestionsWrapper;
 use Mmoollllee\FilamentTenantAccess\TenantAccess;
@@ -82,9 +83,10 @@ use Tiptap\Marks\Link;
  * Boots the shared CMS engine.
  *
  * Auto-discovered by Laravel (extra.laravel.providers). Registers the engine
- * services as singletons so request-scoped state (the resolved tenant) and the
- * cached registries are shared across the request. Consuming apps no longer
- * need to bind these themselves.
+ * services: the cached registries as singletons, request state (the resolved
+ * tenant, the request's collision answers and preset cache, the tenant cache
+ * generations) as scoped bindings — shared within a request or job, flushed
+ * between them. Consuming apps no longer need to bind these themselves.
  */
 class CmsServiceProvider extends ServiceProvider
 {
@@ -95,12 +97,17 @@ class CmsServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/cms.php', 'cms');
 
-        $this->app->singleton(CurrentTenant::class);
+        // Request state is bound scoped(), not singleton(): Octane flushes scoped
+        // bindings before every request and the queue worker before every job, so
+        // none of it can carry one request's tenant — or the answers given about
+        // it — into the next. Within a request it is shared all the same; every
+        // consumer resolves it lazily through the container.
+        $this->app->scoped(CurrentTenant::class);
         // Request-scoped draft-preview flag: set once by ResolveTenantFromHost,
         // read by the HasDraft retrieved-overlay and the frontend badge.
-        // scoped(), not singleton(): the flag must never survive into the next
-        // request on long-lived runtimes (Octane flushes scoped bindings).
         $this->app->scoped(PreviewMode::class);
+        // The tenant cache generations, read once per request ({@see TenantCache}).
+        $this->app->scoped(TenantCache::class);
         $this->app->singleton(SiteExtensionRegistry::class);
         $this->app->singleton(ContentBlueprintRegistry::class);
         $this->app->singleton(PathNormalizer::class);
@@ -108,14 +115,16 @@ class CmsServiceProvider extends ServiceProvider
         $this->app->singleton(RedirectResolver::class);
         $this->app->singleton(PathSuggestionResolver::class);
         $this->app->singleton(PathGenerator::class);
-        // Singleton so one request's conflict answers are shared between the form rule
-        // and the saving hook, which ask the same question about the same row.
-        $this->app->singleton(PathConflicts::class);
+        // Shared so one request's conflict answers serve both the form rule and the
+        // saving hook, which ask the same question about the same row — and scoped,
+        // because they are claims about the table at that moment, not beyond it.
+        $this->app->scoped(PathConflicts::class);
         $this->app->singleton(TemplateResolver::class);
         // Request-scoped preset cache: controllers preload() it, blocks resolve()
         // against it. Must be shared, or every resolve() hits an empty cache and
-        // returns no classes (no grid layouts, no section headers).
-        $this->app->singleton(LayoutPresetResolver::class);
+        // returns no classes (no grid layouts, no section headers) — and scoped, or
+        // a long-lived worker keeps serving the classes of a preset since edited.
+        $this->app->scoped(LayoutPresetResolver::class);
 
         // The builder blocks offered in the panel, seeded from Cms::blocks()
         // (defaults to the four core blocks; apps replace the list via

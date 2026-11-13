@@ -13,6 +13,7 @@
  */
 
 use Filament\Actions\DeleteAction;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\EditContent;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
@@ -99,15 +100,17 @@ it('ignores a page of another tenant that points here', function () {
     // The seeder's second tenant — a real neighbour, not a fixture invented for this.
     $foreign = Tenant::query()->where('site_key', 'acme')->sole();
 
-    Content::create([
+    $foreignPage = Content::create([
         'tenant_id' => $foreign->id,
         'content_type' => 'default.page',
-        'parent_id' => $this->page->id,
         'title' => 'Fremde Seite',
         'path' => '/fremde-seite',
     ]);
 
-    // Nothing validates parent_id against a tenant, and this delete does not move that row.
+    // The saving hook refuses a parent of another tenant, so the link is written past it —
+    // the way an import or a raw query still can. This delete does not move that row.
+    DB::table('contents')->where('id', $foreignPage->id)->update(['parent_id' => $this->page->id]);
+
     expect(deleteWarningFor($this->page))->toBe(__('filament-actions::modal.confirmation'));
 });
 
