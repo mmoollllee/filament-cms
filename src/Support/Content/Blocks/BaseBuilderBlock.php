@@ -18,6 +18,7 @@ use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Support\Icons\Heroicon;
 use Mmoollllee\Cms\Contracts\Tenant;
+use Mmoollllee\Cms\Filament\Forms\BlockBuilder;
 use Mmoollllee\Cms\Filament\Forms\MediaField;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\ButtonGroupBlock;
 use Mmoollllee\Cms\Filament\RichEditor\Blocks\NavigationCardGroupBlock;
@@ -34,6 +35,17 @@ abstract class BaseBuilderBlock implements BuilderBlock
 
     /** The name {@see pasteBlockAction()} registers under, by which the block picker finds it. */
     public const PASTE_ACTION = 'pasteBlock';
+
+    /**
+     * The heading the block picker lists the block under, null for none — what a block's
+     * category is in Gutenberg's inserter. Blocks without one come first, then each group in
+     * the order its first block is registered ({@see BlockBuilder::grouped()}). The core
+     * blocks name none: with a handful of blocks, headings only add rows.
+     */
+    public function group(): ?string
+    {
+        return null;
+    }
 
     protected static function layoutPresetField(string $type, ?Tenant $tenant = null): Select
     {
@@ -158,7 +170,7 @@ abstract class BaseBuilderBlock implements BuilderBlock
                     ]),
             ])
             ->fillForm(function (array $arguments, Builder $component) use ($optionKeys): array {
-                $itemData = $component->getRawItemState($arguments['item']);
+                $itemData = $component->getItemStateSnapshot($arguments['item']);
 
                 return collect($optionKeys($arguments, $component))
                     ->mapWithKeys(fn (string $key): array => [
@@ -199,6 +211,13 @@ abstract class BaseBuilderBlock implements BuilderBlock
      * offered by its block picker ("Aus Zwischenablage"): last from the picker below the
      * blocks, after the block above from the picker between two. Only a block the builder
      * offers is taken, and only what fits its fields; the rest gets the fields' defaults.
+     *
+     * Any other block is refused with the package's notice. Where the form already shows a
+     * builder that has the block, it names the block and says where it goes: a section's
+     * text pasted among the sections — "„Text“ kann hier nicht eingefügt werden. Innerhalb
+     * von „Sektion“ einfügen." —, a section among a section's blocks — "Außerhalb von
+     * „Sektion“ einfügen." On a page without a section yet, the text only gets "Dieser Block
+     * kann hier nicht eingefügt werden".
      */
     public static function pasteBlockAction(): PasteItemAction
     {
@@ -208,6 +227,8 @@ abstract class BaseBuilderBlock implements BuilderBlock
             ->label('Aus Zwischenablage')
             ->tooltip('Aus Zwischenablage einfügen')
             ->successNotificationTitle('Block eingefügt')
+            // Accurate with either package release: before the refusal notice, a block the
+            // builder does not offer lands here too.
             ->failureNotificationTitle('Kein passender Block in der Zwischenablage');
     }
 

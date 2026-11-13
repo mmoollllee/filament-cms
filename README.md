@@ -398,12 +398,13 @@ composer serve                       # http://127.0.0.1:8000
 
 Two Filament builder views are vendored (inline preview editing, inactive-block UI,
 the block picker's clipboard entry, block-option badges — no extension points exist for
-these; dragging blocks between builders and copy & paste themselves come from
+these; the picker also renders Filament's block groups, which its Blade view lacks;
+dragging blocks between builders and copy & paste themselves come from
 `mmoollllee/filament-builder-extensions`, without an override).
 `tests/Feature/FilamentViewOverrideDriftTest.php` hashes the vendor originals and fails
 with re-vendoring instructions whenever a Filament update touches them — see
 [`docs/CUSTOMIZATION.md` §11](docs/CUSTOMIZATION.md#11-vendored-filament-view-overrides).
-The views follow Filament 5.11.0, so the CMS requires `filament/filament` `^5.11`.
+The views follow Filament 5.11.3; the CMS requires `filament/filament` `^5.11.1`.
 Everything else extends supported APIs.
 
 Rich text inside a section's blocks reaches Livewire as property paths deeper than the

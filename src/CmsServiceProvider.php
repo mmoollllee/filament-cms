@@ -277,7 +277,7 @@ class CmsServiceProvider extends ServiceProvider
         // resolves through the same namespace). Builders outside the CMS keep
         // Filament's embedded rendering untouched.
         //
-        // NOTE: both files are vendored equivalents (baseline filament/filament v5.11.0;
+        // NOTE: both files are vendored equivalents (baseline filament/filament v5.11.3;
         // the builder view mirrors Builder::toEmbeddedHtml()) with the cms changes
         // wrapped in `cms:start`/`cms:end` markers. Because this shadows vendor
         // rendering, a Filament update changing it would be silently swallowed —

@@ -1,6 +1,6 @@
 {{--
     cms:override — Blade equivalent of Filament\Forms\Components\Builder::toEmbeddedHtml()
-    (baseline: filament/filament v5.11.0). Since 5.7 the Builder has NO vendor Blade view
+    (baseline: filament/filament v5.11.3). Since 5.7 the Builder has NO vendor Blade view
     anymore (HasEmbeddedView renders PHP-side); this view re-enters the classic render
     path because BlockBuilder::make() sets it explicitly via
     ->view('filament-forms::components.builder') — a component with an explicit view skips
@@ -29,6 +29,9 @@
       4. block-picker paste — the builder's paste action (registered by BlockBuilder::make()) is
          passed through to the block picker, whose "Aus Zwischenablage" entry runs it — between
          two blocks invoked with the block above (see block-picker.blade.php).
+      5. block groups — Filament's PHP picker lists blocks under their groups (blocks() given
+         named arrays, BlockBuilder::grouped()); its Blade picker gets them flat. This view
+         hands the picker each block's group, read with the protected getBlockGroup().
 
     Dragging blocks between builders needs no view: it comes from
     mmoollllee/filament-builder-extensions (transferGroup()), which hooks into vendor markup
@@ -107,6 +110,20 @@
 
     // cms:start (4) block-picker paste — the builder's PasteItemAction, if it has one
     $pasteAction = $getAction(\Mmoollllee\Cms\Support\Content\Blocks\BaseBuilderBlock::PASTE_ACTION);
+    // cms:end
+
+    // cms:start (5) block groups — what generateBlockPickerHtml() reads with the protected
+    // getBlockGroup(): each picker block's group, for the picker's headings. Should Filament
+    // rename it, the picker lists the blocks without headings.
+    $blockPickerGroups = [];
+
+    if (method_exists($field, 'getBlockGroup')) {
+        foreach ($blockPickerBlocks as $block) {
+            if (filled($blockGroup = $vendor('getBlockGroup', $block))) {
+                $blockPickerGroups[$block->getName()] = $blockGroup;
+            }
+        }
+    }
     // cms:end
 @endphp
 
@@ -205,7 +222,16 @@
                         {{-- cms:end --}}
                         x-on:builder-expand.window="expandFromEvent"
                         x-on:builder-collapse.window="collapseFromEvent"
-                        x-on:expand="expand"
+                        {{-- cms:start (1) inline preview editing — Filament expands the items around a
+                             validation error (vendor: x-on:expand="expand"); a preview item opens its
+                             form then, or the error stays hidden behind the preview. Filament expands
+                             around the first error only, so a preview item holding any other opens
+                             on the form's validation-error event itself. --}}
+                        x-on:expand="expand(); isEditing = true"
+                        @if ($itemHasPreview)
+                            x-on:form-validation-error.window="if ($event.detail.livewireId === $wire.$id) $nextTick(() => { if ($el.querySelector('[data-validation-error]')) { expand(); isEditing = true } })"
+                        @endif
+                        {{-- cms:end --}}
                         x-sortable-item="{{ $itemKey }}"
                         {{
                             $block->getExtraAttributeBag()
@@ -413,11 +439,12 @@
                             <li class="fi-fo-builder-add-between-items-ctn">
                                 <div class="fi-fo-builder-add-between-items">
                                     <div class="fi-fo-builder-block-picker-ctn">
-                                        {{-- cms: (4) the extra :paste-action attribute feeds the picker's paste entry --}}
+                                        {{-- cms: (4) and (5) the extra :paste-action and :block-groups attributes feed the picker's paste entry and headings --}}
                                         <x-filament-forms::builder.block-picker
                                             :action="$addBetweenAction"
                                             :after-item="$itemKey"
                                             :columns="$blockPickerColumns"
+                                            :block-groups="$blockPickerGroups"
                                             :blocks="$blockPickerBlocks"
                                             :key="$key"
                                             :no-search-results-message="$noSearchResultsMessage"
@@ -455,10 +482,11 @@
         @endif
 
         @if ($isAddable && $addAction->isVisible())
-            {{-- cms: (4) the extra :paste-action attribute feeds the picker's paste entry --}}
+            {{-- cms: (4) and (5) the extra :paste-action and :block-groups attributes feed the picker's paste entry and headings --}}
             <x-filament-forms::builder.block-picker
                 :action="$addAction"
                 :action-alignment="$addActionAlignment"
+                :block-groups="$blockPickerGroups"
                 :blocks="$blockPickerBlocks"
                 :columns="$blockPickerColumns"
                 :key="$key"

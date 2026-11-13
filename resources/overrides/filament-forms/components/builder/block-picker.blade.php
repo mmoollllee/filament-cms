@@ -1,6 +1,6 @@
 {{--
     cms:override — vendored copy of filament/forms resources/views/components/builder/block-picker.blade.php
-    (baseline: filament/filament v5.11.0). Shadows the vendor view via prependNamespace()
+    (baseline: filament/filament v5.11.3). Shadows the vendor view via prependNamespace()
     in CmsServiceProvider — the cms builder view renders the picker as this Blade
     component, so the namespace lookup still applies even though vendor's own builder
     (toEmbeddedHtml) inlines the picker HTML in PHP since 5.7. Drift is guarded by
@@ -13,11 +13,16 @@
     BlockBuilder::make(): the browser reads the clipboard, then mounts it with what it found;
     between two blocks it pastes after the one above (the builder view hands the picker the
     action invoked with that item).
+
+    The picker also heads its blocks with their groups, as Filament's PHP picker does and its
+    Blade view does not: the builder view hands it each block's group (blockGroups).
 --}}
 @props([
     'action',
     'actionAlignment' => null,
     'afterItem' => null,
+    // cms: the blocks' groups, block name => heading (passed by the overridden builder view)
+    'blockGroups' => [],
     'blocks',
     'columns' => null,
     'key',
@@ -103,10 +108,35 @@
                 </div>
             @endif
 
+            {{-- cms:start block groups — the markup of Filament's PHP picker (generateBlockPickerHtml()),
+                 which the vendor view lacks: ungrouped blocks first, then each group under its
+                 heading; the groups flow down the columns, a search hides a group without a match.
+                 Without groups, one grid of all blocks, as there. The items are the vendor view's. --}}
+            @php
+                $groupedBlocks = ['' => []];
+
+                foreach ($blocks as $block) {
+                    $groupedBlocks[$blockGroups[$block->getName()] ?? ''][] = $block;
+                }
+
+                $groupedBlocks = array_filter($groupedBlocks);
+                $hasBlockGroups = (array_keys($groupedBlocks) !== ['']) && filled($groupedBlocks);
+            @endphp
+
             <div
-                {{ (new FilamentComponentAttributeBag)->grid($columns, GridDirection::Column) }}
+                {{ $hasBlockGroups ? (new FilamentComponentAttributeBag)->grid($columns, GridDirection::Column)->class(['fi-fo-builder-block-picker-groups']) : new FilamentComponentAttributeBag }}
             >
-                @foreach ($blocks as $block)
+                @foreach ($groupedBlocks as $group => $groupBlocks)
+                <div
+                    {{ ($hasBlockGroups ? new FilamentComponentAttributeBag : (new FilamentComponentAttributeBag)->grid($columns, GridDirection::Column))->class(['fi-fo-builder-block-picker-group' => $hasBlockGroups]) }}
+                    @if ($hasBlockGroups && $searchable) x-show="isGroupVisible($el)" @endif
+                    @if (filled($group)) role="group" aria-label="{{ $group }}" @endif
+                >
+                    @if (filled($group))
+                        <div class="fi-fo-builder-block-picker-group-label">{{ $group }}</div>
+                    @endif
+
+                @foreach ($groupBlocks as $block)
                     @php
                         $blockIcon = $block->getIcon();
                         $blockLabel = $block->getLabel();
@@ -147,7 +177,10 @@
                         {{ $blockLabel }}
                     </x-filament::dropdown.list.item>
                 @endforeach
+                </div>
+                @endforeach
             </div>
+            {{-- cms:end --}}
 
             @if ($searchable)
                 <div

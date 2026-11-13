@@ -320,6 +320,26 @@ class Cms
         return static::$rootBlockAllowlists[$siteKey] ?? ['section'];
     }
 
+    protected static bool $lazyBlockForms = false;
+
+    /**
+     * Load the form of a block with a preview only once it is edited. The builders render
+     * every such form hidden behind its preview (inline preview editing); as a lazy schema
+     * (Filament's lazyLoaded()) it is a placeholder there until a click on the preview shows
+     * it: far less markup and fewer rich editors to start on a long page, one request on a
+     * block's first edit. A form that fails validation loads, and opens, by itself
+     * ({@see \Mmoollllee\Cms\Filament\Forms\BlockBuilderField}).
+     */
+    public static function enableLazyBlockForms(bool $enabled = true): void
+    {
+        static::$lazyBlockForms = $enabled;
+    }
+
+    public static function hasLazyBlockForms(): bool
+    {
+        return static::$lazyBlockForms;
+    }
+
     // -------------------------------------------------------------------------
     //  Template embeds
     // -------------------------------------------------------------------------
@@ -642,6 +662,7 @@ class Cms
         static::$templateEmbeds = [];
         static::$menuLocations = null;
         static::$nestedMenus = false;
+        static::$lazyBlockForms = false;
         static::$notices = false;
         static::$footerTagline = null;
         static::$mediaLibraryDisabled = false;

@@ -10,15 +10,21 @@
  */
 
 use Filament\Facades\Filament;
+use Filament\Forms\Components\Builder\Block;
 use Filament\Forms\Components\Select;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\EditContent;
 use Mmoollllee\Cms\Support\Content\Blocks\BaseBuilderBlock;
+use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
 use Workbench\App\Models\Content;
 use Workbench\App\Models\Tenant;
 use Workbench\App\Models\User;
+use Workbench\App\Support\Content\Blocks\hint\HintBlock;
 use Workbench\Database\Seeders\DatabaseSeeder;
 
 /** The rendered form, for what only its markup tells: which list an element sits in. */
@@ -185,6 +191,176 @@ it('keeps the paste entries of every section on its own blocks after a paste, th
     $callsBySection->each(fn ($calls, string $section) => expect($calls->every(fn (array $call): bool => str_ends_with($call['context']['schemaComponent'], "{$section}.data.blocks")))->toBeTrue()
         ->and($calls->contains(fn (array $call): bool => $call['arguments'] === []))->toBeTrue()
         ->and($calls->contains(fn (array $call): bool => array_key_exists('pasted', $call['arguments'])))->toBeFalse());
+});
+
+it('refuses a section\'s block among the sections and a section among a section\'s blocks, saying where each goes', function () {
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+    $editor = Livewire::test(EditContent::class, ['record' => $home->getKey()]);
+    $blocks = $editor->get('data.blocks');
+    $section = array_key_last(array_filter($blocks, fn (array $item): bool => $item['type'] === 'section'));
+    $calls = collect(pickerPasteCalls($editor->html()));
+    $belowSections = $calls->first(fn (array $call): bool => ($call['in'] === null) && ($call['arguments'] === []));
+    $belowItsBlocks = $calls->first(fn (array $call): bool => ($call['in'] === $section) && ($call['arguments'] === []));
+
+    // A text copied out of a section, pasted below the sections: the page offers sections alone.
+    $editor->call('mountAction', $belowSections['name'], [...$belowSections['arguments'], 'pasted' => ['type' => 'text', 'data' => ['title' => 'Kopie']]], $belowSections['context']);
+
+    expect($editor->get('data.blocks'))->toBe($blocks);
+
+    Notification::assertNotified(Notification::make()->warning()->title('„Text“ kann hier nicht eingefügt werden')->body('Innerhalb von „Sektion“ einfügen.'));
+
+    // A section, pasted below a section's blocks.
+    $editor->call('mountAction', $belowItsBlocks['name'], [...$belowItsBlocks['arguments'], 'pasted' => ['type' => 'section', 'data' => ['title' => 'Kopie']]], $belowItsBlocks['context']);
+
+    expect($editor->get('data.blocks'))->toBe($blocks);
+
+    Notification::assertNotified(Notification::make()->warning()->title('„Sektion“ kann hier nicht eingefügt werden')->body('Außerhalb von „Sektion“ einfügen.'));
+});
+
+it('heads a picker\'s blocks with the groups their classes name, the ungrouped first and the clipboard entry below them', function () {
+    // The workbench's hint block, grouped as a project with many blocks would group its own.
+    app(BuilderBlockRegistry::class)->register(new class extends HintBlock
+    {
+        public function group(): ?string
+        {
+            return 'Hervorheben';
+        }
+    });
+
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+    $markup = builderMarkup(Livewire::test(EditContent::class, ['record' => $home->getKey()])->html());
+    $blocksIn = fn (DOMNode $node): array => array_map(
+        // The picker hands mountAction() its arguments as Js::from() does: JSON.parse('{\u0022block\u0022: …}').
+        fn (DOMElement $button): string => Str::match('/"block":"([^"]+)"/', str_replace('\u0022', '"', $button->getAttribute('wire:click'))),
+        iterator_to_array($markup->query('.//*[@*[name() = "wire:click" and contains(., "block\u0022:")]]', $node)),
+    );
+    $pickers = $markup->query('//*[contains(concat(" ", normalize-space(@class), " "), " fi-fo-builder-block-picker-groups ")]');
+
+    // Every section's pickers: its blocks between two and below them.
+    expect($pickers->length)->toBeGreaterThan(1);
+
+    foreach ($pickers as $picker) {
+        [$ungrouped, $highlighted] = iterator_to_array($markup->query('./div', $picker));
+
+        expect($ungrouped->getAttribute('aria-label'))->toBe('')
+            ->and($blocksIn($ungrouped))->toContain('text', 'media')->not->toContain('hint')
+            ->and($highlighted->getAttribute('aria-label'))->toBe('Hervorheben')
+            ->and($markup->query('./*[contains(@class, "fi-fo-builder-block-picker-group-label")]', $highlighted)->item(0)?->textContent)->toBe('Hervorheben')
+            ->and($blocksIn($highlighted))->toBe(['hint'])
+            ->and($markup->query('following-sibling::*[@*[name() = "x-on:click" and contains(., "FilamentBuilderExtensions?.paste(")]]', $picker)->length)->toBe(1);
+    }
+
+    // The page's own picker offers sections alone: no heading.
+    $sectionEntries = $markup->query('//*[@*[name() = "wire:click" and contains(., "block\u0022:\u0022section\u0022")]]');
+
+    expect($sectionEntries->length)->toBeGreaterThan(0);
+
+    foreach ($sectionEntries as $sectionEntry) {
+        expect($markup->query('ancestor::*[contains(@class, "fi-fo-builder-block-picker-groups")]', $sectionEntry)->length)->toBe(0);
+    }
+});
+
+it('loads a preview block\'s form only once it is edited, and by itself where it fails validation', function () {
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+    // The first text block's section and eyebrow field.
+    $firstText = function (array $blocks): array {
+        foreach ($blocks as $section => $item) {
+            foreach ($item['data']['blocks'] ?? [] as $key => $child) {
+                if ($child['type'] === 'text') {
+                    return [$section, "data.blocks.{$section}.data.blocks.{$key}.data.eyebrow"];
+                }
+            }
+        }
+
+        throw new RuntimeException('No text block on the home page.');
+    };
+
+    // Off by default: every form is rendered behind its preview.
+    $eager = Livewire::test(EditContent::class, ['record' => $home->getKey()]);
+
+    expect($eager->html())->toContain($firstText($eager->get('data.blocks'))[1])
+        ->not->toContain('fi-sc-loading');
+
+    Cms::enableLazyBlockForms();
+
+    $lazy = Livewire::test(EditContent::class, ['record' => $home->getKey()]);
+    [$section, $eyebrow] = $firstText($lazy->get('data.blocks'));
+
+    // The text's form waits behind its preview; its section, which has none, renders its form
+    // with the list of its blocks.
+    expect($lazy->html())->not->toContain($eyebrow)
+        ->toContain('fi-sc-loading')
+        ->toContain("data-state-path=\"data.blocks.{$section}.data.blocks\"");
+
+    // Saved without ever being opened, and failing: the form loads with its error.
+    $lazy->set($eyebrow, str_repeat('x', 101))
+        ->call('save')
+        ->assertHasErrors([$eyebrow]);
+
+    expect($lazy->html())->toContain($eyebrow);
+});
+
+it('has every preview block open its form on a validation error inside, not only the first that Filament expands', function () {
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+    $form = Livewire::test(EditContent::class, ['record' => $home->getKey()]);
+    $markup = builderMarkup($form->html());
+
+    $listens = fn (string $key): bool => $markup->query('//li[@x-sortable-item="'.$key.'"][@*[name() = "x-on:form-validation-error.window"]]')->length === 1;
+    $previews = 0;
+
+    foreach ($form->get('data.blocks') as $sectionKey => $section) {
+        // A section shows its form anyway.
+        expect($listens($sectionKey))->toBeFalse();
+
+        foreach ($section['data']['blocks'] ?? [] as $key => $block) {
+            if ($block['type'] === 'text') {
+                expect($listens($key))->toBeTrue();
+                $previews++;
+            }
+        }
+    }
+
+    expect($previews)->toBeGreaterThan(1);
+});
+
+it('adds a preview block from the picker with lazy block forms on', function () {
+    Cms::enableLazyBlockForms();
+
+    $home = Content::where('tenant_id', $this->tenant->getKey())->where('path', '/')->firstOrFail();
+    $editor = Livewire::test(EditContent::class, ['record' => $home->getKey()]);
+    $section = array_key_first(array_filter($editor->get('data.blocks'), fn (array $item): bool => $item['type'] === 'section'));
+    $before = count($editor->get("data.blocks.{$section}.data.blocks"));
+
+    // Filament's add modal takes the block's components as an array: the blocks keep theirs.
+    $editor->call('mountAction', 'add', ['block' => 'text'], ['schemaComponent' => "form.blocks.{$section}.data.blocks"])
+        ->call('callMountedAction');
+
+    expect($editor->get("data.blocks.{$section}.data.blocks"))->toHaveCount($before + 1);
+});
+
+it('renders a preview block whose schema is a closure with lazy block forms on', function () {
+    // A project block that builds its form from the Livewire component, as Filament allows.
+    app(BuilderBlockRegistry::class)->register(new class extends HintBlock
+    {
+        public function make(?Mmoollllee\Cms\Contracts\Tenant $tenant): Block
+        {
+            $block = parent::make($tenant);
+            $components = $block->getDefaultChildComponents();
+
+            return $block->schema(fn ($livewire): array => $components);
+        }
+    });
+
+    Cms::enableLazyBlockForms();
+
+    $page = Content::where('tenant_id', $this->tenant->getKey())->get()
+        ->first(fn (Content $content): bool => str_contains((string) json_encode($content->blocks), '"type":"hint"'));
+
+    expect($page)->not->toBeNull();
+
+    Livewire::test(EditContent::class, ['record' => $page->getKey()])
+        ->assertOk()
+        ->assertSee('fi-sc-loading', escape: false);
 });
 
 it('moves a block into another section the way a drop there asks, from lists where the package\'s script finds them', function () {

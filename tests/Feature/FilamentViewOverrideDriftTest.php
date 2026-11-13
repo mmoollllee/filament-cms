@@ -26,7 +26,7 @@
 
 use Illuminate\Support\Facades\File;
 
-const FILAMENT_VIEW_BASELINE = 'v5.11.0';
+const FILAMENT_VIEW_BASELINE = 'v5.11.3';
 
 dataset('embedded render methods', [
     'Builder::toEmbeddedHtml' => [
@@ -35,20 +35,28 @@ dataset('embedded render methods', [
         '071e7584056dea2754c9d7a48681d2d1ce99a17312bd7b17136e90bf22de9839',
     ],
     // The INLINE picker HTML; the override renders through the published Blade view
-    // below, with the props this method hands it (searchable, searchPrompt, …).
+    // below, with the props this method hands it (searchable, searchPrompt, …) and the
+    // block groups it heads the blocks with, which the Blade view lacks.
     'Builder::generateBlockPickerHtml' => [
         \Filament\Forms\Components\Builder::class,
         'generateBlockPickerHtml',
         '9dd56f0de11dcc9e3224526d3e5f1343b5ac8f77537f22058a490e4830382bc4',
     ],
+    // The protected getter the builder override reads each picker block's group with.
+    'Builder::getBlockGroup' => [
+        \Filament\Forms\Components\Builder::class,
+        'getBlockGroup',
+        '7b330a4a27ded026a2d8309f6a33d16e7f19856a71f384962940ab1d8a1f3aa8',
+    ],
     // Since v5.7 the PHP wrapper finds a field's errors differently, gives the error
     // message an id ({id}-error) and adds a screen-reader text for required fields
-    // ({id}-required); the override renders the field wrapper view, which carries
-    // the same changes.
+    // ({id}-required); since v5.11.1 it wraps the above-, before- and after-content
+    // slots in a `fi-fo-field-content-slot` each. The override renders the field
+    // wrapper view, which carries the same changes.
     'Field::wrapEmbeddedHtml' => [
         \Filament\Forms\Components\Field::class,
         'wrapEmbeddedHtml',
-        '550bcb6f6e127c9ed3bf7a0a9a4aa8d4c2251747ed1a4428f1cbe361fb2b5f15',
+        'eedaa051c061394a7836b82c56797e2da44ffb3657a981108ac1fea1ce8e9493',
     ],
 ]);
 

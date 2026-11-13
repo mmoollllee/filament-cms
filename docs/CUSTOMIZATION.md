@@ -444,6 +444,32 @@ Add your own by registering a block and shipping only its `preview` view.
 as a click-to-edit card; one that does not renders its form open. That holds in the page
 builder too, so a top-level block gets whichever of the two suits it.
 
+**Picker groups are per block, too.** A block class may name the heading the block picker
+lists it under — what a block's category is in Gutenberg's inserter. Blocks without one
+come first, then each group in the order its first block is registered; the core blocks
+name none, since with a handful of blocks headings only add rows:
+
+```php
+class HeroBlock extends BaseBuilderBlock
+{
+    public function group(): ?string
+    {
+        return 'Kopfbereiche';
+    }
+}
+```
+
+`BlockBuilder::grouped()` turns that into Filament's named block groups; the CMS picker
+renders them as Filament's own picker does (headings, columns, a search hiding empty groups).
+
+**Lazy block forms (opt-in).** `Cms::enableLazyBlockForms()` (a service provider's
+`register()`) has a block with a preview load its form only once it is edited. The builders
+render every such form hidden behind its preview; as a lazy schema (Filament's
+`lazyLoaded()`) it is a placeholder there until a click on the preview shows it. On the
+demo's home page that halves the markup and starts three rich editors instead of twelve;
+the first edit of a block costs one request. A form that fails validation loads, and
+opens, by itself.
+
 **The fragment block is opt-in** — `Support\Content\Blocks\fragment\FragmentBlock` (key
 `fragment`, data `slug`) needs a fragment model and a place in `Cms::registerBlocks()`.
 An app that carried its own copy of such a block (same key, same `slug` field) deletes it
@@ -495,8 +521,8 @@ elsewhere) has no footer to embed anything in, so it only gets its own view's en
 **Builders are built by one factory** — `Filament\Forms\BlockBuilder::make($statePath,
 $tenant, $blocks, previews: …, sortableGroup: …, extraItemActions: …)` configures every
 builder (icons, add labels, the scope-aware "Block-Optionen" gear, "Block kopieren",
-the picker's clipboard entry, preview inline-editing). Improve it once, every builder
-everywhere updates.
+the picker's clipboard entry and block groups, preview inline-editing, lazy block forms).
+Improve it once, every builder everywhere updates.
 
 ---
 
@@ -951,7 +977,10 @@ The package replaces Filament's builder rendering with two vendored views
 (`resources/overrides/filament-forms/`): `filament-forms::components.builder` and
 `…builder.block-picker`. They carry the four builder UX features that have no Filament
 extension point: inline preview editing, the inactive-block UI, the picker's "Aus
-Zwischenablage" entry and the block-option badges in the row header. Everything else lives
+Zwischenablage" entry and the block-option badges in the row header. The picker also heads
+its blocks with Filament's block groups, as Filament's PHP picker does and its Blade view
+does not (the builder view reads them with the protected `getBlockGroup()`, which the drift
+test guards as well). Everything else lives
 in PHP and survives Filament updates: the options gear and headings here, copy & paste and
 drag & drop between builders in `mmoollllee/filament-builder-extensions`
 (`CopyItemAction`/`PasteItemAction`, `->transferGroup()`) — the picker entry only runs the
@@ -963,12 +992,13 @@ view name on every CMS builder (`->view('filament-forms::components.builder')` i
 `BlockBuilder::make()`); `prependNamespace` then resolves that name to the override, and
 the picker Blade component the view renders resolves through the same namespace.
 
-The builder view is a Blade translation of the **filament v5.11.0**
+The builder view is a Blade translation of the **filament v5.11.3**
 `toEmbeddedHtml()`/`generateBlockPickerHtml()` markup, the picker a vendored copy of the
 still-existing vendor view — every divergence wrapped in `cms:start`/`cms:end` markers.
 What `toEmbeddedHtml()` leaves to protected helpers (the reordering component, the
 screen-reader position texts) the view asks of the field itself, so that markup stays
-Filament's. The CMS therefore requires `filament/filament` `^5.11`.
+Filament's. The CMS therefore requires `filament/filament` `^5.11.1` — the release that
+also brought `Builder::getItemStateSnapshot()`, which the block options read.
 `tests/Feature/FilamentViewOverrideDriftTest.php` hashes those vendor sources (method
 source + picker file) — when a Filament update changes them, the test fails with
 re-vendoring instructions (translate/copy the vendor changes, re-apply the marked

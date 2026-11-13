@@ -30,6 +30,14 @@ class BuilderBlockRegistry
         $this->blocks[$block->key()] = $block;
     }
 
+    /** The picker heading of the block registered as `$key` ({@see BaseBuilderBlock::group()}), null for none. */
+    public function groupOf(string $key): ?string
+    {
+        $block = $this->blocks[$key] ?? null;
+
+        return ($block instanceof BaseBuilderBlock) ? $block->group() : null;
+    }
+
     /**
      * @return array<int, Block>
      */

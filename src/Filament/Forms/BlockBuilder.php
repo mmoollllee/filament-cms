@@ -8,6 +8,7 @@ use Filament\Forms\Components\Builder;
 use Filament\Forms\Components\Builder\Block;
 use Mmoollllee\Cms\Contracts\Tenant;
 use Mmoollllee\Cms\Support\Content\Blocks\BaseBuilderBlock;
+use Mmoollllee\Cms\Support\Content\Blocks\BuilderBlockRegistry;
 
 /**
  * Factory for the engine's block builders (page blocks, teaser blocks, fragment
@@ -26,7 +27,7 @@ use Mmoollllee\Cms\Support\Content\Blocks\BaseBuilderBlock;
 class BlockBuilder
 {
     /**
-     * @param  array<int, Block>  $blocks
+     * @param  array<array-key, Block|array<Block>>  $blocks  flat, grouped by the blocks' own groups ({@see grouped()}), or as Filament's named groups
      * @param  bool  $previews  render items as clickable previews (block cards) instead of open forms
      * @param  string|null  $sortableGroup  builders sharing a group name allow drag & drop between each other (the package's transferGroup())
      * @param  array<int, Action|Closure>  $extraItemActions  appended after the shared options/copy actions; a Closure returning the action gives every builder one of its own (see below)
@@ -39,7 +40,7 @@ class BlockBuilder
         ?string $sortableGroup = null,
         array $extraItemActions = [],
     ): Builder {
-        $builder = Builder::make($statePath)
+        $builder = BlockBuilderField::make($statePath)
             // Since Filament 5.7 the Builder renders PHP-side (toEmbeddedHtml);
             // an explicit view re-enters the classic path, where the package's
             // prependNamespace override (inline preview editing, inactive-block
@@ -66,7 +67,7 @@ class BlockBuilder
             // ⌘C / ⌘V on a block a click selected (outside its fields): the two actions above.
             ->clipboardShortcuts()
             ->addActionLabel('Block hinzufügen')
-            ->blocks($blocks);
+            ->blocks(static::grouped($blocks));
 
         if ($previews) {
             $builder
@@ -88,6 +89,36 @@ class BlockBuilder
         }
 
         return $builder;
+    }
+
+    /**
+     * The blocks as Filament's block picker groups them — named arrays, each under the
+     * heading its block class names ({@see BaseBuilderBlock::group()}), like the categories of
+     * Gutenberg's inserter: ungrouped blocks first, then each group in the order its first
+     * block comes. Blocks handed in as groups already, or none naming a group, stay as they are.
+     *
+     * @param  array<array-key, Block|array<Block>>  $blocks
+     * @return array<array-key, Block|array<Block>>
+     */
+    public static function grouped(array $blocks): array
+    {
+        if (array_filter($blocks, fn (mixed $block): bool => ! $block instanceof Block) !== []) {
+            return $blocks;
+        }
+
+        $registry = app(BuilderBlockRegistry::class);
+        $ungrouped = [];
+        $groups = [];
+
+        foreach ($blocks as $block) {
+            if (filled($group = $registry->groupOf($block->getName()))) {
+                $groups[$group][] = $block;
+            } else {
+                $ungrouped[] = $block;
+            }
+        }
+
+        return ($groups === []) ? $blocks : [...$ungrouped, ...$groups];
     }
 
     /**

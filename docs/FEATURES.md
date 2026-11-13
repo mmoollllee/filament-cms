@@ -433,6 +433,13 @@ in a service provider — see the demo's "Custom blocks" HowTo.
 
 **Inline preview editing** — with previews on, a block renders as a live preview card;
 clicking it swaps to the edit form in place, "Fertig" returns to the preview. No modals.
+A block whose form fails validation opens by itself. With `Cms::enableLazyBlockForms()`
+the form behind a preview loads only once it is edited — far less markup and fewer rich
+editors to start on long pages.
+
+**Picker groups** — a block class may name a heading for the block picker
+(`BaseBuilderBlock::group()`, like a block's category in Gutenberg); the picker lists
+ungrouped blocks first, then each group under its heading, the clipboard entry below.
 
 **Copy & paste blocks** — every block row has a "Block kopieren" action (copies
 type + data as JSON to the clipboard, localStorage fallback for 24 hours); every block
@@ -440,9 +447,14 @@ picker offers "Aus Zwischenablage" — at the end, or between two blocks after t
 above — including *across pages, tenants and browser tabs*. From the keyboard: a click on
 a block, outside its fields, selects it (framed); ⌘C copies it, ⌘V pastes after it (Ctrl
 elsewhere). In a field or with text selected the keys copy and paste text as ever. A
-builder only takes a block it offers, and only what fits the block's fields
+builder only takes a block it offers, and only what fits the block's fields; any other
+block is refused with a notice. Where the page already shows a builder that has the
+block, the notice names it and says where it goes — a section's text pasted among the
+sections: "„Text“ kann hier nicht eingefügt werden. Innerhalb von „Sektion“ einfügen.", a
+section pasted into a section: "Außerhalb von „Sektion“ einfügen." On a page without a
+section yet, a section's text gets only "Dieser Block kann hier nicht eingefügt werden".
 (`BaseBuilderBlock::copyBlockAction()` / `pasteBlockAction()`, from
-`mmoollllee/filament-builder-extensions`).
+`mmoollllee/filament-builder-extensions`.)
 
 **Cross-builder drag & drop** — blocks can be dragged between sections, into an empty one
 too (all section child-builders share the `section-blocks` transfer group); the server
