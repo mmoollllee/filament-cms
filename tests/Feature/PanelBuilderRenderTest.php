@@ -13,6 +13,8 @@ use Filament\Facades\Filament;
 use Filament\Forms\Components\Builder\Block;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Notification;
+use Filament\Support\Assets\Js;
+use Filament\Support\Facades\FilamentAsset;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -321,6 +323,17 @@ it('has every preview block open its form on a validation error inside, not only
     }
 
     expect($previews)->toBeGreaterThan(1);
+});
+
+it('keeps Livewire from morphing a builder whose Alpine component is still loading, on every panel page', function () {
+    $guard = collect(FilamentAsset::getScripts(['mmoollllee/filament-cms']))
+        ->first(fn (Js $script): bool => $script->getId() === 'filament-cms-async-morph-guard');
+
+    // Not on request: the hook must be in place before the first update after the page loads.
+    expect($guard)->not->toBeNull()
+        ->and($guard->isLoadedOnRequest())->toBeFalse()
+        ->and(file_get_contents($guard->getPath()))->toContain("hook('morph.updating'")
+        ->toContain("el._x_async === 'await'");
 });
 
 it('adds a preview block from the picker with lazy block forms on', function () {

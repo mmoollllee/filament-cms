@@ -315,6 +315,11 @@ class CmsServiceProvider extends ServiceProvider
             ContentVersionedJs::make('tiptap-link-attributes', __DIR__.'/../resources/dist/tiptap-extensions/link-attributes.js')->loadedOnRequest(),
             ContentVersionedJs::make('tiptap-link-bubble', __DIR__.'/../resources/dist/tiptap-extensions/link-bubble.js')->loadedOnRequest(),
             ContentVersionedJs::make('tiptap-rich-text-surface', __DIR__.'/../resources/dist/tiptap-extensions/rich-text-surface.js')->loadedOnRequest(),
+            // On every panel page, ahead of Livewire's script: keeps Livewire from morphing
+            // a builder (or rich editor) whose Alpine component Filament still loads, which
+            // an update right after page load otherwise does — filling the console with
+            // "builderFormComponent is not defined". Plain JS, no build step.
+            ContentVersionedJs::make('filament-cms-async-morph-guard', __DIR__.'/../resources/js/async-morph-guard.js'),
             // Precompiled builder UX styles (inactive pill, preview interaction, inline
             // editing) — plain CSS, so every panel works without a custom vite theme.
             ContentVersionedCss::make('filament-cms-builder', __DIR__.'/../resources/css/builder.css'),

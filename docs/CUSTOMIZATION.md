@@ -1004,6 +1004,14 @@ source + picker file) — when a Filament update changes them, the test fails wi
 re-vendoring instructions (translate/copy the vendor changes, re-apply the marked
 blocks, update the hash). Nothing drifts silently.
 
+Filament 5.11 loads the builder's Alpine component asynchronously, as it does a rich
+editor's. An update that reaches the page before it has loaded — the content edit page
+sends one right after loading, the resource lock's init event carrying the rich editors'
+first state — would morph the waiting builder in Alpine's clone mode and fill the console
+with "builderFormComponent is not defined". `resources/js/async-morph-guard.js`, a plain
+script on every panel page, keeps Livewire from morphing an element whose component is
+still loading: async-alpine initialises it, and the next update morphs it as usual.
+
 ## 12. Media library (optional)
 
 With `ralphjsmit/laravel-filament-media-library` installed (commercial — install steps
