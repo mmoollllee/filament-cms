@@ -518,6 +518,25 @@ Cms::templateEmbeds('*', fragments: ['opening-hours']);
 `*` covers every type with a page of its own — a non-routable type (a notice shown
 elsewhere) has no footer to embed anything in, so it only gets its own view's entries.
 
+A template that lists the record's OWN children (`visibleChildren()`) declares them as
+`children` — a section composed of its services, team members or downloads:
+
+```php
+Cms::templateEmbeds('site.content.section-downloads', children: ['site.download']);
+```
+
+They are linked like `contentTypes`, and for a type without a page of its own they also
+decide where a record may live: its "Übergeordnete Seite" select offers only the pages
+whose template lists the type, because under any other page the record saves, reads as
+published and never appears. With exactly one such page, the form preselects it and keeps
+the select out of the way; with several, it requires one. A record already filed
+elsewhere keeps its parent as a choice until it is moved. Nothing narrows for a type with
+pages of its own (it shows at its URL wherever it lives — an overview listing its
+sub-pages stays a root page), while no page uses a listing template yet, for `*` (every
+page lists them) or for `contentTypes` — a home page showing the newest articles,
+wherever they live, says nothing about where articles belong. Only the panel form
+narrows: imports and code that set `parent_id` themselves are not checked.
+
 **Builders are built by one factory** — `Filament\Forms\BlockBuilder::make($statePath,
 $tenant, $blocks, previews: …, sortableGroup: …, extraItemActions: …)` configures every
 builder (icons, add labels, the scope-aware "Block-Optionen" gear, "Block kopieren",
@@ -1034,6 +1053,11 @@ Cms::useMediaFolderNames([                       // rename the default per-tenan
     MediaFolders::PAGES => 'Inhalte',
     MediaFolders::DOCUMENTS => 'Downloads',
 ]);
+Cms::registerMediaReferenceKeys(['portraits']);   // own media fields whose key does not
+                                                 // read as one (see "Where files are used")
+Cms::registerMediaReferenceSources([             // own models that store item ids
+    TeamMemberMediaReferences::class,            // (contract MediaReferenceSource)
+]);
 ```
 
 **Conversion budget** (`config/cms.php`, all env-backed) — how much disk each upload
@@ -1050,6 +1074,13 @@ twenty times it:
                            // by inheritance, every srcset candidate.
     'og_format' => 'jpg',  // CMS_MEDIA_OG_FORMAT — separate on purpose: messenger
                            // link-preview crawlers still lag on WebP.
+    'max_upload_size' => 128 * 1024 * 1024, // CMS_MEDIA_MAX_UPLOAD_SIZE — see "Uploads"
+    'private' => true,     // CMS_MEDIA_PRIVATE — see "Private media library"
+],
+'video' => [
+    'recompress_threshold' => 10 * 1024 * 1024, // CMS_VIDEO_RECOMPRESS_THRESHOLD — see "Uploads"
+    'max_bitrate' => 8000,                        // CMS_VIDEO_MAX_BITRATE, kbit/s — see "Uploads"
+    'quality' => 'medium',                        // CMS_VIDEO_QUALITY: high | medium | low
 ],
 ```
 
@@ -1075,8 +1106,144 @@ php artisan cms:media:prune             # delete it
 ```
 
 `cms:media:prune` compares the disk against what the media rows actually name, so it
-also catches `{id}/` directories whose row is gone. It leaves a legacy `2020/01/…`
+also catches `{id}/` directories whose row is gone, and private `{id}-{token}/`
+directories that are no longer their row's current one. It leaves a legacy `2020/01/…`
 upload tree in place (a year looks exactly like an id) and reports it instead.
+
+**Uploads** — the CMS sets 128 MB as the default limit (`cms.media.max_upload_size`) for
+the library (Spatie `media-library.max_file_size`, also what the picker shows) and for
+Livewire's temporary uploads (`livewire.temporary_file_upload.rules`), and gives a
+Livewire upload 30 minutes instead of 5 before its signed URL expires. Whatever the app
+configured in those keys itself stays — except a value still equal to the vendor default
+(10 MB, 5 minutes), which reads as not decided; an app that wants exactly that sets
+`cms.media.max_upload_size` to it. The size takes bytes or php.ini's notation
+(`CMS_MEDIA_MAX_UPLOAD_SIZE=256M`). Two limits sit outside the package and must be
+raised on every server, or big uploads fail with an opaque "failed to upload":
+
+```ini
+; php.ini (FPM)
+upload_max_filesize = 128M
+post_max_size = 130M
+```
+
+```nginx
+client_max_body_size 130m;
+```
+
+**Videos** are converted once, on upload ([FEATURES](FEATURES.md#media--video-conversion)):
+every container but MP4, WebM and Ogg; an MP4 when `ffprobe` finds its video is not
+H.264, wider than 1920 px, or it is above `cms.video.recompress_threshold` (10 MB) at a
+bitrate above `cms.video.max_bitrate` (8000 kbit/s) — a camera's recording, not what the
+recipe makes of ordinary footage, so a copy of a converted video is not encoded again.
+WebM and Ogg stay as uploaded. Without `ffprobe` the size decides alone (and the failure
+is reported). `ConvertLibraryVideo` runs in the queue for up to 10 minutes, so the
+worker needs `--timeout=600` (or more) and the queue connection a `retry_after` above
+that — the default 90 s would start the same encode again while the first is still
+running. `ffmpeg` and `ffprobe` must be reachable for the worker's CLI PHP. A
+replacement the editor uploads while a conversion finishes wins: the swap of an item's
+file waits for the other (a cache lock, so the cache store has to be shared between web
+and worker on more than one server). The site-wide preset is `cms.video.quality`; the
+media block's per-block quality/audio choice only applies to legacy path-based uploads.
+
+**Where files are used** — the Mediathek's file info lists every use of a file, and a
+used file cannot be deleted (single, folder or bulk; the dialog shows the uses instead
+of a confirm button). Both read the stored content through `MediaReferences`: blocks,
+page header and SEO of contents, fragments, tenant branding and rich text, applied
+versions and draft stashes alike, plus the links of menu items and redirects. A file
+linked by its URL counts as well. A picker saves a bare id, so ids count only under a
+key named like a media field — the CMS's own fields all are: `image`, `hero_image`,
+`image_path`, `image_id`, `gallery`, `team_photo`, `file`, `downloads`,
+`product_datasheet`, camelCase (`heroImage`) too, and German ones also as the end of a
+compound: `galerie`, `titelbild`, `masszeichnung`, `datenblatt`, `firmenlogo`,
+`pdf_datei`, … Flags and counts never count (`is_video`, `show_image`, `zeige_bild`,
+`max_files`, `anzahl_bilder`). Other names register via
+`Cms::registerMediaReferenceKeys()`. **An app block that keeps its media
+under another name must register it**, or its pictures can be deleted while in use —
+`MediaField` checks that when it builds the picker: outside production a key the
+Mediathek does not read throws (`MediaField::image('hero')` → name it `hero_image`, or
+register `hero`), in production it is reported once per process.
+
+A picker saves no file that is gone: one deleted after the form was opened fails
+validation („Die gewählte Datei wurde inzwischen gelöscht"), and an id a file deleted
+long ago left behind drops out when the form loads — the picker showed nothing for it,
+and the page showed nothing either. Revisions do not keep a file from being deleted
+(with dozens kept per page, hardly a file could go); restoring one whose files were
+deleted since warns about them, and the page stays empty in their place.
+
+What a block switched off in its options holds is still a use — the block may come back
+— but not a shown one: the list says „ausgeblendet". Only `blocks`, `payload` and `meta`
+of a content are read (plus the draft stash), and they must keep a JSON-storing cast; an
+id in a column of its own goes under `payload`, or gets a source. The file info answers
+from a cache that every write through the CMS renews; what only an app's own source
+sees shows there after at most five minutes. The delete protection always reads afresh.
+
+Item ids stored outside contents, fragments and tenants — an app model of its own — need
+a source:
+
+```php
+final class TeamMemberMediaReferences extends \Mmoollllee\Cms\Support\Media\References\ScansRecords
+{
+    public static function mediaUsagesForTenants(Collection $tenants): iterable
+    {
+        foreach (TeamMember::query()->whereIn('tenant_id', static::tenantKeys($tenants))->get() as $member) {
+            yield from static::usages(
+                owner: $member,
+                label: $member->name,
+                appliedIds: array_filter([(int) $member->portrait_id]),
+                draftIds: [],
+                live: $member->is_published,
+            );
+        }
+    }
+}
+```
+
+Code that deletes items on purpose — removing a whole tenant, say — wraps the delete in
+`MediaDeletionGuard::withoutProtection(fn () => …)`; anything else gets a
+`MediaItemInUse` exception before a single file is removed.
+
+**Private media library** (`cms.media.private`, on by default) — nobody finds a library
+file by counting up ids. New files are stored under `{id}-{token}/` (24 random
+characters) instead of `{id}/` and keep that directory for good: publishing, taking a
+page offline or swapping an image moves nothing. A file's link becomes known once a page
+shows it and stays valid after that — this hides what was never shown, it does not take
+back what was.
+
+Files uploaded before still sit in `{id}/`. After updating, move them once:
+
+```bash
+php artisan cms:media:secure --dry-run   # every file that would move, with its old address
+php artisan cms:media:secure             # move it (--tenant=<id|site_key> for one tenant)
+php artisan cms:media:secure --keep=12,15   # … but leave these media where they are
+```
+
+- A file a published page shows right now keeps its `{id}/` URL — visitors may hold it
+  (a bookmark, a search result, a mail). A page of a tenant open to its members only does
+  not count as published. Run the command again later to move what no page shows any more.
+- Everything else moves, also what only a scheduled page uses: pages store item ids and
+  build the URL on every render.
+- A moved file loses its old address — also for other sites, newsletters or mails that
+  link it. The dry run lists every file it would move with that address: check them
+  against the web server's access log, and keep a file linked from outside with
+  `--keep=<media id>`. A redirect from the old address would undo the point of moving.
+- Links stored as text in the CMS's tables — a PDF linked in the text, a URL pasted into a
+  button, a menu item, a redirect, a draft stash, a version — are rewritten to the new
+  directory: links to the moved file by its exact name (percent-encoded or JSON-escaped
+  alike, MySQL's spelling of a version included) and to its conversions. Links in an
+  app's own tables are not. A link pasted later from an old page is found on the next run.
+- An `{id}/` that also holds files of something else (an imported file beside the
+  media's, an `{id}/01/…` tree) gives up only the media's own files; links to the rest
+  stay as they are.
+- One run at a time; a second one stops with a message.
+
+What it is not: access control. Whoever has a link — an editor who copied it, a visitor
+while the page was live — can open the file. A file that has to stay confidential needs a
+download route that checks a login. A full-page cache or CDN in front of the site may
+serve pages with the old `{id}/` links for a while after the move. The disk must not list
+directories (Laravel's `public/.htaccess` and nginx's defaults do not).
+An app with its own `media-library.path_generator`, or one registered for the library
+model, keeps it, and the feature stays off. Switching it off only stops NEW tokens: files
+that have one keep being found.
 
 **Blurred placeholders** come from `BlurredPlaceholderGenerator`, bound in place of the
 library's stock generator unless the app configured its own under
@@ -1155,8 +1322,10 @@ MediaField::document('file_path')                         // PDF/ZIP/Office → 
 Values are media item ids (or legacy paths — same keys, both render). Resolve them via
 `AssetUrlResolver::resolve($ref, ?conversion)` / `MediaUrlResolver` (`srcset()`, `alt()`,
 `isVideo()`, `preload()`) or the `<x-site.image :media="$ref" :sizes="…">` component.
-Keep refs inside `blocks`/`payload` JSON or `$fillable` columns — the draft stash
-overlays via `fill()`, relations would bypass it.
+Keep refs inside the `blocks`/`payload` JSON — the draft stash overlays via `fill()`,
+relations would bypass it, and the usage list reads only `blocks`, `payload` and `meta`.
+Name the key like a media field, or register it (see "Where files are used"), so the
+usage list and the delete protection see it.
 
 **Authorization** — `MediaItemPolicy`/`MediaFolderPolicy` (tenant members manage the
 current tenant, superadmin bypass via `before()`) are registered on the plugin models in

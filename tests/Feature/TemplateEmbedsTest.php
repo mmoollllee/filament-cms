@@ -42,15 +42,32 @@ it('leaves the every-page declarations out on request', function () {
         ->and(Cms::embedsForTemplate('content.none', includeEveryPage: false))->toBe(['fragments' => [], 'contentTypes' => []]);
 });
 
+it('counts the children a template lists as embedded content types, and knows where they are listed', function () {
+    Cms::templateEmbeds('content.section-services', children: ['marketing.service']);
+    Cms::templateEmbeds('content.page', contentTypes: ['marketing.service']);
+
+    expect(Cms::embedsForTemplate('content.section-services'))->toBe(['fragments' => [], 'contentTypes' => ['marketing.service']])
+        // Only `children` single out a place: the page listing services from
+        // anywhere is not where they live.
+        ->and(Cms::viewsListingChildren('marketing.service'))->toBe(['content.section-services'])
+        ->and(Cms::viewsListingChildren('marketing.note'))->toBe([]);
+
+    Cms::templateEmbeds('*', children: ['marketing.service']);
+
+    expect(Cms::viewsListingChildren('marketing.service'))->toBeNull();
+});
+
 it('forgets every declaration on flush', function () {
     Cms::templateEmbeds('*', fragments: ['footer']);
+    Cms::templateEmbeds('content.section-services', children: ['marketing.service']);
 
     expect(Cms::hasTemplateEmbeds())->toBeTrue();
 
     Cms::flush();
 
     expect(Cms::hasTemplateEmbeds())->toBeFalse()
-        ->and(Cms::embedsForTemplate('content.page'))->toBe(['fragments' => [], 'contentTypes' => []]);
+        ->and(Cms::embedsForTemplate('content.page'))->toBe(['fragments' => [], 'contentTypes' => []])
+        ->and(Cms::viewsListingChildren('marketing.service'))->toBe([]);
 });
 
 it('resolves a view name from form state exactly as from the record', function () {

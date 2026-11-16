@@ -12,6 +12,7 @@ use Illuminate\Support\Number;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Support\Media\CmsMediaLibraryDriver;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\PrivateMediaPaths;
 use Spatie\MediaLibrary\Conversions\ConversionCollection;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\MediaLibrary\Support\PathGenerator\DefaultPathGenerator;
@@ -82,7 +83,7 @@ class MediaPruneCommand extends Command
 
     protected const ORIGINAL_LEVEL = CmsMediaLibraryDriver::ORIGINAL_LEVEL;
 
-    /** @var array<int, array{disk: string, path: string, size: int, reason: string}> */
+    /** @var array<int, array{disk: string, path: string, size: int, reason: string, media_id?: int, directory?: string}> */
     protected array $orphans = [];
 
     protected int $scannedMedia = 0;
@@ -97,6 +98,9 @@ class MediaPruneCommand extends Command
 
     /** @var array<int, array<int, string>> [media id] => files its original-level registration covers */
     protected array $supersededOriginalSrcsetPaths = [];
+
+    /** @var array<int, array{path: string, files: int, media_id: int}> private directories kept because they may hold a row's only copy */
+    protected array $keptDirectories = [];
 
     public function handle(): int
     {
@@ -124,6 +128,7 @@ class MediaPruneCommand extends Command
 
         $this->reportUnverifiedMedia();
         $this->reportLegacyTrees();
+        $this->reportKeptDirectories();
 
         // A disk that has drifted from the database makes every verdict
         // suspect — including "nothing to prune", which then only means the
@@ -165,6 +170,7 @@ class MediaPruneCommand extends Command
 
                 $pathGenerator = PathGeneratorFactory::create($media);
                 $originalDisk = Storage::disk($media->disk);
+
                 $conversionsDisk = Storage::disk($media->conversions_disk ?: $media->disk);
 
                 // Anchor: without its own original in place, the row cannot
@@ -360,36 +366,169 @@ class MediaPruneCommand extends Command
         foreach ($disk->directories($prefix) as $directory) {
             $name = basename($directory);
 
+            // A private directory (`{id}-{token}`) is accounted for only while
+            // it is its row's CURRENT one: the token is random, so any other
+            // is what an interrupted move left behind — or a row that is gone.
+            if (preg_match(PrivateMediaPaths::DIRECTORY_PATTERN, $name, $match) === 1) {
+                $this->collectPrivateDirectory($disk, $directory, (int) $match[1], isset($knownIds[(int) $match[1]]));
+
+                continue;
+            }
+
             // Only the library's own `{id}` directories are in scope: tenant
             // branding and content-block uploads share the disk and are none
             // of this command's business.
-            if (! ctype_digit($name)) {
-                continue;
-            }
-
-            $isKnown = isset($knownIds[(int) $name]);
-
-            if (! $this->hasMediaDirectoryLayout($disk, $directory, $isKnown)) {
-                $this->rememberLegacyTree($disk, $directory);
-
-                continue;
-            }
-
-            $this->scannedDirectories++;
-
-            if ($isKnown) {
-                continue;
-            }
-
-            foreach ($disk->allFiles($directory) as $path) {
-                $this->orphans[] = [
-                    'disk' => Cms::mediaDisk(),
-                    'path' => $path,
-                    'size' => $this->sizeOf($disk, $path),
-                    'reason' => 'directory without media row',
-                ];
+            if (ctype_digit($name)) {
+                $this->collectPlainDirectory($disk, $directory, (int) $name, isset($knownIds[(int) $name]));
             }
         }
+    }
+
+    /**
+     * `{id}/`, the layout before the private library. Accounted for while its
+     * row still lives there. Once cms:media:secure moved the row, what stayed
+     * behind of the row's own files — a removal that failed — is a leftover;
+     * anything else in it stays.
+     */
+    protected function collectPlainDirectory(Filesystem $disk, string $directory, int $mediaId, bool $isKnown): void
+    {
+        if (! $this->isMediaDirectory($disk, $directory, hasMediaRow: $isKnown)) {
+            return;
+        }
+
+        if (! $isKnown) {
+            $this->collectDirectoryFiles($disk, $directory, 'directory without media row', $mediaId);
+
+            return;
+        }
+
+        $row = Media::query()->find($mediaId);
+
+        if ($row === null || ! $this->movedElsewhere($row, $directory)) {
+            return;
+        }
+
+        $own = array_filter([$directory.'/'.$row->file_name], $disk->exists(...));
+
+        foreach (['conversions', 'responsive-images'] as $derivatives) {
+            array_push($own, ...$disk->allFiles($directory.'/'.$derivatives));
+        }
+
+        $this->collectFiles($disk, $own, 'leftover of a moved media', $mediaId, $directory);
+    }
+
+    protected function collectPrivateDirectory(Filesystem $disk, string $directory, int $mediaId, bool $isKnown): void
+    {
+        $row = $isKnown ? Media::query()->find($mediaId) : null;
+
+        // The name alone does not make it the library's — an app folder can
+        // look like one (`2024-Betriebsanleitungen`). It is the row's when it
+        // holds the row's original; without a row, only the derivative
+        // directories a media directory has settle it, as for `{id}/`.
+        $holdsRowFiles = $row !== null && $disk->exists($directory.'/'.$row->file_name);
+
+        if (! $this->isMediaDirectory($disk, $directory, hasMediaRow: $holdsRowFiles)) {
+            return;
+        }
+
+        if ($row === null) {
+            $this->collectDirectoryFiles($disk, $directory, 'directory without media row', $mediaId);
+
+            return;
+        }
+
+        if (basename(PrivateMediaPaths::baseDirectory($row)) === basename($directory)) {
+            return;
+        }
+
+        if (! $this->movedElsewhere($row, $directory)) {
+            // The row's original is missing where the row says it is: a move
+            // cut short may have left the only copy HERE. Kept, and reported.
+            $this->keptDirectories[] = [
+                'path' => $directory,
+                'files' => count($disk->allFiles($directory)),
+                'media_id' => $mediaId,
+            ];
+
+            return;
+        }
+
+        $this->collectDirectoryFiles($disk, $directory, 'superseded private directory', $mediaId);
+    }
+
+    /**
+     * Whether a directory is shaped like a media directory and so this
+     * command's business — counted if so, reported as a legacy tree if not.
+     */
+    protected function isMediaDirectory(Filesystem $disk, string $directory, bool $hasMediaRow): bool
+    {
+        if (! $this->hasMediaDirectoryLayout($disk, $directory, $hasMediaRow)) {
+            $this->rememberLegacyTree($disk, $directory);
+
+            return false;
+        }
+
+        $this->scannedDirectories++;
+
+        return true;
+    }
+
+    /**
+     * Whether the row lives in another directory than this one, with its
+     * original there. Asked now, not taken from the scan: an upload, or
+     * cms:media:secure moving an old file, while this command ran puts a row
+     * in a directory the scan never saw.
+     */
+    protected function movedElsewhere(Media $row, string $directory): bool
+    {
+        $current = PrivateMediaPaths::baseDirectory($row);
+
+        return basename($current) !== basename($directory)
+            && Storage::disk($row->disk)->exists($current.'/'.$row->file_name);
+    }
+
+    protected function collectDirectoryFiles(Filesystem $disk, string $directory, string $reason, int $mediaId): void
+    {
+        $this->collectFiles($disk, $disk->allFiles($directory), $reason, $mediaId, $directory);
+    }
+
+    /**
+     * @param  array<int, string>  $paths
+     */
+    protected function collectFiles(Filesystem $disk, array $paths, string $reason, int $mediaId, string $directory): void
+    {
+        foreach ($paths as $path) {
+            $this->orphans[] = [
+                'disk' => Cms::mediaDisk(),
+                'path' => $path,
+                'size' => $this->sizeOf($disk, $path),
+                'reason' => $reason,
+                'media_id' => $mediaId,
+                'directory' => $directory,
+            ];
+        }
+    }
+
+    /**
+     * Whether a directory listed as an orphan still is one right before its
+     * files go: between the listing and the deletion — the
+     * confirmation prompt alone can take minutes — cms:media:secure may have
+     * moved its row into it, or an upload may have created the row.
+     *
+     * @param  array{media_id?: int, directory?: string}  $orphan
+     * @param  array<string, bool>  $verdicts  per directory, so each is asked once
+     */
+    protected function stillOrphaned(array $orphan, array &$verdicts): bool
+    {
+        if (! isset($orphan['media_id'], $orphan['directory'])) {
+            return true;
+        }
+
+        return $verdicts[$orphan['directory']] ??= (function () use ($orphan): bool {
+            $row = Media::query()->find($orphan['media_id']);
+
+            return $row === null || $this->movedElsewhere($row, $orphan['directory']);
+        })();
     }
 
     /**
@@ -546,6 +685,20 @@ class MediaPruneCommand extends Command
         }
     }
 
+    protected function reportKeptDirectories(): void
+    {
+        if ($this->keptDirectories === []) {
+            return;
+        }
+
+        $this->newLine();
+        $this->warn('Private directories kept (NOT pruned) — their row\'s original is missing from its current directory, so a move may have been cut short and left the only copy here:');
+
+        foreach ($this->keptDirectories as $kept) {
+            $this->line("  {$kept['path']}/ — {$kept['files']} file(s), media #{$kept['media_id']}");
+        }
+    }
+
     protected function confirmDeletion(): bool
     {
         if ($this->option('force')) {
@@ -573,7 +726,17 @@ class MediaPruneCommand extends Command
         /** @var array<string, true> */
         $deletedPaths = [];
 
+        /** @var array<string, bool> */
+        $verdicts = [];
+        $skipped = 0;
+
         foreach ($this->orphans as $orphan) {
+            if (! $this->stillOrphaned($orphan, $verdicts)) {
+                $skipped++;
+
+                continue;
+            }
+
             $disk = Storage::disk($orphan['disk']);
 
             try {
@@ -598,6 +761,10 @@ class MediaPruneCommand extends Command
         $this->forgetSupersededOriginalSrcset($deletedPaths);
 
         $this->info("Pruned {$deleted} file(s), freed {$this->formatBytes($freed)}.");
+
+        if ($skipped > 0) {
+            $this->warn("{$skipped} file(s) kept: their directory became a media row's current one while this command ran.");
+        }
 
         if ($failed > 0) {
             $this->warn("{$failed} file(s) could not be deleted.");

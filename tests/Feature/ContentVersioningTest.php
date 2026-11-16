@@ -13,6 +13,7 @@
  * - the dashboard widget lists the tenant's own changes only.
  */
 
+use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
 use Mmoollllee\Cms\Enums\ContentVisibility;
 use Mmoollllee\Cms\Filament\Resources\Contents\Pages\ContentRevisions;
@@ -227,6 +228,38 @@ it('prunes to the configured keep count with force-deletion', function () {
             ->where('versionable_type', Content::class)
             ->where('versionable_id', $page->getKey())
             ->count())->toBe(1);
+});
+
+it('warns when the restored revision shows a file deleted since', function () {
+    Storage::fake('public');
+    $image = makeLibraryImage($this->tenant);
+    $page = versionedPage($this->tenant);
+
+    $page->update(['blocks' => sectionWith([mediaBlock($image->getKey())])]);
+    $page->update(['blocks' => []]);
+
+    // No page shows it any more, so the Mediathek lets it go — revisions do not count.
+    $image->delete();
+
+    // Back to the state before the latest change: the one with the image.
+    Livewire::test(ContentRevisions::class, ['record' => $page->getKey()])
+        ->call('restoreVersion')
+        ->assertNotified('Eine Datei dieser Fassung gibt es nicht mehr');
+
+    expect($page->fresh()->blocks)->not->toBe([]);
+});
+
+it('restores a revision whose files are all there without a warning', function () {
+    Storage::fake('public');
+    $image = makeLibraryImage($this->tenant);
+    $page = versionedPage($this->tenant);
+
+    $page->update(['blocks' => sectionWith([mediaBlock($image->getKey())])]);
+    $page->update(['blocks' => []]);
+
+    Livewire::test(ContentRevisions::class, ['record' => $page->getKey()])
+        ->call('restoreVersion')
+        ->assertNotNotified('Eine Datei dieser Fassung gibt es nicht mehr');
 });
 
 it('refuses to restore when no older state exists, keeping the pending draft', function () {

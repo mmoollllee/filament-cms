@@ -41,6 +41,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Unique;
@@ -280,7 +281,9 @@ abstract class TenantScopedContentResource extends Resource
                             ->contained(false)
                             ->columnSpan($mainSpan)
                             ->schema([static::builderField($tenant)]),
-                        $sidebar->visible($sidebarHasVisibleContent),
+                        // Hidden with nothing to show, but still saved from: a
+                        // parent preselected and stepped aside is in there.
+                        $sidebar->visible($sidebarHasVisibleContent)->dehydratedWhenHidden(),
                     ]),
                 ...$detailSections,
             ]);
@@ -449,11 +452,28 @@ abstract class TenantScopedContentResource extends Resource
                 ->label('Übergeordnete Seite')
                 ->options(fn (Get $get, ?Model $record): array => static::getParentOptions($tenant, static::resolveSelectedContentType($get), $record))
                 ->default(fn (Get $get): ?int => static::getDefaultParentId($tenant, static::resolveSelectedContentType($get)))
-                ->hidden(fn (Get $get): bool => static::getAllowedParentTypes(static::resolveSelectedContentType($get)) === [])
+                // Out of the way for a type without parents — and once the one
+                // page that lists the type is chosen: nothing left to decide.
+                ->hidden(fn (Get $get, ?Model $record): bool => static::getAllowedParentTypes(static::resolveSelectedContentType($get)) === []
+                    || static::parentIsSettled($tenant, $get, $record))
+                // Saved in that second case all the same: on create, the
+                // preselected parent is where the record is going to show.
+                ->dehydratedWhenHidden(fn (Get $get): bool => static::getAllowedParentTypes(static::resolveSelectedContentType($get)) !== [])
+                // Without one of the pages that list it, a record never shows.
+                ->required(fn (Get $get): bool => static::getListingParentIds($tenant, static::resolveSelectedContentType($get)) !== null)
                 ->searchable()
                 ->live()
                 ->afterStateUpdated(static::rebasePathOnParentChange($tenant))
-                ->helperText('Optional. Der Pfad ordnet sich der übergeordneten Seite unter.'),
+                ->helperText(function (Get $get) use ($tenant): string {
+                    $contentType = static::resolveSelectedContentType($get);
+
+                    return match (true) {
+                        static::getListingParentIds($tenant, $contentType) !== null => 'Zur Wahl stehen die Seiten, die solche Einträge anzeigen.',
+                        // Saved all the same — the page that lists them may come later.
+                        static::awaitsListingPage($tenant, $contentType) => 'Noch zeigt keine Seite solche Einträge an. Der Eintrag erscheint erst, wenn es eine Seite mit dem passenden Template gibt.',
+                        default => 'Optional. Der Pfad ordnet sich der übergeordneten Seite unter.',
+                    };
+                }),
             // Path is now edited via TitleWithSlugInput (combined with title)
         ];
     }
@@ -1357,22 +1377,21 @@ abstract class TenantScopedContentResource extends Resource
     }
 
     /**
+     * @param  Collection<int, object>|null  $candidates  {@see parentCandidates()}, when already at hand
      * @return array<int|string, string>
      */
-    protected static function getParentOptions(?Tenant $tenant, ?string $contentType, ?Model $record = null): array
+    protected static function getParentOptions(?Tenant $tenant, ?string $contentType, ?Model $record = null, ?Collection $candidates = null): array
     {
-        $allowedParentTypes = static::getAllowedParentTypes($contentType);
-
-        if ($tenant === null || $allowedParentTypes === []) {
+        if ($tenant === null) {
             return [];
         }
 
-        $options = Cms::contentModel()::query()
-            ->whereBelongsTo($tenant)
-            ->whereIn('content_type', $allowedParentTypes)
-            ->orderBy('title')
-            ->pluck('title', 'id')
-            ->all();
+        $candidates ??= static::parentCandidates($tenant, $contentType);
+        $options = static::parentLabels($candidates);
+
+        if ($options === []) {
+            return [];
+        }
 
         // A record can never be its own ancestor: exclude itself and every
         // descendant, or reparenting could create a cycle.
@@ -1381,7 +1400,145 @@ abstract class TenantScopedContentResource extends Resource
             $options = array_diff_key($options, array_flip($excluded));
         }
 
+        // Where a template lists the type, only those pages show such a record
+        // ({@see getListingParentIds()}) — plus the parent a record already
+        // has, so it stays editable until the editor moves it.
+        $listing = static::getListingParentIds($tenant, $contentType, $candidates);
+
+        if ($listing !== null) {
+            $keep = array_flip($listing);
+
+            if (filled($currentParentId = $record?->getAttribute('parent_id'))) {
+                $keep[(int) $currentParentId] = true;
+            }
+
+            $options = array_intersect_key($options, $keep);
+        }
+
         return $options;
+    }
+
+    /**
+     * Titles as the model reads them — accessors and casts included — from
+     * the plain rows: one instance, and no `retrieved` event, which would lay
+     * a draft over a row that does not carry one.
+     *
+     * @param  Collection<int, object>  $candidates
+     * @return array<int, string>
+     */
+    protected static function parentLabels(Collection $candidates): array
+    {
+        $model = new (Cms::contentModel());
+        $labels = [];
+
+        foreach ($candidates as $candidate) {
+            $model->setRawAttributes(['id' => $candidate->id, 'title' => $candidate->title]);
+            $labels[(int) $candidate->id] = (string) $model->getAttribute('title');
+        }
+
+        return $labels;
+    }
+
+    /**
+     * Every record of an allowed parent type, as plain rows — id, title,
+     * content_type, template — without hydrating a model per page.
+     *
+     * @return Collection<int, object>
+     */
+    protected static function parentCandidates(Tenant $tenant, ?string $contentType): Collection
+    {
+        $allowedParentTypes = static::getAllowedParentTypes($contentType);
+
+        if ($allowedParentTypes === []) {
+            return collect();
+        }
+
+        return Cms::contentModel()::query()
+            ->whereBelongsTo($tenant)
+            ->whereIn('content_type', $allowedParentTypes)
+            ->orderBy('title')
+            ->toBase()
+            ->get(['id', 'title', 'content_type', 'template']);
+    }
+
+    /**
+     * The pages whose template lists this type among their own children
+     * ({@see Cms::templateEmbeds()}, `children`) — for a type without a page
+     * of its own, the only places a record shows: the template fetches it with
+     * `visibleChildren()`, and under any other page it saves, reads as
+     * published and never appears.
+     *
+     * Null for a type with a page of its own (it shows there wherever it
+     * lives, at the root too), when no template declares the type, when every
+     * page does, or when the tenant has no such page yet — then every page of
+     * an allowed type stays a choice rather than leaving a form that cannot be
+     * saved.
+     *
+     * @param  Collection<int, object>|null  $candidates  {@see parentCandidates()}, when already at hand
+     * @return array<int, int>|null
+     */
+    protected static function getListingParentIds(?Tenant $tenant, ?string $contentType, ?Collection $candidates = null): ?array
+    {
+        $views = filled($contentType) ? Cms::viewsListingChildren($contentType) : null;
+
+        if ($tenant === null || $views === null || $views === [] || static::selectedBlueprint($contentType)?->isRoutable() !== false) {
+            return null;
+        }
+
+        $resolver = app(TemplateResolver::class);
+        $ids = [];
+        $lists = [];
+
+        foreach ($candidates ?? static::parentCandidates($tenant, $contentType) as $candidate) {
+            // Many pages share a type and a template: resolved once each.
+            $lists[$candidate->content_type.'|'.$candidate->template] ??= in_array(
+                $resolver->resolveName((string) $candidate->content_type, $candidate->template, $tenant),
+                $views,
+                true,
+            );
+
+            if ($lists[$candidate->content_type.'|'.$candidate->template]) {
+                $ids[] = (int) $candidate->id;
+            }
+        }
+
+        return $ids !== [] ? $ids : null;
+    }
+
+    /**
+     * A type without a page of its own that templates list ({@see
+     * getListingParentIds()}), while no page of the tenant uses one of those
+     * templates yet: a record shows nowhere until one does.
+     */
+    protected static function awaitsListingPage(?Tenant $tenant, ?string $contentType): bool
+    {
+        return $tenant !== null
+            && filled($contentType)
+            && (Cms::viewsListingChildren($contentType) ?? []) !== []
+            && static::selectedBlueprint($contentType)?->isRoutable() === false
+            && static::getListingParentIds($tenant, $contentType) === null;
+    }
+
+    /**
+     * Nothing to decide: exactly one page lists the type, and the form holds it.
+     */
+    protected static function parentIsSettled(?Tenant $tenant, Get $get, ?Model $record): bool
+    {
+        $contentType = static::resolveSelectedContentType($get);
+
+        if ($tenant === null) {
+            return false;
+        }
+
+        $candidates = static::parentCandidates($tenant, $contentType);
+
+        if (static::getListingParentIds($tenant, $contentType, $candidates) === null) {
+            return false;
+        }
+
+        $options = static::getParentOptions($tenant, $contentType, $record, $candidates);
+
+        return count($options) === 1 && (int) $get('parent_id') === (int) array_key_first($options);
     }
 
     /**
@@ -1396,13 +1553,14 @@ abstract class TenantScopedContentResource extends Resource
 
     protected static function getDefaultParentId(?Tenant $tenant, ?string $contentType): ?int
     {
+        $parentOptions = static::getParentOptions($tenant, $contentType);
         $requestedParentId = static::resolveRequestedParentId($tenant, $contentType);
 
-        if ($requestedParentId !== null) {
+        // The parent the list was scoped to — if it is a choice at all: one
+        // whose template does not list the type would hide the record.
+        if ($requestedParentId !== null && array_key_exists($requestedParentId, $parentOptions)) {
             return $requestedParentId;
         }
-
-        $parentOptions = static::getParentOptions($tenant, $contentType);
 
         return count($parentOptions) === 1 ? (int) array_key_first($parentOptions) : null;
     }

@@ -347,6 +347,9 @@ class Cms
     /** @var array<string, array{fragments: array<int, string>, contentTypes: array<int, string>}> */
     protected static array $templateEmbeds = [];
 
+    /** @var array<string, array<int, string>> view => content types it lists from the record's own children */
+    protected static array $templateChildren = [];
+
     /**
      * Declare what a template renders besides the page's own blocks — fragments it
      * pulls in by slug, records of content types it lists — so the content form can
@@ -362,20 +365,64 @@ class Cms
      * renders the page. `*` matches every page of a type that has one
      * ({@see embedsForTemplate()}). Repeated calls add up.
      *
+     * `children` are the types the template lists from the record's OWN
+     * children (`visibleChildren()`) — a section composed of its services,
+     * team members or downloads:
+     *
+     *     Cms::templateEmbeds('acme.content.section-downloads', children: ['acme.download']);
+     *
+     * They count as embedded content types, and for a type without a page of
+     * its own they decide where a record may live: the content form offers
+     * only parents whose template lists the type ({@see viewsListingChildren()}).
+     * A download filed under any other section saves, shows as published — and
+     * never appears on the site. A type with pages of its own shows there
+     * wherever it lives, so its parent stays free. `contentTypes` make no such
+     * claim: a home page listing the three newest articles, wherever they
+     * live, is not where articles belong.
+     *
      * @param  string|array<int, string>  $views
      * @param  array<int, string>  $fragments  fragment slugs
      * @param  array<int, string>  $contentTypes  content type keys
+     * @param  array<int, string>  $children  content type keys the template lists from the record's children
      */
-    public static function templateEmbeds(string|array $views, array $fragments = [], array $contentTypes = []): void
+    public static function templateEmbeds(string|array $views, array $fragments = [], array $contentTypes = [], array $children = []): void
     {
         foreach ((array) $views as $view) {
             $declared = static::$templateEmbeds[$view] ?? ['fragments' => [], 'contentTypes' => []];
 
             static::$templateEmbeds[$view] = [
                 'fragments' => array_values(array_unique([...$declared['fragments'], ...$fragments])),
-                'contentTypes' => array_values(array_unique([...$declared['contentTypes'], ...$contentTypes])),
+                'contentTypes' => array_values(array_unique([...$declared['contentTypes'], ...$contentTypes, ...$children])),
             ];
+
+            if ($children !== []) {
+                static::$templateChildren[$view] = array_values(array_unique([...static::$templateChildren[$view] ?? [], ...$children]));
+            }
         }
+    }
+
+    /**
+     * The views that list their own children of this type ({@see templateEmbeds()},
+     * `children`). Null when `*` declares them: every page lists them, so no
+     * page is singled out as their place.
+     *
+     * @return array<int, string>|null
+     */
+    public static function viewsListingChildren(string $contentType): ?array
+    {
+        if (in_array($contentType, static::$templateChildren['*'] ?? [], true)) {
+            return null;
+        }
+
+        $views = [];
+
+        foreach (static::$templateChildren as $view => $types) {
+            if ($view !== '*' && in_array($contentType, $types, true)) {
+                $views[] = (string) $view;
+            }
+        }
+
+        return $views;
     }
 
     /** Whether any template declares embeds — without, there is nothing to look up. */
@@ -454,6 +501,12 @@ class Cms
     /** @var array<string, string>|null */
     protected static ?array $mediaFolderNames = null;
 
+    /** @var list<string> */
+    protected static array $mediaReferenceKeys = [];
+
+    /** @var list<class-string<Contracts\MediaReferenceSource>> */
+    protected static array $mediaReferenceSources = [];
+
     /**
      * Opt out of the media library integration even when the package is
      * installed (fields fall back to plain uploads, no panel page).
@@ -515,8 +568,10 @@ class Cms
 
     /**
      * The disk media-library uploads are stored on. Defaults to `public` —
-     * CMS sites serve media statically. Apps with a private library (policy-
-     * gated serving) point this at their own disk.
+     * CMS sites serve media statically; unpublished files are kept from
+     * guessing by their directory ({@see Support\Media\PrivateMediaPaths}).
+     * Apps that need real access control (policy-gated serving) point this at
+     * their own disk.
      */
     public static function useMediaDisk(string $disk): void
     {
@@ -549,6 +604,60 @@ class Cms
             Support\Media\MediaFolders::PAGES => 'Seiten',
             Support\Media\MediaFolders::DOCUMENTS => 'Dokumente',
         ];
+    }
+
+    /**
+     * Data keys an app's own media fields store under, in blocks, `payload`
+     * or `meta` — in addition to the keys named like a media field, which the
+     * CMS's own fields all are (`image_path`, `gallery`, `galerie`,
+     * `titelbild`, `datenblatt`, … — {@see Support\Media\References\MediaReferenceScanner::MEDIA_KEY_PATTERN}).
+     * A saved picker holds a bare id, so the key is what marks it as a media
+     * reference: the usage list and the delete protection only see
+     * references under a known key (rich-text images need none).
+     * Register the names that do not read as media:
+     *
+     *     Cms::registerMediaReferenceKeys(['portraits', 'hero_left']);
+     *
+     * @param  list<string>  $keys
+     */
+    public static function registerMediaReferenceKeys(array $keys): void
+    {
+        static::$mediaReferenceKeys = array_values(array_unique([...static::$mediaReferenceKeys, ...$keys]));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function mediaReferenceKeys(): array
+    {
+        return static::$mediaReferenceKeys;
+    }
+
+    /**
+     * Models of the app that store media-library ids outside contents,
+     * fragments and tenant settings — each as a
+     * {@see Contracts\MediaReferenceSource}.
+     *
+     * @param  list<class-string<Contracts\MediaReferenceSource>>  $sources
+     */
+    public static function registerMediaReferenceSources(array $sources): void
+    {
+        static::$mediaReferenceSources = array_values(array_unique([...static::$mediaReferenceSources, ...$sources]));
+    }
+
+    /**
+     * @return list<class-string<Contracts\MediaReferenceSource>>
+     */
+    public static function mediaReferenceSources(): array
+    {
+        return array_values(array_unique([
+            Support\Media\References\ContentMediaReferences::class,
+            Support\Media\References\FragmentMediaReferences::class,
+            Support\Media\References\TenantMediaReferences::class,
+            Support\Media\References\MenuMediaReferences::class,
+            Support\Media\References\RedirectMediaReferences::class,
+            ...static::$mediaReferenceSources,
+        ]));
     }
 
     // -------------------------------------------------------------------------
@@ -660,6 +769,7 @@ class Cms
         static::$sectionChildAllowlists = [];
         static::$rootBlockAllowlists = [];
         static::$templateEmbeds = [];
+        static::$templateChildren = [];
         static::$menuLocations = null;
         static::$nestedMenus = false;
         static::$lazyBlockForms = false;
@@ -670,10 +780,13 @@ class Cms
         static::$mediaItemModel = null;
         static::$mediaDisk = null;
         static::$mediaFolderNames = null;
+        static::$mediaReferenceKeys = [];
+        static::$mediaReferenceSources = [];
         Support\Content\Blocks\BuilderBlockRegistry::flushRenderCache();
         Support\Analytics\Umami::flush();
         Support\Media\MediaLibrary::flush();
         Support\Media\MediaUrlResolver::flush();
         Support\Media\MediaFolders::flush();
+        Support\Media\MediaReferences::flush();
     }
 }

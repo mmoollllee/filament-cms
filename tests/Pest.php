@@ -29,14 +29,14 @@ function cmsTestPngBytes(int $size = 20): string
 }
 
 /**
- * A media-library item with an attached (real) PNG for the given tenant —
- * mirrors the import command's write path. Remember the `has_media` global
- * scope: items are only queryable once a Spatie media row exists, which this
- * helper guarantees.
+ * A media-library item holding the given bytes for the given tenant — mirrors
+ * the import command's write path. Remember the `has_media` global scope:
+ * items are only queryable once a Spatie media row exists, which this helper
+ * guarantees.
  */
-function makeLibraryImage(Tenant $tenant, string $sourcePath = 'fixtures/pic.png', array $attributes = []): \RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem
+function attachLibraryFile(Tenant $tenant, string $sourcePath, string $bytes, array $attributes = [], bool $preserveOriginal = false): \RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem
 {
-    \Illuminate\Support\Facades\Storage::disk('public')->put($sourcePath, cmsTestPngBytes());
+    \Illuminate\Support\Facades\Storage::disk('public')->put($sourcePath, $bytes);
 
     $item = \Mmoollllee\Cms\Cms::mediaItemModel()::query()->create([
         'tenant_type' => $tenant->getMorphClass(),
@@ -44,14 +44,99 @@ function makeLibraryImage(Tenant $tenant, string $sourcePath = 'fixtures/pic.png
         ...$attributes,
     ]);
 
-    $item
-        ->driver(app(\Mmoollllee\Cms\Cms::mediaDriver()))
-        ->addMediaFromDisk($sourcePath, 'public')
-        ->preservingOriginal()
+    $adder = $item->driver(app(\Mmoollllee\Cms\Cms::mediaDriver()))->addMediaFromDisk($sourcePath, 'public');
+
+    if ($preserveOriginal) {
+        $adder->preservingOriginal();
+    }
+
+    $adder
         ->usingName(pathinfo($sourcePath, PATHINFO_FILENAME))
         ->toMediaCollection($item->getMediaLibraryCollectionName());
 
     return $item->refresh();
+}
+
+/** A media-library item with an attached (real) PNG. */
+function makeLibraryImage(Tenant $tenant, string $sourcePath = 'fixtures/pic.png', array $attributes = []): \RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem
+{
+    return attachLibraryFile($tenant, $sourcePath, cmsTestPngBytes(), $attributes, preserveOriginal: true);
+}
+
+/**
+ * A media-library item holding an arbitrary file — the bytes decide the MIME
+ * type the library records (see {@see cmsVideoBytes()} for videos that need no
+ * real encoding).
+ */
+function makeLibraryFile(Tenant $tenant, string $fileName, string $bytes, array $attributes = []): \RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem
+{
+    return attachLibraryFile($tenant, 'fixtures/'.$fileName, $bytes, $attributes);
+}
+
+/** The item's file as it is now — a conversion or a move replaces the row. */
+function itemMedia($item): \Spatie\MediaLibrary\MediaCollections\Models\Media
+{
+    return $item->refresh()->getFirstMedia($item->getMediaLibraryCollectionName());
+}
+
+/** @param  array<int, array<string, mixed>>  $blocks */
+function sectionWith(array $blocks): array
+{
+    return [['type' => 'section', 'data' => ['blocks' => $blocks]]];
+}
+
+function mediaBlock(mixed $ref): array
+{
+    return ['type' => 'media', 'data' => ['media_path' => $ref, 'columns' => 3]];
+}
+
+/** A page "Über uns" showing the item in a media block — published, unless the attributes say otherwise. */
+function pageShowing(Tenant $tenant, $item, array $attributes = []): \Workbench\App\Models\Content
+{
+    return \Workbench\App\Models\Content::factory()->for($tenant)->create([
+        'title' => 'Über uns',
+        'blocks' => sectionWith([mediaBlock($item->getKey())]),
+        ...$attributes,
+    ]);
+}
+
+/**
+ * What a picker stores for an item: its key, encrypted — the real key is not —
+ * with a chosen conversion appended the way the rich editor writes it.
+ */
+function pickerKey(int|\RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem $item, ?string $conversion = null): string
+{
+    $id = $item instanceof \RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem ? $item->getKey() : $item;
+
+    return \RalphJSmit\Filament\Explore\Filament\Forms\Components\RichEditor\Plugins\FilePlugin::getCompositeId(
+        \RalphJSmit\Filament\Explore\Data\FileData::encryptKeyHash('media-library-item:'.$id),
+        array_filter([$conversion]),
+    );
+}
+
+/**
+ * Pattern for a media row's library directory inside a URL or path: `/{id}/`,
+ * or `/{id}-{token}/` where the private media library gave it a random one.
+ */
+function libraryDirectoryPattern(int|string $mediaId): string
+{
+    return '#/'.$mediaId.'(?:-[A-Za-z0-9]{16,64})?/#';
+}
+
+/**
+ * The few bytes libmagic needs to call a file a video: an ISO-BMFF `ftyp` box
+ * (QuickTime or MP4 brand) or an EBML header (WebM). Nothing can play them —
+ * nothing in the tests tries to.
+ */
+function cmsVideoBytes(string $type = 'mov', int $padding = 0): string
+{
+    $bytes = match ($type) {
+        'mov' => "\x00\x00\x00\x14ftypqt  \x00\x00\x00\x00qt  \x00\x00\x00\x08free",
+        'mp4' => "\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom\x00\x00\x00\x08free",
+        'webm' => "\x1aE\xdf\xa3\x9fB\x86\x81\x01B\xf7\x81\x01B\xf2\x81\x04B\xf3\x81\x08B\x82\x84webm",
+    };
+
+    return $bytes.str_repeat("\x00", $padding);
 }
 
 /**

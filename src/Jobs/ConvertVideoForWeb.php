@@ -2,7 +2,6 @@
 
 namespace Mmoollllee\Cms\Jobs;
 
-use FFMpeg\Format\Video\X264;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueueAfterCommit;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -12,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Contracts\Content;
-use Mmoollllee\Cms\Support\Content\VideoConversionHelper;
+use Mmoollllee\Cms\Support\Media\VideoTranscoder;
 use ProtoneMedia\LaravelFFMpeg\Support\FFMpeg;
 use Throwable;
 
@@ -66,27 +65,9 @@ class ConvertVideoForWeb implements ShouldQueueAfterCommit
         $quality = $blockData['video_quality'] ?? 'medium';
         $keepAudio = $blockData['video_keep_audio'] ?? true;
 
-        $crf = VideoConversionHelper::crfForQuality($quality);
         $outputPath = $this->buildOutputPath($this->mediaPath);
 
-        $format = (new X264)
-            ->setKiloBitrate(0)
-            ->setAdditionalParameters([
-                '-crf', (string) $crf,
-                '-preset', 'faster',
-                '-movflags', '+faststart',
-                '-vf', 'scale=min(1920\\,iw):-2',
-            ]);
-
-        if (! $keepAudio) {
-            $format->setAdditionalParameters([
-                ...$format->getAdditionalParameters(),
-                '-an',
-            ]);
-        } else {
-            $format->setAudioCodec('aac')
-                ->setAudioKiloBitrate(128);
-        }
+        $format = VideoTranscoder::format($quality, (bool) $keepAudio);
 
         FFMpeg::fromDisk($disk)
             ->open($this->mediaPath)

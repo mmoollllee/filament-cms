@@ -3,6 +3,7 @@
 namespace Mmoollllee\Cms\Support\Content;
 
 use Illuminate\Support\Facades\Storage;
+use Mmoollllee\Cms\Support\Media\UploadLimits;
 
 class VideoConversionHelper
 {
@@ -66,7 +67,13 @@ class VideoConversionHelper
      */
     public static function recompressThreshold(): int
     {
-        return (int) config('cms.video.recompress_threshold', self::DEFAULT_RECOMPRESS_THRESHOLD);
+        try {
+            return UploadLimits::bytes(config('cms.video.recompress_threshold', self::DEFAULT_RECOMPRESS_THRESHOLD));
+        } catch (\InvalidArgumentException $exception) {
+            report($exception);
+
+            return self::DEFAULT_RECOMPRESS_THRESHOLD;
+        }
     }
 
     /**

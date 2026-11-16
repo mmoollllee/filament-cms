@@ -5,8 +5,13 @@ namespace Mmoollllee\Cms\Filament\Forms;
 use Closure;
 use Filament\Forms\Components\Field;
 use Filament\Forms\Components\FileUpload;
+use Illuminate\Support\Str;
+use LogicException;
+use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
+use Mmoollllee\Cms\Support\Media\References\MediaReferenceScanner;
 use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\MediaPicker;
 
 /**
@@ -24,6 +29,13 @@ use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\MediaPicker;
  * only affect the FileUpload fallback (the picker's editor lives in the
  * library UI). tests/Feature/MediaTenantProfileRenderTest.php renders the
  * heaviest call site in both modes to catch contract drift.
+ *
+ * A picker's key must be one the Mediathek's delete protection reads
+ * ({@see MediaReferenceScanner::recognizes()}): named like a media field, or
+ * registered. Checked where the field is written — outside production a
+ * wrong name throws, in production it is reported — so no field ends up
+ * storing files the Mediathek would let the editor delete while a page
+ * shows them.
  */
 final class MediaField
 {
@@ -44,6 +56,9 @@ final class MediaField
         'application/vnd.ms-powerpoint',
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     ];
+
+    /** @var array<string, true> unread keys already reported by this process */
+    private static array $reported = [];
 
     /** Extension counterpart of DOCUMENT_TYPES (importer folder routing). */
     public const DOCUMENT_EXTENSIONS = ['pdf', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'];
@@ -115,11 +130,104 @@ final class MediaField
 
     protected static function picker(string $name, array $acceptedFileTypes, string $folderKey): Field
     {
+        self::assertTracked($name);
+
         // find(), not ensure(): the closure is evaluated on every form render,
         // and a render must never (re)create folders behind the editor's back.
         return MediaPicker::make($name)
             ->acceptedFileTypes($acceptedFileTypes)
-            ->defaultFolder(fn () => MediaFolders::find($folderKey));
+            ->defaultFolder(fn () => MediaFolders::find($folderKey))
+            // A file deleted before the Mediathek protected used files left
+            // its id behind. The picker shows nothing for it; saving the form
+            // as shown drops it, and nothing on the page changes.
+            ->afterStateHydrated(function (MediaPicker $component, mixed $state): void {
+                $kept = self::withoutMissing($state);
+
+                if ($kept !== $state) {
+                    $component->state($kept);
+                }
+            })
+            // A form opened before someone deleted the file it then picks.
+            ->rule(fn (MediaPicker $component): Closure => function (string $attribute, mixed $value, Closure $fail) use ($component): void {
+                if (self::withoutMissing($value) !== $value) {
+                    $fail($component->isMultiple()
+                        ? 'Eine der gewählten Dateien wurde inzwischen gelöscht. Bitte wähle die Dateien neu aus.'
+                        : 'Die gewählte Datei wurde inzwischen gelöscht. Bitte wähle eine andere aus.');
+                }
+            });
+    }
+
+    /**
+     * The picker's state without the items that are gone. Anything that
+     * does not read as an item id is left alone.
+     */
+    private static function withoutMissing(mixed $state): mixed
+    {
+        $entries = is_array($state) ? $state : [$state];
+        $ids = [];
+
+        foreach ($entries as $entry) {
+            if (is_int($id = self::itemId($entry))) {
+                $ids[$id] = true;
+            }
+        }
+
+        if ($ids === []) {
+            return $state;
+        }
+
+        // Unscoped: whether the item exists at all, not whether this request may list it.
+        $existing = array_flip(array_map('intval', Cms::mediaItemModel()::query()
+            ->withoutGlobalScopes()
+            ->whereKey(array_keys($ids))
+            ->pluck((new (Cms::mediaItemModel()))->getKeyName())
+            ->all()));
+
+        if (count($existing) === count($ids)) {
+            return $state;
+        }
+
+        $kept = array_filter($entries, fn (mixed $entry): bool => ! is_int($id = self::itemId($entry)) || isset($existing[$id]));
+
+        return is_array($state) ? (array_is_list($state) ? array_values($kept) : $kept) : null;
+    }
+
+    private static function itemId(mixed $entry): ?int
+    {
+        // `<key>|<conversion>` is how a picker stores a chosen conversion.
+        $id = MediaUrlResolver::normalize(is_string($entry) ? explode('|', $entry, 2)[0] : $entry);
+
+        return is_int($id) && $id > 0 ? $id : null;
+    }
+
+    /**
+     * Outside production a picker under a key the delete protection does not
+     * read throws; in production it is reported once per process.
+     */
+    private static function assertTracked(string $name): void
+    {
+        $key = Str::afterLast($name, '.');
+
+        if (MediaReferenceScanner::recognizes($key)) {
+            return;
+        }
+
+        $exception = new LogicException(
+            "MediaField [{$name}]: the Mediathek does not read the key [{$key}] for references, so it would let the editor delete "
+            ."a file picked here while a page shows it. Name the field like a media field ([{$key}_image], [{$key}_bild], …) "
+            ."or register the key: Cms::registerMediaReferenceKeys(['{$key}']). A field stored in a table of the app's own "
+            .'also needs a MediaReferenceSource for that table.'
+        );
+
+        if (! app()->isProduction()) {
+            throw $exception;
+        }
+
+        if (! isset(self::$reported[$key])) {
+            self::$reported[$key] = true;
+
+            report($exception);
+        }
     }
 
     protected static function upload(string $name, string|Closure|null $legacyDirectory, ?string $imagePreviewHeight): FileUpload

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Storage;
 use Mmoollllee\Cms\Cms;
 use Mmoollllee\Cms\Filament\RichEditor\MediaLibraryPickerPlugin;
 use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\RichEditor\Plugins\MediaPlugin;
@@ -15,6 +16,10 @@ use RalphJSmit\Filament\MediaLibrary\Filament\Forms\Components\RichEditor\Plugin
  * drag-and-drop and saveUploadedFileAttachment() on that. The provider sets the
  * flag directly instead, which is what these tests pin down.
  */
+
+// The images these tests create would otherwise land on the real public disk
+// — and, under random private directories, pile up with every run.
+beforeEach(fn () => Storage::fake('public'));
 
 /** @return array<int, string> */
 function richEditorToolbarButtonNames(): array

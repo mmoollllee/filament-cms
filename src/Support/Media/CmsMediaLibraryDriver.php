@@ -3,7 +3,14 @@
 namespace Mmoollllee\Cms\Support\Media;
 
 use Filament\Facades\Filament;
+use Filament\Schemas\Components\Text;
+use Filament\Support\Exceptions\Halt;
 use Mmoollllee\Cms\Cms;
+use Mmoollllee\Cms\Filament\Support\MediaUsageList;
+use RalphJSmit\Filament\Explore\Data\FileData;
+use RalphJSmit\Filament\Explore\Data\TemporaryFileUploadData;
+use RalphJSmit\Filament\Explore\Enums\FileType;
+use RalphJSmit\Filament\Explore\Filament\Schemas\Components\LabelValueEntry;
 use RalphJSmit\Filament\MediaLibrary\Authorization\LegacyPolicyAuthorization;
 use RalphJSmit\Filament\MediaLibrary\Drivers\MediaLibraryItemDriver;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
@@ -16,6 +23,18 @@ use Spatie\MediaLibrary\MediaCollections\Models\Media;
  * The CMS default driver for the media library: the driver is the one place
  * that owns behavior — tenancy, disk, conversions, model — so apps swap or
  * extend a single class via {@see Cms::useMediaDriver()}.
+ *
+ * Files live in Spatie's `{media-id}/` layout, or — the private media library,
+ * on by default — in `{media-id}-{token}/` with a random token
+ * ({@see PrivateMediaPaths}). Tenant isolation lives in the database (the
+ * item's tenant morph), not in the path. Spatie computes paths at runtime, so
+ * a layout of its own (tenant folders, say) would compute new paths for every
+ * file an app's library already stored and find none of them there; the
+ * token layout avoids that by falling back to `{media-id}/` for every file
+ * without a token. `cms:media:prune` knows both layouts: it is how the command
+ * tells library directories from everything else on the disk. An app that
+ * needs its media kept apart gives the library its own disk
+ * ({@see Cms::useMediaDisk()}), not its own path generator.
  *
  * MUST NOT be autoloaded unless the plugin is installed
  * ({@see MediaLibrary::installed()}) — the parent class lives in the
@@ -110,7 +129,71 @@ class CmsMediaLibraryDriver extends MediaLibraryItemDriver
                 }
 
                 $item->addMediaConversion('og')->fit(Fit::Crop, 1200, 630)->format($ogFormat);
-            });
+            })
+            // Where a file is used — the question to answer before deleting or
+            // replacing it — and how far a video's web conversion has got.
+            ->fileInfoInformationUsing(fn (array $components, FileData $file): array => [
+                ...$components,
+                ...$this->usageInformation($file),
+            ]);
+    }
+
+    /**
+     * Nothing a record still uses is deleted: not the file, not a folder
+     * holding it. Checked for everything the call would remove BEFORE the
+     * first removal, so a refused folder stays whole. The editor gets the
+     * list of uses instead ({@see MediaDeletionGuard}).
+     */
+    public function deleteFile(FileData $file): void
+    {
+        $blocked = MediaDeletionGuard::blockedBy([$file], $this);
+
+        if ($blocked !== []) {
+            MediaDeletionGuard::notify($blocked);
+
+            throw new Halt;
+        }
+
+        parent::deleteFile($file);
+    }
+
+    /**
+     * One swap of an item's file at a time: a video conversion finishing
+     * while the editor replaces the file would drop the replacement
+     * ({@see LibraryVideos::exclusively()}).
+     */
+    public function replaceFile(FileData $file, TemporaryFileUploadData $temporaryFileUploadData): FileData
+    {
+        return LibraryVideos::exclusively((int) $file->getPrimaryKey(), fn (): FileData => parent::replaceFile($file, $temporaryFileUploadData));
+    }
+
+    /**
+     * @return array<int, LabelValueEntry>
+     */
+    protected function usageInformation(FileData $file): array
+    {
+        if ($file->getType() !== FileType::File) {
+            return [];
+        }
+
+        $item = $file->getSource();
+
+        if (! $item instanceof MediaLibraryItem) {
+            return [];
+        }
+
+        $usages = MediaReferences::shown($item);
+        $entries = [
+            LabelValueEntry::make('Verwendet auf')->schema([
+                Text::make($usages->isEmpty() ? 'Nirgends – die Datei kann gelöscht werden.' : MediaUsageList::html($usages)),
+            ]),
+        ];
+
+        if (($video = LibraryVideos::statusLabel($item->getFirstMedia($item->getMediaLibraryCollectionName()))) !== null) {
+            $entries[] = LabelValueEntry::make('Video')->schema([Text::make($video)]);
+        }
+
+        return $entries;
     }
 
     /**

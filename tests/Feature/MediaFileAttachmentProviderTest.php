@@ -15,9 +15,7 @@ use Mmoollllee\Cms\Filament\RichEditor\Renderer;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibraryFileAttachmentProvider;
 use Mmoollllee\Cms\Support\Tenancy\CurrentTenant;
-use RalphJSmit\Filament\Explore\Data\FileData;
 use RalphJSmit\Filament\Explore\Filament\Forms\Components\RichEditor\Plugins\FilePlugin;
-use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
 use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Workbench\App\Models\Tenant;
 
@@ -82,7 +80,7 @@ it('returns the library url for a stored item id', function () {
     $provider = MediaLibraryFileAttachmentProvider::make();
     $id = $provider->saveUploadedFileAttachment(temporaryUpload());
 
-    expect($provider->getFileAttachmentUrl($id))->toContain("/{$id}/");
+    expect($provider->getFileAttachmentUrl($id))->toMatch(libraryDirectoryPattern($id));
 });
 
 it('still resolves a path-shaped identifier from older content', function () {
@@ -147,7 +145,7 @@ it('renders a data-id image through the library', function () {
     // the provider on the renderer too, this comes out empty.
     $html = Renderer::make('<p><img data-id="'.$id.'"></p>')->toUnsafeHtml();
 
-    expect($html)->toContain("/{$id}/");
+    expect($html)->toMatch(libraryDirectoryPattern($id));
 });
 
 /*
@@ -169,7 +167,7 @@ it('resolves an item id in the panel editor', function () {
 
     expect($editor->getFileAttachmentUrl($id))
         ->not->toBeNull()
-        ->toContain("/{$id}/");
+        ->toMatch(libraryDirectoryPattern($id));
 });
 
 it('routes an editor upload into the library', function () {
@@ -239,20 +237,6 @@ it('leaves no invisible item row when storing the file fails', function () {
     expect(DB::table('filament_media_library')->count())->toBe(0);
 });
 
-/**
- * Exactly what the Mediathek picker stores in a node: the driver's FileData key
- * — `media-library-item:{id}`, NOT the bare id — encrypted and base64-encoded.
- *
- * Getting this shape wrong makes the tests below pass against a value
- * production never produces: `encryptKeyHash((string) $item->getKey())` yields
- * a decryptable `"42"`, which is numeric and so takes the guarded path, while
- * the real key is not.
- */
-function pickedIdentifier(MediaLibraryItem $item): string
-{
-    return FileData::encryptKeyHash('media-library-item:'.$item->getKey());
-}
-
 /*
  * The picker and the upload both write into the same `data-id` attribute, in
  * different shapes: an upload stores a plain item id, the picker stores the key
@@ -266,11 +250,11 @@ it('resolves an id written by the Mediathek picker', function () {
     app(CurrentTenant::class)->set($tenant);
 
     $item = makeLibraryImage($tenant);
-    $picked = pickedIdentifier($item);
+    $picked = pickerKey($item);
 
     $url = MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($picked);
 
-    expect($url)->toContain('/'.$item->getKey().'/')
+    expect($url)->toMatch(libraryDirectoryPattern($item->getKey()))
         // The encoded hash itself must not survive into the URL.
         ->and($url)->not->toContain($picked);
 });
@@ -280,13 +264,13 @@ it('honours a conversion chosen in the picker', function () {
     app(CurrentTenant::class)->set($tenant);
 
     $item = makeLibraryImage($tenant);
-    $composite = FilePlugin::getCompositeId(pickedIdentifier($item), ['thumb']);
+    $composite = FilePlugin::getCompositeId(pickerKey($item), ['thumb']);
 
     // No thumb file exists here, so the resolver falls back to the original —
     // what matters is that the suffix is parsed off rather than pasted into the
     // URL.
     expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($composite))
-        ->toContain('/'.$item->getKey().'/')
+        ->toMatch(libraryDirectoryPattern($item->getKey()))
         ->and(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl($composite))
         ->not->toContain('|');
 });
@@ -301,7 +285,7 @@ it('still scopes a picked id to the current tenant', function () {
     app(CurrentTenant::class)->set($mine);
 
     // The encoded shape must not become a way around the check.
-    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl(pickedIdentifier($theirItem)))
+    expect(MediaLibraryFileAttachmentProvider::make()->getFileAttachmentUrl(pickerKey($theirItem)))
         ->toBeNull();
 });
 

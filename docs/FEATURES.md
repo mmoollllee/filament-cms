@@ -309,6 +309,8 @@ with side-by-side diff, version browser and restore. The shared base is
 a 3-liner + one `getPages()` route (see the workbench Service resource). **Restore
 discards a pending draft** (announced via notification) — the stash would otherwise
 re-overlay the just-restored state — and the restore itself records a new version.
+A restored revision that shows files deleted since gets a warning: revisions do not
+keep files from being deleted, so the page stays empty in their place.
 The diff styles ship precompiled (`versionable.css` FilamentAsset), so panels without
 a custom vite theme render them too.
 
@@ -544,6 +546,16 @@ Cms::templateEmbeds('*', fragments: ['opening-hours']); // every page, e.g. the 
 Keys are the resolved view names (`TemplateResolver`); content types link to their
 list, fragments to their edit page (or to the fragment list while missing). `*` skips
 types without a page of their own.
+
+A template that lists the record's own children declares them as `children`
+(`Cms::templateEmbeds('content.section-downloads', children: ['acme.download'])`):
+linked the same way, and for a type without a page of its own the parent select then
+offers only the pages whose template lists it — preselected and out of the way when
+there is one, required when there are several. A download filed under another section
+would save, read as published and never appear. While no page uses such a template yet,
+the record still saves — the listing page may come later — and the parent select says
+it will not show until one does. Types with pages of their own keep a free parent: they
+show at their URL wherever they live.
 
 ## RichEditor
 
@@ -791,6 +803,48 @@ group Inhalt), folders, search, filters, bulk actions, image editor, central
   (segments and chunks of JPEG/WebP/PNG, no re-encode), and the ICC profile stays so
   wide-gamut photos keep their colours. `cms:media:strip-metadata` cleans derivatives
   generated before (and runs the placeholder rebuild); originals are never touched.
+- **Uploads up to 128 MB** — out of the box the library refuses anything over 10 MB
+  and Livewire every temporary upload over 12 MB, so a phone video failed both. The CMS
+  raises both to `cms.media.max_upload_size` (default 128 MB) and Livewire's signed
+  upload window from 5 to 30 minutes, unless the app configured them itself to anything
+  but the vendor default (`UploadLimits`; bytes or `256M`). PHP (`upload_max_filesize`, `post_max_size`) and the web server
+  (nginx `client_max_body_size`) must allow the same on every server.
+- **Where is this file used?** — the file info in the Mediathek lists every use under
+  „Verwendet auf": page, fragment, website settings, menu or redirect, linked to its edit
+  page, with its state (veröffentlicht / geplant / ausgeblendet / nicht veröffentlicht /
+  nur im Entwurf). `MediaReferences` reads it from the stored content — blocks, page
+  header, SEO, rich-text images, links by URL, draft stashes, tenant branding, menu items,
+  redirects — never from an index of its own, so it cannot drift; the file info reads it
+  through a cache every CMS write renews. A block switched off counts as a use, not as
+  shown. A saved picker holds a bare id, so ids are only taken from keys named like a
+  media field (`image_path`, `image_id`, `heroImage`, `gallery`, `galerie`, `titelbild`,
+  `datenblatt`, …; never flags or counts like `max_files`); other names register via
+  `Cms::registerMediaReferenceKeys()`, an app's own models via
+  `Cms::registerMediaReferenceSources()` (contract `MediaReferenceSource`). `MediaField`
+  refuses a picker key the Mediathek would not read (outside production it throws), and
+  a picker saves no file that is gone: deleted after the form opened → validation error;
+  an id left by a file deleted long ago drops out when the form loads.
+- **Delete protection** — a file anything still uses cannot be deleted: not on its own,
+  not with its folder, not in a bulk selection. The delete dialog shows the uses instead
+  of a confirm button, the driver refuses before removing anything (a folder stays whole),
+  and the item model refuses for code that deletes directly (`MediaItemInUse`;
+  `MediaDeletionGuard::withoutProtection()` for deletes on purpose). Draft-only uses count:
+  the draft would lose the picture on its next save.
+- **Private media library** *(default; `cms.media.private`)* — nobody finds a library
+  file by counting up ids: files are stored under `{id}-{token}/` with a random
+  24-character token instead of `{id}/`, and keep that directory for good. A link
+  becomes known once a page shows the file and stays valid after that — what was never
+  shown stays hidden, what was shown is not taken back. Files uploaded before move once
+  with `cms:media:secure` (by hand, `--dry-run` first — it lists every file with its old
+  address, to check against the access log; `--keep` leaves files another site links
+  to): all but those a published page shows right now, with the links stored as text in
+  the CMS's tables (page text, buttons, menus, redirects, draft stashes, versions)
+  rewritten to the new directory — only links to the moved file itself and its
+  conversions, never to another file beside it.
+  Static serving stays as it was (no PHP per image, CDN-friendly); what it does not do
+  is access control — an editor can still share a link. Needs a disk without directory
+  listing and Spatie's default path generator (an app with its own keeps it, and the
+  feature stays off).
 - Default folders per tenant — flat, context-based: **Branding** (logos, favicon, OG),
   **Seiten** (block/hero media), **Dokumente** (downloads); provisioned lazily,
   renamable via `Cms::useMediaFolderNames()`.
@@ -818,25 +872,41 @@ group Inhalt), folders, search, filters, bulk actions, image editor, central
 - `cms:media:prune` reclaims disk the library never cleans up itself: conversions
   superseded by a format/size change (the library only knows the name it writes *today*,
   so a `jpg`→`webp` switch abandons the old file), srcset candidates dropped by a
-  narrower `max_width`, and `{id}/` directories with no media row. Expected file names
+  narrower `max_width`, `{id}/` directories with no media row, and private
+  `{id}-{token}/` directories a move to a new token left behind — checked against the
+  row right before deleting, never one that holds the row's only copy after a move was
+  cut short, and never a folder that merely looks like one (`2024-Betriebsanleitungen/`
+  is reported, like a legacy tree). Expected file names
   come from the media rows themselves, so pending conversions survive a scan; a legacy
   `2020/01/…` upload tree is **reported, never deleted** — a year is indistinguishable
   from an id, so only an admin can confirm the import is settled. `--dry-run`, and a
   confirmation prompt unless `--force`.
 
-**Video conversion** — the media block accepts images and videos. Videos are
-automatically made web-friendly: `ConvertsUploadedVideos` (Content model trait) detects
-media blocks whose upload needs conversion (`.mov`/`.avi`/`.wmv` … or MP4 > 10 MB) and
-dispatches `ConvertVideoForWeb` (queued, 10 min timeout, 2 tries): H.264 MP4, scaled to
-≤1920px, CRF by the editor-chosen quality preset (high 23 / medium 28 / low 33), optional
-audio strip, temp-file cleanup, `video_status` processing/complete/failed on the block.
-Requires an `ffmpeg` binary on the server (bundled `pbmedia/laravel-ffmpeg`). Applies to
-legacy path-based uploads; library uploads are served as uploaded (upload-time conversion
-is on the roadmap, see `docs/KONZEPT-MEDIATHEK.md` P4). The stills of a library video
-(`thumb`, `400`, `800`, `responsive`) are always queued, even `thumb`, which the vendor
-renders inside the upload request for images: ffmpeg then runs in the queue worker only,
-so a PHP-FPM pool locked down with `open_basedir` needs no exception for it — the worker's
-CLI PHP must be able to reach the binary.
+**Video conversion** — the media block accepts images and videos, and videos are made
+web-friendly once, on upload. Library uploads (picker, Mediathek, replace) go through
+`LibraryVideos`: every container but MP4, WebM and Ogg — `.mov` above all, straight from
+a phone it plays in Safari only, but also `.avi`, `.wmv`, `.mkv`, `.m4v` … — is converted
+whatever it holds. An MP4 can hold HEVC or AV1 as well, so the worker asks `ffprobe` and
+converts one whose video is not H.264, is wider than 1920 px, or is above
+`cms.video.recompress_threshold` (10 MB) at a bitrate above `cms.video.max_bitrate`
+(8000 kbit/s); a copy of a converted video passes as it is. Without `ffprobe` the size
+decides alone. WebM/Ogg stay as uploaded. `ConvertLibraryVideo` (queued after the upload
+commits, 10 min timeout, 2 tries) encodes H.264/AAC MP4, ≤1920px, `faststart`, CRF from
+`cms.video.quality` (high 23 / medium 28 / low 33, default medium), and swaps the result
+in through the item's single-file collection: the item id pages store stays, the
+original and its stills go, the MP4 gets its own. The swap waits for a replacement the
+editor is uploading and leaves it alone, also when the queue runs jobs inline. The file
+info shows the state (wird vorbereitet / wird umgewandelt / umgewandelt / fehlgeschlagen
+— a failed one is served as uploaded). Legacy path-based uploads keep the older pipeline: `ConvertsUploadedVideos`
+(Content model trait) dispatches `ConvertVideoForWeb` with the editor-chosen preset and
+optional audio strip, `video_status` on the block. Both use the same ffmpeg recipe
+(`VideoTranscoder`). Requires an `ffmpeg` binary on the server (bundled
+`pbmedia/laravel-ffmpeg`) and a queue worker whose `--timeout` and the connection's
+`retry_after` exceed 600 s. The stills of a library video (`thumb`, `400`, `800`,
+`responsive`) are always queued, even `thumb`, which the vendor renders inside the upload
+request for images: ffmpeg then runs in the queue worker only, so a PHP-FPM pool locked
+down with `open_basedir` needs no exception for it — the worker's CLI PHP must be able
+to reach the binary.
 
 ## Admin panel
 
@@ -984,6 +1054,8 @@ php artisan cms:install [--force]  # scaffold a fresh app: config (models pre-wi
 php artisan cms:clear-tenant-cache [--tenant=ID] [--no-warm]  # flush + rewarm per-tenant caches
 php artisan cms:paths:check [--tenant=ID] [--fix]  # report rows off their generated path; --fix moves them
 php artisan cms:prune-not-found-logs [--days=90] [--min-hits=3]  # scheduled daily
+php artisan cms:media:secure [--tenant=ID|site_key] [--keep=IDS] [--dry-run]  # move files uploaded before the private library, once
+php artisan cms:media:prune [--dry-run] [--force]  # orphaned/superseded files on the media disk
 ```
 
 `cms:paths:check` is read-only without `--fix` and fails only on rows that cannot move

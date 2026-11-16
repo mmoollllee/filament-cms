@@ -20,6 +20,7 @@ use Mmoollllee\Cms\Console\Commands\ClearTenantCacheCommand;
 use Mmoollllee\Cms\Console\Commands\InstallCommand;
 use Mmoollllee\Cms\Console\Commands\MediaPlaceholdersCommand;
 use Mmoollllee\Cms\Console\Commands\MediaPruneCommand;
+use Mmoollllee\Cms\Console\Commands\MediaSecureCommand;
 use Mmoollllee\Cms\Console\Commands\MediaStripMetadataCommand;
 use Mmoollllee\Cms\Console\Commands\PruneNotFoundLogsCommand;
 use Mmoollllee\Cms\Contracts\Tenant;
@@ -29,6 +30,7 @@ use Mmoollllee\Cms\Enums\TenantVisibility;
 use Mmoollllee\Cms\Filament\Concerns\ManagesDrafts;
 use Mmoollllee\Cms\Filament\Providers\BasePanelProvider;
 use Mmoollllee\Cms\Filament\Resources\Contents\TenantScopedContentResource;
+use Mmoollllee\Cms\Filament\Support\MediaDeleteActions;
 use Mmoollllee\Cms\Mail\TenantInvitationMail;
 use Mmoollllee\Cms\Models\Menu;
 use Mmoollllee\Cms\Models\Redirect;
@@ -55,10 +57,15 @@ use Mmoollllee\Cms\Support\Content\TemplateResolver;
 use Mmoollllee\Cms\Support\Locking\Locks;
 use Mmoollllee\Cms\Support\Media\BlurredPlaceholderGenerator;
 use Mmoollllee\Cms\Support\Media\CmsMediaLibraryItemImageGenerator;
+use Mmoollllee\Cms\Support\Media\LibraryVideos;
+use Mmoollllee\Cms\Support\Media\MediaDeletionGuard;
 use Mmoollllee\Cms\Support\Media\MediaFolders;
 use Mmoollllee\Cms\Support\Media\MediaLibrary;
+use Mmoollllee\Cms\Support\Media\MediaReferences;
 use Mmoollllee\Cms\Support\Media\MediaUrlResolver;
 use Mmoollllee\Cms\Support\Media\MetadataFreeFilesystem;
+use Mmoollllee\Cms\Support\Media\PrivateMediaPaths;
+use Mmoollllee\Cms\Support\Media\UploadLimits;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 use Mmoollllee\Cms\Support\Routing\HitRecorder;
 use Mmoollllee\Cms\Support\Routing\PathNormalizer;
@@ -74,7 +81,9 @@ use Mmoollllee\Filami\Filami;
 use RalphJSmit\Filament\MediaLibrary\ImageGenerators\MediaLibraryItemImageGenerator;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryFolder;
 use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
+use Spatie\MediaLibrary\MediaCollections\Events\MediaHasBeenAddedEvent;
 use Spatie\MediaLibrary\MediaCollections\Filesystem as MediaFilesystem;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 use Spatie\MediaLibrary\ResponsiveImages\TinyPlaceholderGenerator\Blurred;
 use Spatie\MediaLibrary\ResponsiveImages\TinyPlaceholderGenerator\TinyPlaceholderGenerator;
 use Tiptap\Marks\Link;
@@ -370,6 +379,10 @@ class CmsServiceProvider extends ServiceProvider
             config(['livewire.payload.max_nesting_depth' => self::LIVEWIRE_NESTING_DEPTH]);
         }
 
+        // 128 MB uploads by default (media library and Livewire alike), unless
+        // the app set its own limits.
+        UploadLimits::apply();
+
         // Optional Umami analytics (mmoollllee/filami): every tenant gets its
         // own Umami website, provisioned on creation and kept in sync on
         // rename/domain change. Storage + metadata go through filami's
@@ -401,6 +414,7 @@ class CmsServiceProvider extends ServiceProvider
         $this->app->terminating(function (): void {
             MediaUrlResolver::flush();
             MediaFolders::flush();
+            MediaReferences::flush();
         });
 
         $this->registerShortcodes();
@@ -482,12 +496,63 @@ class CmsServiceProvider extends ServiceProvider
             $this->app->bind(TinyPlaceholderGenerator::class, BlurredPlaceholderGenerator::class);
         }
 
+        // Videos are re-encoded for the web once, on upload (and on replace) —
+        // a .mov from a phone plays in Safari only.
+        Event::listen(MediaHasBeenAddedEvent::class, function (MediaHasBeenAddedEvent $event): void {
+            LibraryVideos::queueConversionIfNeeded($event->media);
+        });
+
+        // A file that is still used is not deleted: the dialogs show where it
+        // is used, the driver refuses, and so does the model — registered once
+        // every provider has booted, so an item model the app swapped in is
+        // the one that is guarded.
+        MediaDeleteActions::configure();
+
+        $this->app->booted(function (): void {
+            MediaDeletionGuard::registerModelGuard(Cms::mediaItemModel());
+        });
+
+        // Private media library: every new library file gets an unguessable
+        // directory of its own, and keeps it.
+        PrivateMediaPaths::registerPathGenerator();
+
+        $mediaModel = config('media-library.media_model') ?: Media::class;
+        $mediaModel::creating(function (Media $media): void {
+            LibraryVideos::forgetCarriedStatus($media);
+            PrivateMediaPaths::prepareNewMedia($media);
+        });
+
+        if (Cms::modelsConfigured()) {
+            $this->registerMediaReferenceFlush();
+        }
+
         if ($this->app->runningInConsole()) {
             $this->commands([
                 MediaPlaceholdersCommand::class,
                 MediaPruneCommand::class,
+                MediaSecureCommand::class,
                 MediaStripMetadataCommand::class,
             ]);
+        }
+    }
+
+    /**
+     * Writes that can change where library files are used — a page, a
+     * fragment, tenant settings, a menu, a redirect — make the usage list and
+     * the delete guard answer from what was just saved. Draft stashes write
+     * past the model events and renew it themselves ({@see \Mmoollllee\Cms\Concerns\HasDraft}).
+     */
+    protected function registerMediaReferenceFlush(): void
+    {
+        $models = [Cms::contentModel(), Cms::fragmentModel(), Cms::tenantModel(), Menu::class, MenuItem::class, Redirect::class];
+
+        foreach (array_filter($models) as $model) {
+            $model::saved(static function (): void {
+                MediaReferences::renew();
+            });
+            $model::deleted(static function (): void {
+                MediaReferences::renew();
+            });
         }
     }
 

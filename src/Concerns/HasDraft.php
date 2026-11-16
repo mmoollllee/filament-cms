@@ -6,6 +6,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Mmoollllee\Cms\Support\Media\MediaReferences;
 use Mmoollllee\Cms\Support\Preview\PreviewMode;
 
 /**
@@ -157,6 +158,9 @@ trait HasDraft
         $this->newModelQuery()
             ->whereKey($this->getKey())
             ->update(['draft' => $this->getAttributes()['draft'] ?? null]);
+
+        // No model event for the usage list to hear: a draft's files count too.
+        MediaReferences::renew();
 
         $this->syncOriginalAttribute('draft');
     }

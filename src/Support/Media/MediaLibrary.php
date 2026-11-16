@@ -2,8 +2,11 @@
 
 namespace Mmoollllee\Cms\Support\Media;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Mmoollllee\Cms\Cms;
 use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
+use RalphJSmit\Filament\MediaLibrary\Models\MediaLibraryItem;
+use Spatie\MediaLibrary\MediaCollections\Models\Media;
 
 /**
  * Capability gate for the optional media-library integration
@@ -20,6 +23,9 @@ use RalphJSmit\Filament\MediaLibrary\FilamentMediaLibrary;
  */
 final class MediaLibrary
 {
+    /** Morph alias the plugin registers for its item model. */
+    public const ITEM_MORPH_ALIAS = 'filament_media_library_item';
+
     private static ?bool $installedMemo = null;
 
     private static ?bool $extensionsMemo = null;
@@ -28,6 +34,15 @@ final class MediaLibrary
     public static function installed(): bool
     {
         return self::$installedMemo ??= class_exists(FilamentMediaLibrary::class);
+    }
+
+    /** Whether a media row belongs to a library item, and not to some other model of the app. */
+    public static function isLibraryMedia(Media $media): bool
+    {
+        $type = (string) $media->model_type;
+
+        return $type === self::ITEM_MORPH_ALIAS
+            || is_a(Relation::getMorphedModel($type) ?? $type, MediaLibraryItem::class, true);
     }
 
     /** Whether the integration is active: installed and not opted out. */

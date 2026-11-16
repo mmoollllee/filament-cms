@@ -322,8 +322,9 @@ The engine ships the complete *wiring* for
 (commercial, by Ralph J. Smit) as a WordPress-style per-tenant media library: panel page,
 tenant-scoped driver + policies, picker fields on every media input (blocks, hero,
 branding incl. favicon, per-content OG image), an extended preview action (arrow-key
-navigation, inline PDF preview), default folders (Branding / Seiten / Dokumente) and a
-legacy importer. It activates automatically **only if the project installs the plugin**:
+navigation, inline PDF preview), default folders (Branding / Seiten / Dokumente), a usage
+list and delete protection for every file, video conversion on upload and private file
+paths. It activates automatically **only if the project installs the plugin**:
 
 ```bash
 composer config 'repositories.ralphjsmit/*' composer https://satis.ralphjsmit.com
@@ -341,6 +342,15 @@ Filament theme:
 /* resources/css/filament/theme.css */
 @import '../../../vendor/ralphjsmit/laravel-filament-media-library/resources/css/index.css';
 ```
+
+**Server, queue, scheduler.** Uploads may be up to 128 MB (`CMS_MEDIA_MAX_UPLOAD_SIZE`, in
+bytes or like `256M`)
+— PHP's `upload_max_filesize`/`post_max_size` and nginx's `client_max_body_size` have to
+allow as much. Videos are checked and converted by the queue worker (needs `ffmpeg` and
+`ffprobe`, `--timeout=600` and a `retry_after` above it). Library files get an
+unguessable directory by default; after updating, run `php artisan cms:media:secure`
+once to move the files uploaded before (`--dry-run` lists every file that would move
+with its old address, `--keep=<media ids>` leaves files other sites link to).
 
 A fresh install has nothing to migrate. Older installs carried raw file paths in
 blocks, payload, drafts and tenant branding; `cms:media:import` turned those into
@@ -438,32 +448,20 @@ Cms::allowRootBlocks('my-site', ['section', 'text', 'media']);
 
 ### The parent select offers sections that cannot work
 
-`TenantScopedContentResource::getParentOptions()` returns every content of an
-allowed parent type. On an onepager that is every section, while usually exactly
-one of them renders the type in question — its template is the one calling
-`visibleChildren()`. Choosing any other saves cleanly, shows the record as
-published, and the site never displays it: the saving hook enforces the tree's rules
-(same tenant, a listed type, no cycle), not which section renders the record.
-
-Narrow the options in the resource so the engine can preselect — and, where only
-one section qualifies, drop the select entirely:
+On an onepager a record type without a page of its own (downloads, team members)
+usually shows in exactly one section — the one whose template calls
+`visibleChildren()`. Filed under any other section, a record saves cleanly, shows as
+published, and the site never displays it. Declare which template lists the type:
 
 ```php
-protected static function getParentOptions(?Tenant $tenant, ?string $contentType, ?Model $record = null): array
-{
-    $options = parent::getParentOptions($tenant, $contentType, $record);
-
-    $ids = Cms::contentModel()::query()
-        ->whereBelongsTo($tenant)
-        ->where('template', 'content.section-downloads')
-        ->pluck('id')
-        ->all();
-
-    // Fall back to the full list, or a tenant without that section yet cannot
-    // create records at all.
-    return array_intersect_key($options, array_flip($ids)) ?: $options;
-}
+Cms::templateEmbeds('content.section-downloads', children: ['acme.download']);
 ```
+
+The content form then offers only the sections whose template lists the type —
+preselected and out of the way when there is one, required when there are several, the
+full list while no section uses the template yet. Only the panel form narrows: the
+saving hook enforces the tree's rules (same tenant, a listed type, no cycle), so imports
+and code that set `parent_id` themselves can still file a record where it never shows.
 
 ### Legacy file paths in media fields erase themselves on save
 

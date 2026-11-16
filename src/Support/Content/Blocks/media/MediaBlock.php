@@ -47,8 +47,8 @@ class MediaBlock extends BaseBuilderBlock
                     }),
                 // Editor-chosen conversion settings only apply to the legacy
                 // path-based pipeline (ConvertsUploadedVideos) — library
-                // uploads are (until the upload-time pipeline lands) served
-                // as uploaded. Gate PER REF, not on the global plugin flag:
+                // videos are converted once, on upload, with the site-wide
+                // `cms.video.quality` (LibraryVideos). Gate PER REF, not on the global plugin flag:
                 // hidden fields are not dehydrated, so a global gate would
                 // strip the saved quality/audio keys from every legacy video
                 // block on its next save once the plugin is installed.
@@ -80,8 +80,8 @@ class MediaBlock extends BaseBuilderBlock
 
     /**
      * Whether this block's video runs through the legacy path-based ffmpeg
-     * pipeline (quality/audio selects only make sense there — library refs
-     * are served as uploaded).
+     * pipeline (quality/audio selects only make sense there — library videos
+     * were converted on upload already).
      */
     protected static function usesLegacyVideoPipeline(Get $get): bool
     {

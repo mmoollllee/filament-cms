@@ -194,26 +194,53 @@ return [
     | Changing either value affects NEW conversions only. Re-run
     | `php artisan media-library:regenerate` for existing media, then
     | `php artisan cms:media:prune` to delete the superseded files.
+    |
+    | max_upload_size  largest upload, in bytes or as php.ini writes it
+    |        (`256M`), 128 MB by default — room for a
+    |        phone video. Applied to the media library (Spatie `max_file_size`)
+    |        and to Livewire's temporary uploads, unless the app configured
+    |        either of those itself. PHP (`upload_max_filesize`,
+    |        `post_max_size`) and the web server (nginx `client_max_body_size`)
+    |        have to allow the same size; no package can raise those.
+    | private  new library files are stored under an unguessable directory
+    |        (`{id}-{token}/`) and keep it, so a file only a draft uses cannot
+    |        be found by trying ids. Run `php artisan cms:media:secure` once to
+    |        move the files uploaded before this existed. Set to false to keep
+    |        the plain `{id}/` layout for new uploads (existing private paths
+    |        keep working either way).
     */
     'media' => [
         'max_width' => (int) env('CMS_MEDIA_MAX_WIDTH', 1920),
         'format' => env('CMS_MEDIA_FORMAT', 'webp'),
         'og_format' => env('CMS_MEDIA_OG_FORMAT', 'jpg'),
+        'max_upload_size' => env('CMS_MEDIA_MAX_UPLOAD_SIZE', 128 * 1024 * 1024),
+        'private' => (bool) env('CMS_MEDIA_PRIVATE', true),
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Video conversion (ConvertsUploadedVideos)
+    | Video conversion (ConvertLibraryVideo, legacy: ConvertsUploadedVideos)
     |--------------------------------------------------------------------------
     | recompress_threshold  size in bytes above which an upload that is ALREADY
-    |        MP4 gets re-encoded anyway. Non-MP4 containers (.mov/.avi/.wmv) are
-    |        converted regardless of size, so this value only governs the "large
-    |        MP4" case. Raise it for sites whose hero videos are legitimately big;
-    |        lower it in tests, so the size branch can be exercised with a tiny
-    |        fixture instead of a multi-megabyte one.
+    |        MP4 gets re-encoded: in the media library only when its bitrate
+    |        is also above max_bitrate, for legacy path-based uploads anyway.
+    |        Other containers (.mov, .avi, .wmv, …) are converted regardless of
+    |        size, and so is a library MP4 that is not H.264 or wider than
+    |        1920 px. Raise it for sites whose hero videos are legitimately
+    |        big; lower it in tests, so the size branch can be exercised with
+    |        a tiny fixture instead of a multi-megabyte one.
+    | max_bitrate  kbit/s above which a library MP4 over the threshold counts
+    |        as a camera's recording and is re-encoded. What the recipe makes of
+    |        ordinary footage stays below it, so a copy of a converted video is
+    |        not encoded a second time.
+    | quality  preset for videos converted on upload to the media library:
+    |        `high`, `medium` or `low` (CRF 23/28/33). Legacy path-based
+    |        uploads keep their per-block choice.
     */
     'video' => [
-        'recompress_threshold' => (int) env('CMS_VIDEO_RECOMPRESS_THRESHOLD', 10 * 1024 * 1024),
+        'recompress_threshold' => env('CMS_VIDEO_RECOMPRESS_THRESHOLD', 10 * 1024 * 1024),
+        'max_bitrate' => env('CMS_VIDEO_MAX_BITRATE', 8000),
+        'quality' => env('CMS_VIDEO_QUALITY', 'medium'),
     ],
 
 ];

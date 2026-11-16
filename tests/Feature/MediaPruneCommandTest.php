@@ -18,6 +18,9 @@ beforeEach(function () {
     // Conversions would otherwise run inline and write real derivatives; the
     // tests plant exactly the files they assert on.
     Queue::fake();
+    // The plain `{id}/` layout these tests plant files into; the private
+    // `{id}-{token}/` one has its own tests at the end.
+    config(['cms.media.private' => false]);
 });
 
 /**

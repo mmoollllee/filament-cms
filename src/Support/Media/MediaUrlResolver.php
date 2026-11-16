@@ -24,7 +24,10 @@ use Spatie\MediaLibrary\ResponsiveImages\ResponsiveImage;
  * example) apply everywhere automatically.
  *
  * Lookups are request-cached; {@see preload()} batches a whole content's refs
- * into one query before block rendering.
+ * into one query before block rendering. Nothing keeps a resolved URL beyond
+ * the request: the tenant cache holds pages as model payloads, not rendered
+ * HTML, so a replaced or deleted library file shows on the next render and no
+ * media observer has to flush anything.
  */
 final class MediaUrlResolver
 {
